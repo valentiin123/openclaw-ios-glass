@@ -18,18 +18,15 @@ struct NativeDestinationRouter: View {
             DashboardRouteMap.dreamingPagePath,
             DashboardRouteMap.usagePagePath,
             DashboardRouteMap.cronJobsPagePath,
+            DashboardRouteMap.appearanceSettingsPath,
+            DashboardRouteMap.devicePermissionsSettingsPath,
         ].contains(path)
     }
 
     var body: some View {
         switch self.path {
         case DashboardRouteMap.activityPagePath:
-            NativeListScreen(
-                title: self.title,
-                emptyTitle: "No recent activity",
-                emptyIcon: "waveform.path.ecg",
-                headerSidebarAction: self.headerSidebarAction,
-                loader: NativeLoaders.activity)
+            NativeActivityScreen(title: self.title, headerSidebarAction: self.headerSidebarAction)
         case DashboardRouteMap.skillWorkshopPagePath:
             NativeListScreen(
                 title: self.title,
@@ -38,12 +35,7 @@ struct NativeDestinationRouter: View {
                 headerSidebarAction: self.headerSidebarAction,
                 loader: NativeLoaders.skillWorkshop)
         case DashboardRouteMap.devicesSettingsPath:
-            NativeListScreen(
-                title: self.title,
-                emptyTitle: "No connected devices",
-                emptyIcon: "dot.radiowaves.left.and.right",
-                headerSidebarAction: self.headerSidebarAction,
-                loader: NativeLoaders.presence)
+            NativeInstancesScreen(title: self.title, headerSidebarAction: self.headerSidebarAction)
         case DashboardRouteMap.dreamingPagePath:
             NativeListScreen(
                 title: self.title,
@@ -52,19 +44,15 @@ struct NativeDestinationRouter: View {
                 headerSidebarAction: self.headerSidebarAction,
                 loader: NativeLoaders.dreams)
         case DashboardRouteMap.cronJobsPagePath:
-            NativeListScreen(
-                title: self.title,
-                emptyTitle: "No automations",
-                emptyIcon: "timer",
-                headerSidebarAction: self.headerSidebarAction,
-                loader: NativeLoaders.cron)
+            NativeAutomationsScreen(title: self.title, headerSidebarAction: self.headerSidebarAction)
         case DashboardRouteMap.usagePagePath:
             NativeUsageScreen(title: self.title, headerSidebarAction: self.headerSidebarAction)
         case DashboardRouteMap.workboardPagePath:
-            NativeUnavailableScreen(
-                title: self.title,
-                message: String(localized: "No verified Gateway list method exists for the Workboard yet. Open it in the Dashboard."),
-                headerSidebarAction: self.headerSidebarAction)
+            NativeWorkboardScreen(title: self.title, headerSidebarAction: self.headerSidebarAction)
+        case DashboardRouteMap.appearanceSettingsPath:
+            NativeAppearanceScreen(headerSidebarAction: self.headerSidebarAction)
+        case DashboardRouteMap.devicePermissionsSettingsPath:
+            NativePermissionsScreen(headerSidebarAction: self.headerSidebarAction)
         default:
             DashboardPageScreen(
                 path: self.path,

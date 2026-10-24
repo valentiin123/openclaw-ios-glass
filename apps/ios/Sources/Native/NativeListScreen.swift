@@ -1,5 +1,6 @@
 import Observation
 import SwiftUI
+import UIKit
 
 /// One display row. Every list destination maps its Gateway JSON into this shape.
 struct NativeRow: Identifiable, Equatable {
@@ -12,6 +13,18 @@ struct NativeRow: Identifiable, Equatable {
 
     static func == (lhs: NativeRow, rhs: NativeRow) -> Bool {
         lhs.id == rhs.id && lhs.title == rhs.title && lhs.subtitle == rhs.subtitle && lhs.trailing == rhs.trailing
+    }
+
+    func matches(_ query: String) -> Bool {
+        if self.title.localizedCaseInsensitiveContains(query) { return true }
+        if let subtitle = self.subtitle, subtitle.localizedCaseInsensitiveContains(query) { return true }
+        return false
+    }
+
+    var copyText: String {
+        var parts: [String] = [self.title]
+        if let subtitle = self.subtitle { parts.append(subtitle) }
+        return parts.joined(separator: "\n")
     }
 }
 
@@ -30,7 +43,7 @@ final class NativeListModel {
 
     func load(appModel: NodeAppModel, showSpinner: Bool) async {
         guard appModel.isOperatorGatewayConnected else {
-            self.state = .failed(String(localized: "The operator connection is offline."))
+            self.state = .failed(NativeGateway.offlineMessage)
             return
         }
         if showSpinner { self.state = .loading }
@@ -46,10 +59,11 @@ final class NativeListModel {
     }
 }
 
-/// Native replacement for a Dashboard list page: NavigationStack + List, refreshable.
+/// Native replacement for a Dashboard list page: grouped list, search, refreshable, context menu.
 struct NativeListScreen: View {
     @Environment(NodeAppModel.self) private var appModel
     @State private var model: NativeListModel
+    @State private var search: String = ""
     let title: String
     let emptyTitle: LocalizedStringKey
     let emptyIcon: String
@@ -78,28 +92,62 @@ struct NativeListScreen: View {
                 emptyIcon: self.emptyIcon,
                 retry: { await self.model.load(appModel: self.appModel, showSpinner: true) })
             { rows in
-                List {
-                    ForEach(rows) { row in
-                        NativeRowView(row: row)
-                    }
-                    if let footnote = self.model.footnote {
-                        Text(verbatim: footnote)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .listRowBackground(Color.clear)
-                    }
-                }
-                .refreshable { await self.model.load(appModel: self.appModel, showSpinner: false) }
+                self.list(rows)
             }
-            .navigationTitle(self.title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                if let headerSidebarAction {
-                    OpenClawSidebarToolbarItem(action: headerSidebarAction, placement: .topBarLeading)
+            .nativeChrome(title: self.title, sidebar: self.headerSidebarAction)
+            .searchable(text: self.$search, prompt: Text("Search"))
+        }
+        .task { await self.model.load(appModel: self.appModel, showSpinner: true) }
+    }
+
+    private func filtered(_ rows: [NativeRow]) -> [NativeRow] {
+        let query: String = self.search.trimmingCharacters(in: .whitespacesAndNewlines)
+        if query.isEmpty { return rows }
+        return rows.filter { $0.matches(query) }
+    }
+
+    @ViewBuilder
+    private func list(_ rows: [NativeRow]) -> some View {
+        let visible: [NativeRow] = self.filtered(rows)
+        List {
+            Section {
+                ForEach(visible) { row in
+                    NativeRowView(row: row)
+                        .contextMenu { self.menu(for: row) }
+                        .swipeActions(edge: .trailing) { self.copyAction(for: row) }
+                }
+            } footer: {
+                if let footnote = self.model.footnote {
+                    Text(verbatim: footnote)
                 }
             }
         }
-        .task { await self.model.load(appModel: self.appModel, showSpinner: true) }
+        .listStyle(.insetGrouped)
+        .refreshable { await self.model.load(appModel: self.appModel, showSpinner: false) }
+        .overlay {
+            if visible.isEmpty {
+                ContentUnavailableView.search(text: self.search)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func menu(for row: NativeRow) -> some View {
+        Button {
+            UIPasteboard.general.string = row.copyText
+        } label: {
+            Label("Copy", systemImage: "doc.on.doc")
+        }
+    }
+
+    @ViewBuilder
+    private func copyAction(for row: NativeRow) -> some View {
+        Button {
+            UIPasteboard.general.string = row.copyText
+        } label: {
+            Label("Copy", systemImage: "doc.on.doc")
+        }
+        .tint(.blue)
     }
 }
 
@@ -113,16 +161,19 @@ private struct NativeRowView: View {
                 .frame(width: 24)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: self.row.title).font(.body)
+                Text(verbatim: self.row.title).font(OpenClawType.body)
                 if let subtitle = self.row.subtitle {
-                    Text(verbatim: subtitle).font(.subheadline).foregroundStyle(.secondary)
+                    Text(verbatim: subtitle)
+                        .font(OpenClawType.subhead)
+                        .foregroundStyle(.secondary)
                 }
             }
             Spacer(minLength: 8)
             if let trailing = self.row.trailing {
-                Text(verbatim: trailing).font(.footnote).foregroundStyle(.secondary)
+                Text(verbatim: trailing).font(OpenClawType.footnote).foregroundStyle(.secondary)
             }
         }
+        .frame(minHeight: 44)
         .accessibilityElement(children: .combine)
     }
 }

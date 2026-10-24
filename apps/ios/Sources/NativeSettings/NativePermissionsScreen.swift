@@ -1,0 +1,181 @@
+import AVFoundation
+import CoreLocation
+import OpenClawKit
+import Photos
+import SwiftUI
+import UserNotifications
+
+/// Presentation helpers for permission rows.
+enum NativePermissionPresentation {
+    static func title(_ permission: DeviceSettingsPermission) -> String {
+        switch permission {
+        case .notifications: return String(localized: "Notifications")
+        case .accessibility: return String(localized: "Accessibility")
+        case .screenRecording: return String(localized: "Screen Recording")
+        case .microphone: return String(localized: "Microphone")
+        case .camera: return String(localized: "Camera")
+        case .speechRecognition: return String(localized: "Speech Recognition")
+        case .location: return String(localized: "Location")
+        case .eventPosting: return String(localized: "Event Posting")
+        case .contacts: return String(localized: "Contacts")
+        case .calendars: return String(localized: "Calendars")
+        case .reminders: return String(localized: "Reminders")
+        case .photos: return String(localized: "Photos")
+        }
+    }
+
+    static func icon(_ permission: DeviceSettingsPermission) -> String {
+        switch permission {
+        case .notifications: return "bell"
+        case .accessibility: return "accessibility"
+        case .screenRecording: return "record.circle"
+        case .microphone: return "mic"
+        case .camera: return "camera"
+        case .speechRecognition: return "text.bubble"
+        case .location: return "location"
+        case .eventPosting: return "keyboard"
+        case .contacts: return "person.crop.circle"
+        case .calendars: return "calendar"
+        case .reminders: return "checklist"
+        case .photos: return "photo"
+        }
+    }
+
+    static func pill(_ status: DeviceSettingsPermissionStatus) -> NativeSettingsPill {
+        switch status {
+        case .granted:
+            return NativeSettingsPill(label: String(localized: "Allowed"), tone: .ok)
+        case .limited:
+            return NativeSettingsPill(label: String(localized: "Limited"), tone: .warn)
+        case .denied:
+            return NativeSettingsPill(label: String(localized: "Denied"), tone: .warn)
+        case .notDetermined:
+            return NativeSettingsPill(label: String(localized: "Not asked"), tone: .muted)
+        case .unavailable:
+            return NativeSettingsPill(label: String(localized: "Unavailable"), tone: .muted)
+        }
+    }
+
+    /// Permissions the app can prompt for in place (others go through iOS Settings).
+    static func canPromptInApp(_ permission: DeviceSettingsPermission) -> Bool {
+        switch permission {
+        case .camera, .microphone, .speechRecognition, .contacts, .calendars, .reminders, .photos:
+            return true
+        case .notifications, .location, .accessibility, .screenRecording, .eventPosting:
+            return false
+        }
+    }
+}
+
+struct NativePermissionItem: Identifiable, Equatable {
+    let permission: DeviceSettingsPermission
+    let status: DeviceSettingsPermissionStatus
+
+    var id: String {
+        self.permission.rawValue
+    }
+}
+
+@MainActor
+@Observable
+final class NativePermissionsModel {
+    var items: [NativePermissionItem] = []
+    var requestingID: String?
+    private let requester = IOSDeviceSettingsPermissions()
+
+    func reload() async {
+        let center: UNUserNotificationCenter = UNUserNotificationCenter.current()
+        let settings: UNNotificationSettings = await center.notificationSettings()
+        let locationStatus: CLAuthorizationStatus = CLLocationManager().authorizationStatus
+        let photosStatus: PHAuthorizationStatus = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        let entries: [DeviceSettingsSnapshot.Permissions.Entry] = IOSDeviceSettingsPermissions.entries(
+            notificationStatus: settings.authorizationStatus,
+            locationAuthorization: locationStatus,
+            locationServicesEnabled: true,
+            photosAuthorization: photosStatus)
+        var next: [NativePermissionItem] = []
+        for entry in entries {
+            let item = NativePermissionItem(permission: entry.id, status: entry.status)
+            next.append(item)
+        }
+        self.items = next
+    }
+
+    func request(_ permission: DeviceSettingsPermission) async {
+        guard NativePermissionPresentation.canPromptInApp(permission) else { return }
+        self.requestingID = permission.rawValue
+        let isCurrent: @MainActor @Sendable () -> Bool = { true }
+        do {
+            try await self.requester.request(permission, isCurrent: isCurrent)
+        } catch {
+            // Cancelled or superseded; the reload below shows the real state.
+        }
+        self.requestingID = nil
+        await self.reload()
+    }
+}
+
+/// Native replacement for the Dashboard `/settings/device/permissions` page.
+/// Reads real iOS authorization states; no Gateway call is involved.
+@MainActor
+struct NativePermissionsScreen: View {
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var model = NativePermissionsModel()
+    var headerSidebarAction: OpenClawSidebarHeaderAction?
+    var embedded: Bool = false
+
+    var body: some View {
+        NativeSettingsPage(
+            title: NativeSettingsDestination.permissions.title,
+            headerSidebarAction: self.headerSidebarAction,
+            embedded: self.embedded)
+        {
+            self.list
+        }
+        .task { await self.model.reload() }
+        .onChange(of: self.scenePhase) { _, phase in
+            if phase == .active {
+                Task { await self.model.reload() }
+            }
+        }
+    }
+
+    private var list: some View {
+        List {
+            Section {
+                ForEach(self.model.items) { item in
+                    self.row(item)
+                }
+            } footer: {
+                Text("Denied permissions can only be changed in iOS Settings.")
+                    .font(OpenClawType.footnote)
+            }
+            Section {
+                NativeSettingsSystemSettingsButton()
+            }
+        }
+        .refreshable { await self.model.reload() }
+    }
+
+    private func row(_ item: NativePermissionItem) -> some View {
+        let title: String = NativePermissionPresentation.title(item.permission)
+        let icon: String = NativePermissionPresentation.icon(item.permission)
+        let pill: NativeSettingsPill = NativePermissionPresentation.pill(item.status)
+        let canAsk: Bool = item.status == .notDetermined
+            && NativePermissionPresentation.canPromptInApp(item.permission)
+        return HStack(spacing: 8) {
+            NativeSettingsRow(title: title, systemImage: icon, pill: pill)
+            if canAsk {
+                Button {
+                    Task { await self.model.request(item.permission) }
+                } label: {
+                    Text("Allow")
+                        .font(OpenClawType.subheadSemiBold)
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .buttonStyle(.borderless)
+                .disabled(self.model.requestingID != nil)
+            }
+        }
+    }
+}
