@@ -123,18 +123,20 @@ final class NativeSettingsLoader<Value> {
     }
 }
 
-// MARK: - Shared views
+// MARK: - Page shell
 
 struct NativeSettingsPill: Equatable {
     var label: String
     var tone: OpenClawStatusTone
 }
 
-/// Page shell: NavigationStack (unless embedded in a parent stack), inline title, sidebar toolbar item.
+/// Page shell: NavigationStack (unless embedded in a parent stack), inline title, sidebar toolbar item,
+/// and an optional "Done" button when the page is presented as a sheet (`onClose`).
 struct NativeSettingsPage<Content: View>: View {
     let title: String
     var headerSidebarAction: OpenClawSidebarHeaderAction?
     var embedded: Bool = false
+    var onClose: (() -> Void)?
     @ViewBuilder var content: Content
 
     var body: some View {
@@ -155,43 +157,122 @@ struct NativeSettingsPage<Content: View>: View {
                 if let action = self.headerSidebarAction {
                     OpenClawSidebarToolbarItem(action: action, placement: .topBarLeading)
                 }
+                if let onClose = self.onClose {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button(action: onClose) {
+                            Text("Done")
+                                .font(OpenClawType.subheadSemiBold)
+                        }
+                    }
+                }
             }
     }
 }
 
-/// One settings row: icon, title, optional detail, optional status pill. Opaque list surface, no glass.
+// MARK: - Section chrome
+
+/// Section header in the app typography. Stays a quiet label: no glass, no caps.
+struct NativeSettingsHeader: View {
+    let key: LocalizedStringKey
+
+    init(_ key: LocalizedStringKey) {
+        self.key = key
+    }
+
+    var body: some View {
+        Text(self.key)
+            .font(OpenClawType.footnoteSemiBold)
+    }
+}
+
+/// Section header for text computed at runtime.
+struct NativeSettingsVerbatimHeader: View {
+    let text: String
+
+    var body: some View {
+        Text(verbatim: self.text)
+            .font(OpenClawType.footnoteSemiBold)
+    }
+}
+
+/// Section footer in the app typography.
+struct NativeSettingsFooter: View {
+    let key: LocalizedStringKey
+
+    init(_ key: LocalizedStringKey) {
+        self.key = key
+    }
+
+    var body: some View {
+        Text(self.key)
+            .font(OpenClawType.footnote)
+    }
+}
+
+// MARK: - Row
+
+/// One settings row: tinted icon tile (or emoji), title, optional detail, optional status pill.
+/// Opaque list surface, no glass. At accessibility text sizes the pill moves under the text.
 struct NativeSettingsRow: View {
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @ScaledMetric(relativeTo: .body) private var tileSide: CGFloat = 30
     let title: String
     var detail: String?
     var systemImage: String
+    var emoji: String?
     var tint: Color = .secondary
     var pill: NativeSettingsPill?
+    var detailLineLimit: Int? = 2
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Image(systemName: self.systemImage)
-                .font(OpenClawType.body)
-                .foregroundStyle(self.tint)
-                .frame(width: 28)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
+        let stacked: Bool = self.typeSize.isAccessibilitySize
+        HStack(alignment: .center, spacing: OpenClawSpace.md) {
+            self.tile
+            VStack(alignment: .leading, spacing: OpenClawSpace.xs) {
                 Text(verbatim: self.title)
                     .font(OpenClawType.body)
                 if let detail = self.detail {
                     Text(verbatim: detail)
                         .font(OpenClawType.footnote)
                         .foregroundStyle(.secondary)
+                        .lineLimit(self.detailLineLimit)
+                }
+                if stacked, let pill = self.pill {
+                    self.pillView(pill)
                 }
             }
-            Spacer(minLength: 8)
-            if let pill = self.pill {
-                OpenClawStatusPill(label: .verbatim(pill.label), tone: pill.tone)
+            Spacer(minLength: OpenClawSpace.sm)
+            if !stacked, let pill = self.pill {
+                self.pillView(pill)
             }
         }
-        .frame(minHeight: 44)
+        .frame(minHeight: OpenClawHitTarget.minimum)
         .accessibilityElement(children: .combine)
     }
+
+    private var tile: some View {
+        let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
+        return ZStack {
+            if let emoji = self.emoji {
+                Text(verbatim: emoji)
+                    .font(OpenClawType.callout)
+            } else {
+                Image(systemName: self.systemImage)
+                    .font(OpenClawType.subheadSemiBold)
+                    .foregroundStyle(self.tint)
+            }
+        }
+        .frame(width: self.tileSide, height: self.tileSide)
+        .background(self.tint.opacity(0.14), in: shape)
+        .accessibilityHidden(true)
+    }
+
+    private func pillView(_ pill: NativeSettingsPill) -> some View {
+        OpenClawStatusPill(label: .verbatim(pill.label), tone: pill.tone)
+    }
 }
+
+// MARK: - Inline state
 
 /// Inline loading/error/content state for a section inside a form.
 struct NativeSettingsInlineState<Value, Content: View>: View {
@@ -203,27 +284,24 @@ struct NativeSettingsInlineState<Value, Content: View>: View {
         switch self.state {
         case .idle, .loading:
             ProgressView()
-                .frame(maxWidth: .infinity, minHeight: 44)
+                .frame(maxWidth: .infinity, minHeight: OpenClawHitTarget.minimum)
                 .accessibilityLabel(Text("Loading"))
         case let .failed(message):
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OpenClawSpace.sm) {
                 Text(verbatim: message)
                     .font(OpenClawType.footnote)
                     .foregroundStyle(.secondary)
-                Button {
+                OpenClawGlassButton(title: "Retry", systemImage: "arrow.clockwise") {
                     Task { await self.retry() }
-                } label: {
-                    Text("Retry")
-                        .font(OpenClawType.subheadSemiBold)
-                        .frame(minHeight: 44)
                 }
-                .buttonStyle(.borderless)
             }
         case let .loaded(value):
             self.content(value)
         }
     }
 }
+
+// MARK: - System Settings + clipboard
 
 /// Opens the app's page in the iOS Settings app.
 struct NativeSettingsSystemSettingsButton: View {
@@ -234,13 +312,36 @@ struct NativeSettingsSystemSettingsButton: View {
             guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
             self.openURL(url)
         } label: {
-            Label {
-                Text("Open iOS Settings")
-                    .font(OpenClawType.subheadSemiBold)
-            } icon: {
-                Image(systemName: "gearshape")
+            HStack(spacing: OpenClawSpace.md) {
+                Label {
+                    Text("Open iOS Settings")
+                        .font(OpenClawType.subheadSemiBold)
+                } icon: {
+                    Image(systemName: "gearshape")
+                }
+                Spacer(minLength: OpenClawSpace.sm)
+                Image(systemName: "arrow.up.forward")
+                    .font(OpenClawType.captionSemiBold)
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
             }
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: OpenClawHitTarget.minimum, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+    }
+}
+
+extension View {
+    /// Long-press menu offering to copy `value`. Shows nothing when the value is empty.
+    func nativeSettingsCopyMenu(_ value: String?) -> some View {
+        self.contextMenu {
+            if let value, !value.isEmpty {
+                Button {
+                    UIPasteboard.general.string = value
+                } label: {
+                    Label("Copy", systemImage: "doc.on.doc")
+                }
+            }
         }
     }
 }

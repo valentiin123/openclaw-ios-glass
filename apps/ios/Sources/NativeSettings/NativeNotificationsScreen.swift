@@ -79,7 +79,8 @@ struct NativeNotificationsScreen: View {
         NativeSettingsPage(
             title: NativeSettingsDestination.notifications.title,
             headerSidebarAction: self.headerSidebarAction,
-            embedded: self.embedded)
+            embedded: self.embedded,
+            onClose: self.onClose)
         {
             self.list
         }
@@ -94,16 +95,17 @@ struct NativeNotificationsScreen: View {
         List {
             if let state = self.model.current {
                 self.statusSection(state)
-                self.categoriesSection(state)
+                self.deliverySection(state)
             } else {
                 Section {
                     ProgressView()
-                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .frame(maxWidth: .infinity, minHeight: OpenClawHitTarget.minimum)
                         .accessibilityLabel(Text("Loading"))
                 }
             }
         }
         .refreshable { await self.model.refresh() }
+        .openClawAnimation(value: self.model.current)
     }
 
     @ViewBuilder
@@ -114,7 +116,7 @@ struct NativeNotificationsScreen: View {
                 title: String(localized: "Notifications"),
                 detail: nil,
                 systemImage: "bell.badge",
-                tint: .secondary,
+                tint: OpenClawBrand.accent,
                 pill: pill)
             if state.status == .notDetermined {
                 Button {
@@ -122,41 +124,37 @@ struct NativeNotificationsScreen: View {
                 } label: {
                     Text("Allow notifications")
                         .font(OpenClawType.subheadSemiBold)
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .frame(maxWidth: .infinity, minHeight: OpenClawHitTarget.minimum, alignment: .leading)
+                        .contentShape(Rectangle())
                 }
             } else {
                 NativeSettingsSystemSettingsButton()
             }
         } footer: {
-            Text("Approval requests and agent replies can reach you as notifications. Change the delivery style in iOS Settings.")
-                .font(OpenClawType.footnote)
+            NativeSettingsFooter("Approval requests and agent replies can reach you as notifications. Change the delivery style in iOS Settings.")
         }
     }
 
     @ViewBuilder
-    private func categoriesSection(_ state: NativeNotificationState) -> some View {
+    private func deliverySection(_ state: NativeNotificationState) -> some View {
         let alertPill: NativeSettingsPill = NativeNotificationsPresentation.settingPill(state.alert)
         let soundPill: NativeSettingsPill = NativeNotificationsPresentation.settingPill(state.sound)
         let badgePill: NativeSettingsPill = NativeNotificationsPresentation.settingPill(state.badge)
         Section {
             NativeSettingsRow(
                 title: String(localized: "Alerts"),
-                detail: nil,
                 systemImage: "text.bubble",
-                tint: .secondary,
                 pill: alertPill)
             NativeSettingsRow(
                 title: String(localized: "Sounds"),
-                detail: nil,
                 systemImage: "speaker.wave.2",
-                tint: .secondary,
                 pill: soundPill)
             NativeSettingsRow(
                 title: String(localized: "Badges"),
-                detail: nil,
                 systemImage: "app.badge",
-                tint: .secondary,
                 pill: badgePill)
+        } header: {
+            NativeSettingsHeader("Delivery")
         }
     }
 }

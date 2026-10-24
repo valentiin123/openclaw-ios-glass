@@ -106,19 +106,40 @@ enum NativeChannelsPresentation {
         let connected: Int = item.connectedCount
         return String(localized: "\(count) account(s), \(connected) connected")
     }
+
+    /// Rows that need attention come first; the Gateway order is kept inside each group.
+    static func grouped(_ items: [NativeChannelItem]) -> (attention: [NativeChannelItem], others: [NativeChannelItem]) {
+        var attention: [NativeChannelItem] = []
+        var others: [NativeChannelItem] = []
+        for item in items {
+            if item.issueMessage != nil || item.lastError != nil {
+                attention.append(item)
+            } else {
+                others.append(item)
+            }
+        }
+        return (attention, others)
+    }
 }
 
 /// Native replacement for the Dashboard `/settings/channels` page (read-only status).
+/// Channels that need attention are listed first; long press copies the channel id or the message.
 @MainActor
 struct NativeChannelsScreen: View {
     @Environment(NodeAppModel.self) private var appModel
     @State private var loader: NativeSettingsLoader<[NativeChannelItem]>
     var headerSidebarAction: OpenClawSidebarHeaderAction?
     var embedded: Bool = false
+    var onClose: (() -> Void)?
 
-    init(headerSidebarAction: OpenClawSidebarHeaderAction? = nil, embedded: Bool = false) {
+    init(
+        headerSidebarAction: OpenClawSidebarHeaderAction? = nil,
+        embedded: Bool = false,
+        onClose: (() -> Void)? = nil)
+    {
         self.headerSidebarAction = headerSidebarAction
         self.embedded = embedded
+        self.onClose = onClose
         let load: NativeSettingsLoader<[NativeChannelItem]>.Load = { app in
             try await NativeChannelsLoader.load(app)
         }
@@ -129,7 +150,8 @@ struct NativeChannelsScreen: View {
         NativeSettingsPage(
             title: NativeSettingsDestination.channels.title,
             headerSidebarAction: self.headerSidebarAction,
-            embedded: self.embedded)
+            embedded: self.embedded,
+            onClose: self.onClose)
         {
             self.content
         }
@@ -139,7 +161,7 @@ struct NativeChannelsScreen: View {
     private var content: some View {
         NativeStateView(
             state: self.loader.state,
-            isEmpty: { (items: [NativeChannelItem]) in items.isEmpty },
+            isEmpty: { (items: [NativeChannelItem]) -> Bool in items.isEmpty },
             emptyTitle: "No channels",
             emptyIcon: "bubble.left.and.bubble.right",
             retry: { await self.loader.refresh(appModel: self.appModel, showSpinner: true) })
@@ -149,27 +171,43 @@ struct NativeChannelsScreen: View {
     }
 
     private func list(_ items: [NativeChannelItem]) -> some View {
-        List {
+        let groups = NativeChannelsPresentation.grouped(items)
+        return List {
+            if !groups.attention.isEmpty {
+                Section {
+                    ForEach(groups.attention) { (item: NativeChannelItem) in
+                        self.row(item)
+                    }
+                } header: {
+                    NativeSettingsHeader("Needs attention")
+                }
+            }
             Section {
-                ForEach(items) { item in
+                ForEach(groups.others) { (item: NativeChannelItem) in
                     self.row(item)
                 }
+            } header: {
+                if !groups.attention.isEmpty {
+                    NativeSettingsHeader("Channels")
+                }
             } footer: {
-                Text("Channel setup and login are managed in the Dashboard.")
-                    .font(OpenClawType.footnote)
+                NativeSettingsFooter("Channel setup and login are managed in the Dashboard.")
             }
         }
+        .openClawAnimation(value: items)
         .refreshable { await self.loader.refresh(appModel: self.appModel, showSpinner: false) }
     }
 
     private func row(_ item: NativeChannelItem) -> some View {
         let pill: NativeSettingsPill = NativeChannelsPresentation.pill(item)
         let detail: String? = NativeChannelsPresentation.detail(item)
+        let copyValue: String = detail ?? item.id
         return NativeSettingsRow(
             title: item.label,
             detail: detail,
             systemImage: item.systemImage,
             tint: pill.tone.color,
             pill: pill)
+            .nativeSettingsCopyMenu(copyValue)
     }
 }

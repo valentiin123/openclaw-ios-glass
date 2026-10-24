@@ -17,28 +17,99 @@ public enum WidgetPayload: Hashable, Sendable {
 
 public struct WidgetChartSpec: Codable, Hashable, Sendable {
     public enum Kind: String, Codable, Sendable {
-        case bar, line, pie, sparkline
+        case bar, line, area, pie, sparkline
 
         var localizedName: String {
             switch self {
             case .bar: String(localized: "Bar chart")
             case .line: String(localized: "Line chart")
+            case .area: String(localized: "Area chart")
             case .pie: String(localized: "Pie chart")
             case .sparkline: String(localized: "Sparkline")
             }
+        }
+
+        /// Accepte les synonymes courants produits par les modèles ("column", "donut", ...).
+        static func parse(_ raw: String) -> Kind? {
+            switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "bar", "bars", "column", "columns", "histogram": Kind.bar
+            case "line", "lines": Kind.line
+            case "area", "areas": Kind.area
+            case "pie", "donut", "doughnut": Kind.pie
+            case "sparkline", "spark": Kind.sparkline
+            default: nil
+            }
+        }
+
+        public init(from decoder: any Decoder) throws {
+            let raw = try decoder.singleValueContainer().decode(String.self)
+            guard let kind = Kind.parse(raw) else {
+                throw DecodingError.dataCorrupted(
+                    DecodingError.Context(
+                        codingPath: decoder.codingPath,
+                        debugDescription: "Unknown chart kind: \(raw)"))
+            }
+            self = kind
         }
     }
 
     public struct Point: Codable, Hashable, Sendable {
         public let x: String
         public let y: Double
-        public init(x: String, y: Double) { self.x = x; self.y = y }
+
+        public init(x: String, y: Double) {
+            self.x = x
+            self.y = y
+        }
+
+        private enum CodingKeys: String, CodingKey { case x, y }
+
+        /// `x` peut être un texte ou un nombre ; `y` un nombre ou un texte numérique.
+        public init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            if let text = try? container.decode(String.self, forKey: .x) {
+                self.x = text
+            } else if let number = try? container.decode(Double.self, forKey: .x) {
+                self.x = Self.label(number)
+            } else {
+                throw DecodingError.keyNotFound(
+                    CodingKeys.x,
+                    DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Missing x"))
+            }
+            if let number = try? container.decode(Double.self, forKey: .y) {
+                self.y = number
+            } else if let text = try? container.decode(String.self, forKey: .y), let number = Double(text) {
+                self.y = number
+            } else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .y, in: container, debugDescription: "y must be a number")
+            }
+        }
+
+        fileprivate static func label(_ number: Double) -> String {
+            if number.isFinite, number == number.rounded(), abs(number) < 1e15 {
+                return String(Int64(number))
+            }
+            return String(number)
+        }
     }
 
     public struct Series: Codable, Hashable, Sendable {
         public let name: String
         public let points: [Point]
-        public init(name: String, points: [Point]) { self.name = name; self.points = points }
+
+        public init(name: String, points: [Point]) {
+            self.name = name
+            self.points = points
+        }
+
+        private enum CodingKeys: String, CodingKey { case name, points }
+
+        public init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            self.name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+            self.points = try container.decode([Point].self, forKey: .points)
+        }
     }
 
     public let kind: Kind
@@ -53,6 +124,35 @@ public struct WidgetChartSpec: Codable, Hashable, Sendable {
         self.xLabel = xLabel
         self.yLabel = yLabel
         self.series = series
+    }
+
+    private enum DecodingKeys: String, CodingKey {
+        case kind, type, title, xLabel, yLabel, series, data, points, labels, values
+    }
+
+    /// Décodage tolérant : `kind` ou `type`, `series` ou `points`/`data`, ou `labels` + `values`.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: DecodingKeys.self)
+        var parsedKind = try container.decodeIfPresent(Kind.self, forKey: .kind)
+        if parsedKind == nil { parsedKind = try container.decodeIfPresent(Kind.self, forKey: .type) }
+        self.kind = parsedKind ?? .bar
+        self.title = try container.decodeIfPresent(String.self, forKey: .title)
+        self.xLabel = try container.decodeIfPresent(String.self, forKey: .xLabel)
+        self.yLabel = try container.decodeIfPresent(String.self, forKey: .yLabel)
+
+        var parsedSeries: [Series] = try container.decodeIfPresent([Series].self, forKey: .series) ?? []
+        if parsedSeries.isEmpty {
+            var flat: [Point] = try container.decodeIfPresent([Point].self, forKey: .points) ?? []
+            if flat.isEmpty { flat = try container.decodeIfPresent([Point].self, forKey: .data) ?? [] }
+            if flat.isEmpty,
+               let labels = try container.decodeIfPresent([String].self, forKey: .labels),
+               let values = try container.decodeIfPresent([Double].self, forKey: .values)
+            {
+                flat = zip(labels, values).map { Point(x: $0, y: $1) }
+            }
+            if !flat.isEmpty { parsedSeries = [Series(name: "", points: flat)] }
+        }
+        self.series = parsedSeries
     }
 
     /// Plafonds défensifs : une donnée géante ne doit pas figer l'UI.

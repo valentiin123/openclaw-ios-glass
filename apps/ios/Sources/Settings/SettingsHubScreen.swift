@@ -2,6 +2,7 @@ import OpenClawKit
 import SwiftUI
 
 /// Native Settings hub. No web content: every row pushes a SwiftUI screen.
+/// Four quiet groups: Connection, Agent & Voice, Device, About.
 /// `SettingsRoute` rows go through the typed `navigationPath`; native Dashboard replacements
 /// (`NativeSettingsDestination`) use destination links so the typed path stays `[SettingsRoute]`.
 struct SettingsHubScreen: View {
@@ -23,11 +24,8 @@ struct SettingsHubScreen: View {
 
     private var root: some View {
         List {
-            self.gatewaySection
-            self.appSection
-            if self.appModel.isOperatorGatewayConnected {
-                self.agentSection
-            }
+            self.connectionSection
+            self.agentVoiceSection
             self.deviceSection
             self.aboutSection
         }
@@ -44,7 +42,7 @@ struct SettingsHubScreen: View {
 
     // MARK: - Sections
 
-    private var gatewaySection: some View {
+    private var connectionSection: some View {
         Section {
             NavigationLink(value: SettingsRoute.gateway) {
                 NativeSettingsRow(
@@ -54,6 +52,7 @@ struct SettingsHubScreen: View {
                     tint: OpenClawBrand.accent,
                     pill: self.gatewayPill)
             }
+            .nativeSettingsCopyMenu(self.gatewayDetail)
             .accessibilityIdentifier("SettingsHub.Gateway")
             NavigationLink(value: SettingsRoute.approvals) {
                 NativeSettingsRow(
@@ -63,31 +62,34 @@ struct SettingsHubScreen: View {
                     pill: self.approvalsPill)
             }
             .accessibilityIdentifier("SettingsHub.Approvals")
+        } header: {
+            NativeSettingsHeader("Connection")
         }
     }
 
-    private var appSection: some View {
+    private var agentVoiceSection: some View {
         Section {
-            self.nativeLink(.appearance)
-            self.nativeLink(.notifications)
             self.nativeLink(.talkVoice)
-        }
-    }
-
-    private var agentSection: some View {
-        Section {
-            self.nativeLink(.channels)
-            self.nativeLink(.skills)
+            if self.appModel.isOperatorGatewayConnected {
+                self.nativeLink(.channels)
+                self.nativeLink(.skills)
+            }
+        } header: {
+            NativeSettingsHeader("Agent & Voice")
         }
     }
 
     private var deviceSection: some View {
         Section {
+            self.nativeLink(.notifications)
+            self.nativeLink(.appearance)
             self.nativeLink(.permissions)
             self.routeLink(
                 .diagnostics,
                 title: String(localized: "Diagnostics"),
                 systemImage: "stethoscope")
+        } header: {
+            NativeSettingsHeader("Device")
         }
     }
 
@@ -102,6 +104,8 @@ struct SettingsHubScreen: View {
                 .about,
                 title: String(localized: "About"),
                 systemImage: "info.circle")
+        } header: {
+            NativeSettingsHeader("About")
         }
     }
 

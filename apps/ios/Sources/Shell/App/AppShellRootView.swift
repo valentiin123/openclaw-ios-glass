@@ -5,18 +5,20 @@ import SwiftUI
 
 /// Root of the native shell: an iOS 26 `TabView` (Liquid Glass tab bar drawn by the system).
 ///
-/// - Four tabs only: Chat, Agents, Activity, Settings.
+/// - Three tabs only: Agents, Activity, Settings. There is no Chat tab: the system chat
+///   (main session) opens full screen from the Overview "More" menu (`isChatPresented`).
 /// - Activity hosts Overview, Activity and Automations behind a segmented control; the
 ///   Overview "More" list holds Usage, Skill Workshop, Instances, Dreaming, Workboard and Docs.
 /// - The tab bar is never hidden or inset by hand: every hosted screen lets the system apply
-///   the bottom safe area (the chat composer is a bottom safe-area inset of the chat view).
+///   the bottom safe area. The full-screen chat covers the tab bar, so its composer never
+///   overlaps it and stays above the keyboard.
 /// - The tab bar minimises on scroll (`tabBarMinimizeBehavior`). Glass stays on navigation and
 ///   controls; hosted screens keep their opaque grouped backgrounds.
 struct AppShellRootView: View {
     @Bindable var navigation: AppShellNavigation
     let context: AppShellContext
 
-    /// The bar only knows four tabs; Overview and Automations map to the Activity tab.
+    /// The bar only knows three tabs; Overview and Automations map to the Activity tab.
     private var selectionBinding: Binding<AppShellTab> {
         Binding<AppShellTab>(
             get: { self.navigation.selection.barTab },
@@ -25,14 +27,6 @@ struct AppShellRootView: View {
 
     var body: some View {
         TabView(selection: self.selectionBinding) {
-            Tab(
-                AppShellTab.chat.title,
-                systemImage: AppShellTab.chat.systemImage,
-                value: AppShellTab.chat)
-            {
-                AppShellChatView(navigation: self.navigation)
-            }
-
             Tab(
                 AppShellTab.agents.title,
                 systemImage: AppShellTab.agents.systemImage,
@@ -60,6 +54,9 @@ struct AppShellRootView: View {
         .tabViewStyle(.sidebarAdaptable)
         .tabBarMinimizeBehavior(.onScrollDown)
         .sensoryFeedback(.selection, trigger: self.navigation.selection.barTab)
+        .fullScreenCover(isPresented: self.$navigation.isChatPresented) {
+            AppShellChatView(navigation: self.navigation)
+        }
         .accessibilityIdentifier("AppShell.Root")
     }
 }

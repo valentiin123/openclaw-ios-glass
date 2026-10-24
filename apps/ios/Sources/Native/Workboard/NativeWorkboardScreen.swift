@@ -11,7 +11,7 @@ struct NativeWorkboardScreen: View {
     var body: some View {
         NavigationStack {
             self.stateView
-                .navigationTitle(self.title)
+                .navigationTitle(self.navTitle)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { self.toolbarContent }
         }
@@ -23,9 +23,28 @@ struct NativeWorkboardScreen: View {
             message: { Text(verbatim: self.model.actionError ?? "") })
     }
 
+    /// The board name replaces the generic title once a board is loaded.
+    private var navTitle: String {
+        if case let .loaded(content) = self.model.state, let name = content.selectedBoardName {
+            return name
+        }
+        return self.title
+    }
+
     // MARK: - State
 
+    @ViewBuilder
     private var stateView: some View {
+        if let reason = self.model.unavailable {
+            WorkboardUnavailableView(
+                reason: reason,
+                retry: { await self.model.load(appModel: self.appModel, showSpinner: true) })
+        } else {
+            self.loadedStateView
+        }
+    }
+
+    private var loadedStateView: some View {
         NativeStateView(
             state: self.model.state,
             isEmpty: { (content: WorkboardContent) -> Bool in content.boards.isEmpty },
@@ -94,9 +113,41 @@ struct NativeWorkboardScreen: View {
     }
 }
 
+// MARK: - Unavailable
+
+/// Shown when the Workboard plugin is not active on the Gateway. No raw error text.
+private struct WorkboardUnavailableView: View {
+    let reason: WorkboardUnavailableReason
+    let retry: () async -> Void
+
+    var body: some View {
+        ContentUnavailableView {
+            Label(String(localized: "Workboard unavailable on this Gateway"), systemImage: "rectangle.3.group")
+        } description: {
+            Text(verbatim: self.detail)
+        } actions: {
+            Button(String(localized: "Check again")) { Task { await self.retry() } }
+                .nativeGlassButton()
+        }
+    }
+
+    private var detail: String {
+        let base: String = String(localized: "The Workboard plugin is not enabled on the connected Gateway.")
+        let hint: String = String(localized: "Enable the workboard plugin on the Gateway, then check again.")
+        return base + " " + hint
+    }
+}
+
 // MARK: - List
 
+enum WorkboardFilter: Hashable {
+    case all
+    case active
+    case done
+}
+
 struct WorkboardListContent: View {
+    @State private var filter: WorkboardFilter = .all
     let content: WorkboardContent
     let canMove: Bool
     let busyCardIds: Set<String>
@@ -105,7 +156,6 @@ struct WorkboardListContent: View {
 
     var body: some View {
         List {
-            self.headerSection
             if let cardsError = self.content.cardsError {
                 Section {
                     NativeInlineNotice(message: cardsError)
@@ -121,19 +171,51 @@ struct WorkboardListContent: View {
             }
         }
         .refreshable { await self.onRefresh() }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            NativeSegmentedBar(segments: Self.segments, selection: self.$filter)
+        }
+        .openClawAnimation(value: self.filter)
+    }
+
+    private static let segments: [NativeSegment<WorkboardFilter>] = [
+        NativeSegment(id: .all, title: String(localized: "All")),
+        NativeSegment(id: .active, title: String(localized: "Active")),
+        NativeSegment(id: .done, title: String(localized: "Done")),
+    ]
+
+    private var visibleGroups: [(status: String, cards: [WorkboardCardItem])] {
+        switch self.filter {
+        case .all: self.content.groups
+        case .active: self.content.groups.filter { $0.status != "done" }
+        case .done: self.content.groups.filter { $0.status == "done" }
+        }
+    }
+
+    /// Next status in board order, if any. Drives the primary swipe action.
+    private func nextStatus(after card: WorkboardCardItem) -> String? {
+        guard let index = self.content.statusOrder.firstIndex(of: card.status) else { return nil }
+        let next: Int = index + 1
+        return next < self.content.statusOrder.count ? self.content.statusOrder[next] : nil
     }
 
     @ViewBuilder
-    private var headerSection: some View {
-        if let name = self.content.selectedBoardName {
-            Section {
-                LabeledContent {
-                    Text(self.content.cards.count, format: .number)
-                        .monospacedDigit()
+    private func swipeButtons(_ card: WorkboardCardItem) -> some View {
+        if self.canMove, !self.busyCardIds.contains(card.id) {
+            if card.status != "done" {
+                Button {
+                    self.onMove(card, "done")
                 } label: {
-                    Text(verbatim: name).font(OpenClawType.headline)
+                    Label(String(localized: "Done"), systemImage: "checkmark.circle.fill")
                 }
-                .accessibilityElement(children: .combine)
+                .tint(OpenClawBrand.ok)
+            }
+            if let next = self.nextStatus(after: card), next != "done" {
+                Button {
+                    self.onMove(card, next)
+                } label: {
+                    Label(WorkboardStatusInfo.label(next), systemImage: WorkboardStatusInfo.systemImage(next))
+                }
+                .tint(OpenClawBrand.info)
             }
         }
     }
@@ -147,7 +229,7 @@ struct WorkboardListContent: View {
                     .foregroundStyle(.secondary)
             }
         }
-        ForEach(self.content.groups, id: \.status) { group in
+        ForEach(self.visibleGroups, id: \.status) { group in
             self.groupSection(status: group.status, cards: group.cards)
         }
     }
@@ -156,6 +238,7 @@ struct WorkboardListContent: View {
         Section {
             ForEach(cards) { card in
                 self.row(card)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) { self.swipeButtons(card) }
             }
         } header: {
             WorkboardSectionHeader(status: status, count: cards.count)

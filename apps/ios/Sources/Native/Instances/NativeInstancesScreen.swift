@@ -1,10 +1,17 @@
 import SwiftUI
 
+/// Two views of the same page: paired devices (with pending requests on top) or live presence.
+enum InstancesScope: Hashable {
+    case devices
+    case connected
+}
+
 /// Native Instances page: pending pairing requests, paired devices and live presence.
 /// Content rows sit on opaque list surfaces; glass is limited to buttons and the toolbar.
 struct NativeInstancesScreen: View {
     @Environment(NodeAppModel.self) private var appModel
     @State private var model = InstancesViewModel()
+    @State private var scope: InstancesScope = .devices
     let title: String
     var headerSidebarAction: OpenClawSidebarHeaderAction?
 
@@ -99,6 +106,11 @@ struct NativeInstancesScreen: View {
         }
     }
 
+    private static let segments: [NativeSegment<InstancesScope>] = [
+        NativeSegment(id: .devices, title: String(localized: "Devices")),
+        NativeSegment(id: .connected, title: String(localized: "Connected now")),
+    ]
+
     private func list(_ snapshot: InstancesSnapshot) -> some View {
         List {
             if let error = self.model.actionError {
@@ -106,11 +118,20 @@ struct NativeInstancesScreen: View {
                     NativeInlineNotice(message: error)
                 }
             }
+            // Pairing requests need attention first, whichever segment is selected.
             self.pendingSection(snapshot)
-            self.pairedSection(snapshot)
-            self.presenceSection(snapshot)
+            switch self.scope {
+            case .devices:
+                self.pairedSection(snapshot)
+            case .connected:
+                self.presenceSection(snapshot)
+            }
         }
         .refreshable { await self.model.load(appModel: self.appModel, showSpinner: false) }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            NativeSegmentedBar(segments: Self.segments, selection: self.$scope)
+        }
+        .openClawAnimation(value: self.scope)
     }
 
     @ViewBuilder
@@ -119,6 +140,12 @@ struct NativeInstancesScreen: View {
             Section {
                 ForEach(snapshot.pending) { request in
                     InstancePendingRow(model: self.model, request: request, appModel: self.appModel)
+                        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                            self.approveSwipe(request)
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            self.rejectSwipe(request)
+                        }
                 }
             } header: {
                 Text("Pairing requests")
@@ -140,8 +167,64 @@ struct NativeInstancesScreen: View {
             Section(String(localized: "Paired devices")) {
                 ForEach(snapshot.paired) { device in
                     InstancePairedRow(model: self.model, device: device)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            self.removeSwipe(device)
+                        }
+                        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                            self.renameSwipe(device)
+                        }
                 }
             }
+        }
+    }
+
+    // MARK: - Swipe actions (same gating and confirmations as the buttons and menus)
+
+    @ViewBuilder
+    private func approveSwipe(_ request: InstancePendingRequest) -> some View {
+        if self.model.canResolveRequests, !self.model.isBusy(request.id) {
+            Button {
+                Task {
+                    await self.model.perform(.approve(requestId: request.id), appModel: self.appModel)
+                }
+            } label: {
+                Label(String(localized: "Approve"), systemImage: "checkmark")
+            }
+            .tint(OpenClawBrand.ok)
+        }
+    }
+
+    @ViewBuilder
+    private func rejectSwipe(_ request: InstancePendingRequest) -> some View {
+        if self.model.canResolveRequests, !self.model.isBusy(request.id) {
+            Button(role: .destructive) {
+                self.model.beginConfirmation(.reject(requestId: request.id, name: request.name))
+            } label: {
+                Label(String(localized: "Reject"), systemImage: "xmark")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func removeSwipe(_ device: InstancePairedDevice) -> some View {
+        if self.model.canRemove, !self.model.isBusy(device.id) {
+            Button(role: .destructive) {
+                self.model.beginConfirmation(.remove(deviceId: device.id, name: device.name))
+            } label: {
+                Label(String(localized: "Remove"), systemImage: "trash")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func renameSwipe(_ device: InstancePairedDevice) -> some View {
+        if self.model.canRename, !self.model.isBusy(device.id) {
+            Button {
+                self.model.beginRename(device)
+            } label: {
+                Label(String(localized: "Rename"), systemImage: "pencil")
+            }
+            .tint(OpenClawBrand.info)
         }
     }
 

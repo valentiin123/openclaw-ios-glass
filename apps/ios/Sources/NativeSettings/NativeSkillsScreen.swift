@@ -125,7 +125,7 @@ final class NativeSkillsModel {
 }
 
 enum NativeSkillsPresentation {
-    static func pill(_ item: NativeSkillItem) -> NativeSettingsPill {
+    static func pill(_ item: NativeSkillItem) -> NativeSettingsPill? {
         if item.isDisabled {
             return NativeSettingsPill(label: String(localized: "Off"), tone: .muted)
         }
@@ -135,7 +135,8 @@ enum NativeSkillsPresentation {
         if !item.isEligible || item.missingCount > 0 {
             return NativeSettingsPill(label: String(localized: "Needs setup"), tone: .warn)
         }
-        return NativeSettingsPill(label: String(localized: "Ready"), tone: .ok)
+        // "Ready" is the quiet default: no pill, so only exceptions draw the eye.
+        return nil
     }
 
     static func matches(_ item: NativeSkillItem, query: String) -> Bool {
@@ -148,6 +149,7 @@ enum NativeSkillsPresentation {
 }
 
 /// Native replacement for the Dashboard `/skills` page: list + enable/disable.
+/// Swipe toggles a skill, long press copies its key.
 /// Not reproduced: ClawHub search/install, uploads, API key and env editing.
 @MainActor
 struct NativeSkillsScreen: View {
@@ -156,12 +158,14 @@ struct NativeSkillsScreen: View {
     @State private var searchText: String = ""
     var headerSidebarAction: OpenClawSidebarHeaderAction?
     var embedded: Bool = false
+    var onClose: (() -> Void)?
 
     var body: some View {
         NativeSettingsPage(
             title: NativeSettingsDestination.skills.title,
             headerSidebarAction: self.headerSidebarAction,
-            embedded: self.embedded)
+            embedded: self.embedded,
+            onClose: self.onClose)
         {
             self.stateView
         }
@@ -185,12 +189,18 @@ struct NativeSkillsScreen: View {
         let visible: [NativeSkillItem] = items.filter { (item: NativeSkillItem) -> Bool in
             NativeSkillsPresentation.matches(item, query: query)
         }
+        let canEdit: Bool = self.appModel.hasOperatorAdminScope
         return List {
             if let message = self.model.actionError {
                 Section {
-                    Text(verbatim: message)
-                        .font(OpenClawType.footnote)
-                        .foregroundStyle(.secondary)
+                    Label {
+                        Text(verbatim: message)
+                            .font(OpenClawType.footnote)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle")
+                            .foregroundStyle(OpenClawBrand.warn)
+                    }
+                    .accessibilityElement(children: .combine)
                 }
             }
             Section {
@@ -198,14 +208,14 @@ struct NativeSkillsScreen: View {
                     self.row(item)
                 }
             } footer: {
-                if !self.appModel.hasOperatorAdminScope {
-                    Text("Changing skills requires operator.admin access.")
-                        .font(OpenClawType.footnote)
+                if !canEdit {
+                    NativeSettingsFooter("Changing skills requires operator.admin access.")
                 }
             }
         }
         .searchable(text: self.$searchText)
         .refreshable { await self.model.refresh(appModel: self.appModel, showSpinner: false) }
+        .openClawAnimation(value: visible.map { (item: NativeSkillItem) -> Bool in item.isDisabled })
     }
 
     private func binding(for item: NativeSkillItem) -> Binding<Bool> {
@@ -219,17 +229,37 @@ struct NativeSkillsScreen: View {
     private func row(_ item: NativeSkillItem) -> some View {
         let canEdit: Bool = self.appModel.hasOperatorAdminScope
         let isPending: Bool = self.model.pendingKeys.contains(item.id)
-        let pill: NativeSettingsPill = NativeSkillsPresentation.pill(item)
-        let icon: String = "sparkles"
+        let pill: NativeSettingsPill? = NativeSkillsPresentation.pill(item)
         let rowDetail: String? = item.detail
         return Toggle(isOn: self.binding(for: item)) {
             NativeSettingsRow(
                 title: item.name,
                 detail: rowDetail,
-                systemImage: icon,
+                systemImage: "sparkles",
+                emoji: item.emoji,
                 tint: .secondary,
                 pill: pill)
         }
         .disabled(!canEdit || isPending)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            if canEdit {
+                self.swipeToggle(item)
+            }
+        }
+        .nativeSettingsCopyMenu(item.id)
+    }
+
+    private func swipeToggle(_ item: NativeSkillItem) -> some View {
+        let enable: Bool = item.isDisabled
+        return Button {
+            Task { await self.model.setEnabled(enable, for: item, appModel: self.appModel) }
+        } label: {
+            if enable {
+                Label("Enable", systemImage: "checkmark.circle")
+            } else {
+                Label("Disable", systemImage: "slash.circle")
+            }
+        }
+        .tint(enable ? OpenClawBrand.ok : Color.gray)
     }
 }

@@ -21,64 +21,53 @@ enum NativeAppearancePresentation {
 
 /// Native replacement for the Dashboard `/settings/appearance` page.
 /// Uses the local `AppAppearanceModel`, so no Gateway call is involved.
+/// One glass segmented control (a control, so glass is appropriate); everything else is plain list content.
 @MainActor
 struct NativeAppearanceScreen: View {
     @Environment(AppAppearanceModel.self) private var appearanceModel
     var headerSidebarAction: OpenClawSidebarHeaderAction?
     var embedded: Bool = false
+    var onClose: (() -> Void)?
 
     var body: some View {
         NativeSettingsPage(
             title: NativeSettingsDestination.appearance.title,
             headerSidebarAction: self.headerSidebarAction,
-            embedded: self.embedded)
+            embedded: self.embedded,
+            onClose: self.onClose)
         {
             self.list
         }
     }
 
+    private var selection: Binding<AppAppearancePreference> {
+        Binding<AppAppearancePreference>(
+            get: { self.appearanceModel.preference },
+            set: { (newValue: AppAppearancePreference) in self.appearanceModel.select(newValue) })
+    }
+
+    private var options: [OpenClawGlassSegmented<AppAppearancePreference>.Option] {
+        var result: [OpenClawGlassSegmented<AppAppearancePreference>.Option] = []
+        for preference in AppAppearancePreference.allCases {
+            let option = OpenClawGlassSegmented<AppAppearancePreference>.Option(
+                preference,
+                title: .verbatim(NativeAppearancePresentation.title(preference)),
+                systemImage: NativeAppearancePresentation.icon(preference))
+            result.append(option)
+        }
+        return result
+    }
+
     private var list: some View {
         List {
             Section {
-                ForEach(AppAppearancePreference.allCases) { option in
-                    self.optionRow(option)
-                }
+                OpenClawGlassSegmented(selection: self.selection, options: self.options)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets())
+                    .accessibilityIdentifier("NativeSettings.Appearance.Picker")
             } footer: {
-                Text("System follows the appearance chosen in iOS Settings.")
-                    .font(OpenClawType.footnote)
+                NativeSettingsFooter("System follows the appearance chosen in iOS Settings.")
             }
         }
-    }
-
-    private func optionRow(_ option: AppAppearancePreference) -> some View {
-        let isSelected: Bool = self.appearanceModel.preference == option
-        let title: String = NativeAppearancePresentation.title(option)
-        let icon: String = NativeAppearancePresentation.icon(option)
-        let traits: AccessibilityTraits = isSelected ? .isSelected : []
-        return Button {
-            self.appearanceModel.select(option)
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: icon)
-                    .font(OpenClawType.body)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 28)
-                    .accessibilityHidden(true)
-                Text(verbatim: title)
-                    .font(OpenClawType.body)
-                    .foregroundStyle(.primary)
-                Spacer(minLength: 8)
-                if isSelected {
-                    Image(systemName: "checkmark")
-                        .font(OpenClawType.subheadSemiBold)
-                        .foregroundStyle(OpenClawBrand.accent)
-                        .accessibilityHidden(true)
-                }
-            }
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(traits)
     }
 }

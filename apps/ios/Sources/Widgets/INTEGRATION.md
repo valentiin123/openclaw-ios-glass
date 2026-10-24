@@ -5,7 +5,7 @@ Module : `apps/ios/Sources/Widgets/` (cible app iOS, iOS 26.2). Rien n'a été c
 ## API publique
 - `WidgetCardView(payload:title:network:)` : point d'entrée (carte inline, menu Copier/Partager/Plein écran, états chargement/erreur).
 - `WidgetPayload` : `.html(String, allowsScripts:)`, `.svg(String)`, `.chart(WidgetChartSpec)`.
-- `WidgetChartSpec` (Codable) : `kind` bar|line|pie, `title`, `xLabel`, `yLabel`, `series[{name, points[{x,y}]}]`; `decode(json:)`, `sanitized` (max 8 séries, 500 points).
+- `WidgetChartSpec` (Codable) : `kind` bar|line|area|pie|sparkline (synonymes acceptés : column, donut, ...; `type` accepté à la place de `kind`), `title`, `xLabel`, `yLabel`, `series[{name, points[{x,y}]}]`; `decode(json:)`, `sanitized` (max 8 séries, 500 points). Décodage tolérant : `x` texte ou nombre, `y` nombre ou texte numérique, `series` ou `points`/`data` à plat, ou `labels` + `values`.
 - `WidgetPayloadDetector.payload(language:body:allowsScripts:)` : fences ```chart / ```svg / ```html.
 - `WidgetNetworkPolicy` : `.none` (défaut) ou `.allowedHosts([...])` (HTTPS uniquement, injecté dans la CSP).
 

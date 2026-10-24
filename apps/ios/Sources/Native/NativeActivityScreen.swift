@@ -1,3 +1,4 @@
+import Charts
 import Observation
 import SwiftUI
 import UIKit
@@ -180,15 +181,15 @@ struct NativeActivityScreen: View {
     @Environment(NodeAppModel.self) private var appModel
     @State private var model = NativeActivityModel()
     @State private var search = ""
-    @State private var kindSelection: String? = "all"
+    @State private var kindSelection: String = "all"
     let title: String
     var headerSidebarAction: OpenClawSidebarHeaderAction?
 
-    private static let kindItems: [NativeChipBar.Item] = [
-        NativeChipBar.Item(id: "all", title: String(localized: "All")),
-        NativeChipBar.Item(id: "agent_run", title: String(localized: "Runs")),
-        NativeChipBar.Item(id: "tool_action", title: String(localized: "Tools")),
-        NativeChipBar.Item(id: "message", title: String(localized: "Messages")),
+    private static let kindSegments: [NativeSegment<String>] = [
+        NativeSegment(id: "all", title: String(localized: "All")),
+        NativeSegment(id: "agent_run", title: String(localized: "Runs")),
+        NativeSegment(id: "tool_action", title: String(localized: "Tools")),
+        NativeSegment(id: "message", title: String(localized: "Messages")),
     ]
 
     var body: some View {
@@ -203,7 +204,7 @@ struct NativeActivityScreen: View {
                 self.list(events)
             }
             .safeAreaInset(edge: .top, spacing: 0) {
-                NativeChipBar(items: Self.kindItems, selection: self.$kindSelection)
+                NativeSegmentedBar(segments: Self.kindSegments, selection: self.$kindSelection)
             }
             .nativeChrome(title: self.title, sidebar: self.headerSidebarAction)
             .toolbar { self.filterToolbar }
@@ -250,8 +251,16 @@ struct NativeActivityScreen: View {
 
     @ViewBuilder
     private func list(_ events: [NativeActivityEvent]) -> some View {
-        let days: [NativeActivityDay] = NativeActivityGrouping.days(self.filtered(events))
+        let visible: [NativeActivityEvent] = self.filtered(events)
+        let days: [NativeActivityDay] = NativeActivityGrouping.days(visible)
         List {
+            if days.count > 0 {
+                Section {
+                    NativeActivityChart(days: days)
+                } header: {
+                    Text("Activity per day")
+                }
+            }
             ForEach(days) { day in
                 Section {
                     ForEach(day.events) { event in
@@ -317,6 +326,61 @@ struct NativeActivityScreen: View {
             }
             .tint(.blue)
         }
+    }
+}
+
+/// Stacked daily bars: succeeded vs failed vs other. Pure content, no glass.
+private struct NativeActivityChart: View {
+    let days: [NativeActivityDay]
+
+    private struct Bucket: Identifiable {
+        let id: String
+        let date: Date
+        let series: String
+        let count: Int
+    }
+
+    private var okName: String { String(localized: "Succeeded") }
+    private var failedName: String { String(localized: "Failed") }
+    private var otherName: String { String(localized: "Other") }
+
+    private var buckets: [Bucket] {
+        var result: [Bucket] = []
+        for day in self.days where day.events.first?.date != nil {
+            let failed: Int = day.events.filter { $0.isFailure }.count
+            let ok: Int = day.events.filter { $0.status == "succeeded" }.count
+            let other: Int = day.events.count - failed - ok
+            let entries: [(String, Int)] = [(self.okName, ok), (self.failedName, failed), (self.otherName, other)]
+            for (name, count) in entries where count > 0 {
+                result.append(Bucket(id: "\(day.id)-\(name)", date: day.date, series: name, count: count))
+            }
+        }
+        return result
+    }
+
+    var body: some View {
+        Chart(self.buckets) { bucket in
+            BarMark(
+                x: .value("Day", bucket.date, unit: .day),
+                y: .value("Events", bucket.count))
+                .foregroundStyle(by: .value("Status", bucket.series))
+        }
+        .chartForegroundStyleScale([
+            self.okName: OpenClawBrand.ok,
+            self.failedName: OpenClawBrand.danger,
+            self.otherName: Color.secondary.opacity(0.5),
+        ])
+        .chartLegend(position: .bottom, alignment: .leading)
+        .frame(minHeight: 160)
+        .padding(.vertical, 6)
+        .accessibilityLabel(Text("Activity per day"))
+        .accessibilityValue(Text(self.summary))
+    }
+
+    private var summary: String {
+        let total: Int = self.days.reduce(0) { $0 + $1.events.count }
+        let failed: Int = self.days.reduce(0) { $0 + $1.events.filter { $0.isFailure }.count }
+        return String(localized: "\(total) events, \(failed) failed")
     }
 }
 

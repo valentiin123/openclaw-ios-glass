@@ -68,15 +68,9 @@ final class PhotoAttachmentLockUITests: XCTestCase {
             "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
         ]
         traced("launch paired isolated Gateway app") { app.launch() }
-        let sidebar = app.buttons["RootTabs.Sidebar.Show"]
-        requireVisible(sidebar, named: "sidebar reveal")
-        traced("open sidebar") { sidebar.tap() }
-        let newChat = app.buttons["New Chat"]
-        requireVisible(newChat, named: "New Chat")
-        XCTAssertTrue(newChat.isEnabled)
-        XCTAssertTrue(newChat.isHittable)
-        traced("start fresh isolated chat") { newChat.tap() }
-        requireVisible(sidebar, named: "sidebar closed after New Chat")
+        // The 4-tab shell has no sidebar and no New Chat entry point: the app lands on Chat.
+        let composer = app.otherElements["chat-composer-surface"].firstMatch
+        requireVisible(composer, named: "chat composer")
         return app
     }
 

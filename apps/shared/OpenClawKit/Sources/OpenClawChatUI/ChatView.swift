@@ -424,27 +424,12 @@ extension OpenClawChatView {
     @ViewBuilder
     private var subagentWaitRow: some View {
         if let wait = self.viewModel.subagentWait {
-            HStack(spacing: 7) {
-                ChatWorkingClawView(seed: "subagent-wait", parked: true)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Waiting on subagents")
-                        .font(OpenClawChatTypography.caption)
-                        .foregroundStyle(.secondary)
-                    if let child = wait.child {
-                        Button {
-                            self.viewModel.switchSession(to: child.key)
-                        } label: {
-                            Text(child.name)
-                                .font(OpenClawChatTypography.caption)
-                                .underline()
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("chat-subagent-wait-child")
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 4)
+            let viewModel = self.viewModel
+            ChatSubagentWaitList(
+                wait: wait,
+                fallbackOpen: { key in
+                    viewModel.switchSession(to: key)
+                })
         }
     }
 
@@ -888,7 +873,32 @@ extension OpenClawChatView {
                 self.hoveredMessageID = nil
             }
         }
-        row.contextMenu { ChatDeferredContent { self.messageMenuActions(for: msg) } }
+        row
+            .chatMessageSwipeActions(
+                onReply: self.swipeReplyAction(for: msg),
+                onCopy: self.swipeCopyAction(for: msg))
+            .contextMenu { ChatDeferredContent { self.messageMenuActions(for: msg) } }
+    }
+
+    /// Swipe-to-reply mirrors `replyMessageButton` eligibility; nil disables the gesture direction.
+    private func swipeReplyAction(for message: OpenClawChatMessage) -> (() -> Void)? {
+        let role = message.role.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let text = ChatReplyQuote.targetText(ChatMessageVisibleText.visibleText(in: message))
+        guard self.showsComposer, role == "user" || role == "assistant", !text.isEmpty else { return nil }
+        return { [viewModel] in
+            viewModel.setReplyTarget(
+                messageID: message.id,
+                text: text,
+                senderLabel: self.replySenderLabel(forRole: role))
+            self.composerFocusRequest += 1
+        }
+    }
+
+    /// Swipe-to-copy mirrors `copyMessageButton`; nil when the message has no copyable text.
+    private func swipeCopyAction(for message: OpenClawChatMessage) -> (() -> Void)? {
+        let text = ChatMessageVisibleText.copyText(in: message)
+        guard !text.isEmpty else { return nil }
+        return { ChatPasteboard.copy(text) }
     }
 
     private func messageActionsMenu(for message: OpenClawChatMessage) -> some View {

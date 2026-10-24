@@ -242,41 +242,6 @@ final class OpenClawSnapshotUITests: XCTestCase {
         XCTAssertTrue(resetOnboarding.isHittable)
     }
 
-    func testWatchMessageDeliveryIsReachableFromSettings() throws {
-        self.launchApp(for: Self.settingsFallbackTarget)
-        let app = try XCTUnwrap(self.app)
-        XCTAssertTrue(app.descendants(matching: .any)["SettingsHub.Fallback"].waitForExistence(timeout: 8))
-        let watch = app.buttons["settings-watch-row"]
-        for _ in 0..<12 where !watch.isHittable {
-            app.swipeUp()
-        }
-        XCTAssertTrue(watch.isHittable)
-        watch.tap()
-        let delivery = app.buttons.containing(.staticText, identifier: "Message Delivery").firstMatch
-        XCTAssertTrue(delivery.waitForExistence(timeout: 8))
-        self.attachScreenshot(named: "watch-delivery-settings")
-        XCTAssertTrue(app.buttons["Connect Apple Watch"].exists)
-        XCTAssertFalse(app.buttons["Enable Standalone Voice"].exists)
-        XCTAssertFalse(app.buttons["Enable Direct Gateway Connection"].exists)
-        delivery.tap()
-        XCTAssertTrue(app.navigationBars["Message Delivery"].waitForExistence(timeout: 8))
-        let loaded = app.descendants(matching: .any).matching(NSPredicate(
-            format: "label == %@ OR label == %@", "No saved Watch messages", "Discard…")).firstMatch
-        XCTAssertTrue(loaded.waitForExistence(timeout: 8))
-        self.attachScreenshot(named: "watch-message-delivery")
-    }
-
-    func testAgentsNavigateToSettingsThroughSidebar() throws {
-        try XCTSkipIf(UIDevice.current.userInterfaceIdiom != .phone, "Phone sidebar navigation only")
-        self.launchApp(for: Self.agentScreenshotTarget)
-
-        XCTAssertTrue(self.app?.buttons["agent-status-filter-menu"].waitForExistence(timeout: 8) == true)
-        try self.selectSidebarDestination("Settings")
-        XCTAssertTrue(
-            self.app?.descendants(matching: .any)["SettingsHub.Fallback"]
-                .waitForExistence(timeout: 8) == true)
-    }
-
     func testOnboardingExplainsCapabilitiesAndTrust() {
         let app = XCUIApplication()
         app.launchArguments += ["--openclaw-reset-onboarding"]
@@ -291,194 +256,12 @@ final class OpenClawSnapshotUITests: XCTestCase {
         self.attachScreenshot(named: "onboarding-capabilities-and-trust")
     }
 
-    func testSidebarOverviewNavigation() throws {
-        try XCTSkipIf(UIDevice.current.userInterfaceIdiom != .phone, "Phone sidebar only")
-        self.launchApp(for: ScreenshotTarget(
-            initialTab: "control",
-            initialDestination: "overview",
-            name: "control-overview-navigation"))
-
-        XCTAssertTrue(self.app?.staticTexts["Agent session"].waitForExistence(timeout: 8) == true)
-        try self.selectSidebarDestination("Overview")
-
-        XCTAssertTrue(self.app?.buttons["RootTabs.Sidebar.Show"].waitForExistence(timeout: 5) == true)
-        XCTAssertTrue(self.app?.buttons["Gateway settings"].waitForExistence(timeout: 5) == true)
-        XCTAssertEqual(self.app?.state, .runningForeground)
-    }
-
     func testLiveGatewayApprovalNotificationsFromOverview() async throws {
         try await self.verifyApprovalNotificationsNavigation(fromOverview: true)
     }
 
     func testLiveGatewayApprovalNotificationsFromSettings() async throws {
         try await self.verifyApprovalNotificationsNavigation(fromOverview: false)
-    }
-
-    func testTabletSidebarRootsRenderWithPersistentSidebar() throws {
-        try XCTSkipUnless(UIDevice.current.userInterfaceIdiom == .pad, "Tablet split navigation only")
-        XCUIDevice.shared.orientation = .landscapeLeft
-        defer { XCUIDevice.shared.orientation = .portrait }
-        for target in [
-            Self.controlScreenshotTarget,
-            Self.chatScreenshotTarget,
-            Self.agentScreenshotTarget,
-            Self.settingsFallbackTarget,
-        ] {
-            self.launchApp(for: target)
-            let app = try XCTUnwrap(self.app)
-            XCTAssertGreaterThan(app.frame.width, app.frame.height)
-            XCTAssertTrue(self.destinationAnchor(in: app, destination: target.initialDestination).exists)
-            self.tapSidebarReveal(in: app)
-            let hideSidebar = app.buttons["RootTabs.Sidebar.Hide"]
-            XCTAssertTrue(hideSidebar.waitForExistence(timeout: 5))
-            self.attachScreenshot(named: "tablet-split-\(target.initialDestination)")
-            hideSidebar.tap()
-            XCTAssertTrue(app.buttons["RootTabs.Sidebar.Show"].waitForExistence(timeout: 5))
-        }
-    }
-
-    func testSidebarAgentSelectorShowsAllAgentsAndKeepsFooterVisible() throws {
-        try XCTSkipIf(UIDevice.current.userInterfaceIdiom != .phone, "Phone sidebar only")
-        self.launchApp(for: ScreenshotTarget(
-            initialTab: "chat",
-            initialDestination: "chat",
-            name: "sidebar-agent-selector"))
-
-        let showSidebar = try XCTUnwrap(self.app?.buttons["RootTabs.Sidebar.Show"])
-        XCTAssertTrue(showSidebar.waitForExistence(timeout: 8))
-        showSidebar.tap()
-
-        let agentSelector = try XCTUnwrap(self.app?.buttons["RootTabs.Sidebar.AgentSelector"])
-        XCTAssertTrue(agentSelector.waitForExistence(timeout: 5))
-        XCTAssertGreaterThanOrEqual(agentSelector.frame.height, 44)
-        XCTAssertEqual(agentSelector.value as? String, "Molty")
-
-        let newChat = try XCTUnwrap(self.app?.buttons["New Chat"])
-        XCTAssertTrue(newChat.exists)
-        XCTAssertGreaterThanOrEqual(newChat.frame.height, 44)
-        XCTAssertGreaterThan(newChat.frame.minY, agentSelector.frame.maxY)
-
-        let gatewayFooter = try XCTUnwrap(self.app?.buttons.matching(
-            NSPredicate(format: "label CONTAINS %@", "OpenClaw Gateway")).firstMatch)
-        XCTAssertTrue(gatewayFooter.exists)
-        let settings = try XCTUnwrap(self.app?.buttons["RootTabs.Sidebar.Destination.settings"])
-        XCTAssertTrue(settings.exists)
-        XCTAssertGreaterThan(settings.frame.midX, gatewayFooter.frame.midX)
-        XCTAssertEqual(settings.frame.midY, gatewayFooter.frame.midY, accuracy: 2)
-        self.attachScreenshot(named: "sidebar-agent-selector")
-
-        agentSelector.tap()
-
-        XCTAssertTrue(self.app?.buttons["Molty"].waitForExistence(timeout: 5) == true)
-        XCTAssertTrue(self.app?.buttons["Research"].waitForExistence(timeout: 5) == true)
-        XCTAssertTrue(self.app?.buttons["Automation"].exists == true)
-        self.attachScreenshot(named: "sidebar-agent-selector-open")
-
-        self.app?.buttons["Research"].tap()
-        XCTAssertEqual(agentSelector.value as? String, "Research")
-        agentSelector.tap()
-        XCTAssertTrue(self.app?.buttons["Molty"].waitForExistence(timeout: 5) == true)
-        XCTAssertTrue(self.app?.buttons["Research"].exists == true)
-        XCTAssertTrue(self.app?.buttons["Automation"].exists == true)
-    }
-
-    func testSidebarSlowEdgeDragOpensFromEveryRootDestination() throws {
-        try XCTSkipIf(UIDevice.current.userInterfaceIdiom != .phone, "Phone sidebar only")
-        let destinations = [
-            "chat", "overview", "activity", "agents", "workboard", "skillWorkshop",
-            "instances", "sessions", "files", "dreaming", "usage", "cron", "terminal",
-            "docs", "settings", "gateway",
-        ]
-        var testedDestinations: [String] = []
-
-        for destination in destinations {
-            self.launchApp(for: ScreenshotTarget(
-                initialTab: "chat",
-                initialDestination: destination,
-                name: "sidebar-slow-edge-drag-\(destination)"))
-
-            let showSidebar = try XCTUnwrap(self.app?.buttons["RootTabs.Sidebar.Show"])
-            XCTAssertTrue(showSidebar.waitForExistence(timeout: 8), destination)
-            XCTAssertTrue(showSidebar.isHittable, destination)
-            if destination == "overview" {
-                showSidebar.tap()
-                let hideSidebar = try XCTUnwrap(self.app?.buttons["RootTabs.Sidebar.Hide"])
-                self.waitForHittable(true, of: hideSidebar)
-                hideSidebar.tap()
-                self.waitForHittable(true, of: showSidebar)
-            }
-            try self.openSidebarWithSlowEdgeDrag()
-            if destination == "overview" {
-                self.attachScreenshot(named: "sidebar-slow-edge-drag-overview")
-            }
-            try self.closeSidebarWithSlowDrag()
-            testedDestinations.append(destination)
-        }
-        XCTAssertEqual(testedDestinations, destinations)
-    }
-
-    func testSidebarEdgeDragPreservesPushedScreenBackGesture() throws {
-        try XCTSkipIf(UIDevice.current.userInterfaceIdiom != .phone, "Phone sidebar only")
-        self.launchApp(
-            for: ScreenshotTarget(
-                initialTab: "settings",
-                initialDestination: "settings",
-                name: "sidebar-pushed-screen-back-gesture"),
-            appearance: nil,
-            screenshotMode: false)
-
-        if self.app?.buttons["Close"].waitForExistence(timeout: 2) == true {
-            self.app?.buttons["Close"].tap()
-        }
-        // A clean normal-state launch can auto-route to Gateway setup.
-        try self.selectSidebarDestination("Settings")
-        let app = try XCTUnwrap(self.app)
-        let licenses = app.buttons["settings-licenses-row"]
-        for _ in 0..<12 where !licenses.isHittable {
-            app.swipeUp()
-        }
-        XCTAssertTrue(licenses.isHittable)
-        licenses.tap()
-        XCTAssertTrue(self.app?.navigationBars["Licenses"].waitForExistence(timeout: 5) == true)
-
-        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5))
-        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.78, dy: 0.5))
-        start.press(
-            forDuration: 0.1,
-            thenDragTo: end,
-            withVelocity: .slow,
-            thenHoldForDuration: 0.1)
-        self.attachScreenshot(named: "sidebar-pushed-screen-after-back-swipe")
-
-        self.waitForHittable(false, of: app.buttons["RootTabs.Sidebar.Hide"])
-        self.waitForHittable(true, of: licenses)
-        XCTAssertFalse(app.navigationBars["Licenses"].exists)
-    }
-
-    func testGatewaySettingsOpenedFromChatUsesRootSidebarNavigation() throws {
-        try XCTSkipIf(UIDevice.current.userInterfaceIdiom != .phone, "Phone sidebar navigation only")
-
-        self.launchApp(for: ScreenshotTarget(
-            initialTab: "chat",
-            initialDestination: "chat",
-            name: "chat-settings-back"))
-
-        try self.openChatGatewaySettings()
-        let gatewayNavigationBar = try XCTUnwrap(self.app?.navigationBars["Gateway"])
-        XCTAssertTrue(gatewayNavigationBar.waitForExistence(timeout: 5))
-        XCTAssertTrue(self.app?.buttons["RootTabs.Sidebar.Show"].exists == true)
-        XCTAssertFalse(gatewayNavigationBar.buttons["BackButton"].exists)
-        self.attachScreenshot(named: "chat-gateway-root")
-
-        let showSidebar = try XCTUnwrap(self.app?.buttons["RootTabs.Sidebar.Show"])
-        showSidebar.tap()
-        let settings = try XCTUnwrap(self.app?.buttons["Settings"])
-        XCTAssertTrue(settings.waitForExistence(timeout: 5))
-        settings.tap()
-
-        XCTAssertTrue(self.app?.navigationBars["Settings"].waitForExistence(timeout: 5) == true)
-        XCTAssertTrue(self.app?.buttons["RootTabs.Sidebar.Show"].exists == true)
-        self.attachScreenshot(named: "gateway-to-settings-via-sidebar")
     }
 
     func testChatComposerStartsCompactAndGrowsWithDraft() throws {
@@ -707,7 +490,6 @@ final class OpenClawSnapshotUITests: XCTestCase {
         XCTAssertEqual(model.value as? String, "gpt-5.6-sol")
         self.assertMinimumTouchTarget(model)
         self.assertMinimumTouchTarget(app.buttons["chat-realtime-control"])
-        self.assertMinimumTouchTarget(app.buttons["RootTabs.Sidebar.Show"])
         self.assertMinimumTouchTarget(app.buttons["Chat actions"])
         self.attachScreenshot(named: "accessibility-empty-composer-and-header")
         model.tap()
@@ -1404,38 +1186,7 @@ final class OpenClawSnapshotUITests: XCTestCase {
 
         app.buttons["Go to Chat"].tap()
         XCTAssertTrue(self.agentIdentity(in: app).waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["RootTabs.Sidebar.Show"].exists)
-    }
-
-    func testChatAndOverviewNavigateThroughSidebar() throws {
-        try XCTSkipIf(UIDevice.current.userInterfaceIdiom != .phone, "Phone sidebar proof only")
-        self.launchApp(for: ScreenshotTarget(
-            initialTab: "control",
-            initialDestination: "overview",
-            name: "control-chat-return"))
-
-        let agentSession = try XCTUnwrap(self.app?.staticTexts["Agent session"])
-        XCTAssertTrue(agentSession.waitForExistence(timeout: 8))
-        self.attachScreenshot(named: "control-overview-before-chat")
-
-        try self.startNewChatFromSidebar()
-        XCTAssertTrue(self.app?.otherElements["chat-composer-surface"].waitForExistence(timeout: 8) == true)
-        self.attachScreenshot(named: "chat-return-to-overview")
-
-        try self.selectSidebarDestination("Overview")
-        XCTAssertTrue(agentSession.waitForExistence(timeout: 8))
-        self.attachScreenshot(named: "control-overview-after-chat")
-
-        let agentSessionRow = try XCTUnwrap(self.app?.buttons.matching(NSPredicate(
-            format: "label BEGINSWITH[c] %@",
-            "Molty, chat")).firstMatch)
-        XCTAssertTrue(agentSessionRow.waitForExistence(timeout: 8))
-        agentSessionRow.tap()
-
-        XCTAssertTrue(self.app?.otherElements["chat-composer-surface"].waitForExistence(timeout: 8) == true)
-        self.attachScreenshot(named: "chat-session-return-to-overview")
-        try self.selectSidebarDestination("Overview")
-        XCTAssertTrue(self.app?.staticTexts["Agent session"].waitForExistence(timeout: 8) == true)
+        XCTAssertTrue(app.tabBars.buttons["Chat"].firstMatch.exists)
     }
 
     func testAgentUsesToolbarFilter() throws {
@@ -1549,7 +1300,7 @@ final class OpenClawSnapshotUITests: XCTestCase {
         print("IOS_RELEASE_CHECKPOINT relaunch")
         try self.selectSidebarDestination("Overview")
         XCTAssertTrue(relaunchedApp.staticTexts["Agent session"].waitForExistence(timeout: 8))
-        XCTAssertTrue(relaunchedApp.buttons["RootTabs.Sidebar.Show"].exists)
+        XCTAssertTrue(relaunchedApp.tabBars.buttons["Activity"].firstMatch.exists)
         XCTAssertTrue(relaunchedApp.buttons["Gateway settings"].waitForExistence(timeout: 5))
         self.attachScreenshot(named: "live-gateway-overview")
         XCTAssertEqual(relaunchedApp.state, .runningForeground)
@@ -1809,7 +1560,6 @@ extension OpenClawSnapshotUITests {
         let actions = app.buttons["Chat actions"]
         XCTAssertTrue(actions.waitForExistence(timeout: 8))
         self.assertMinimumTouchTarget(actions)
-        self.assertMinimumTouchTarget(app.buttons["RootTabs.Sidebar.Show"])
         self.attachScreenshot(named: "chat-actions-header")
         actions.tap()
 
@@ -1964,12 +1714,10 @@ extension OpenClawSnapshotUITests {
         XCTAssertTrue(app.buttons["chat-fast-mode-use-default"].exists)
         XCTAssertFalse(app.buttons["chat-verbosity-use-default"].exists)
 
-        let sidebarFrame = app.buttons["RootTabs.Sidebar.Show"].frame
         let thinkingHitTargetFrame = app.descendants(matching: .any)["chat-thinking-slider-hit-target"].frame
         let fastHitTargetFrame = app.descendants(matching: .any)["chat-fast-mode-hit-target"].frame
         let verbosityHitTargetFrame = app.descendants(matching: .any)["chat-verbosity-hit-target"].frame
         let receipt = XCTAttachment(string: [
-            "header.sidebar=\(sidebarFrame)",
             "header.chatActions=\(reopenedActions.frame)",
             "provider.openai=collapsed-expanded-collapsed",
             "provider.anthropic=collapsed-expanded",
@@ -2225,106 +1973,23 @@ extension OpenClawSnapshotUITests {
         XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: 5), .completed)
     }
 
-    private func tapSidebarReveal(
-        in app: XCUIApplication,
-        file: StaticString = #filePath,
-        line: UInt = #line)
-    {
-        let reveal = app.buttons["RootTabs.Sidebar.Show"]
-        XCTAssertTrue(reveal.waitForExistence(timeout: 5), file: file, line: line)
-        if reveal.isHittable {
-            reveal.tap()
-            return
-        }
-
-        // iOS 18 can mirror the nested SwiftUI button's accessibility frame
-        // while the visible control remains at the navigation bar's leading edge.
-        let navigationBar = app.navigationBars.firstMatch
-        XCTAssertTrue(navigationBar.waitForExistence(timeout: 5), file: file, line: line)
-        let appFrame = app.frame
-        let navigationFrame = navigationBar.frame
-        let coordinate = app.coordinate(withNormalizedOffset: CGVector(
-            dx: (navigationFrame.minX + 38) / appFrame.width,
-            dy: (navigationFrame.minY + 22) / appFrame.height))
-        coordinate.tap()
-    }
-
-    private func openSidebarWithSlowEdgeDrag(
-        file: StaticString = #filePath,
-        line: UInt = #line) throws
-    {
-        let app = try XCTUnwrap(self.app, file: file, line: line)
-        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5))
-        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.78, dy: 0.5))
-        start.press(
-            forDuration: 0.1,
-            thenDragTo: end,
-            withVelocity: .slow,
-            thenHoldForDuration: 0.1)
-
-        self.waitForHittable(true, of: app.buttons["RootTabs.Sidebar.Hide"])
-    }
-
-    private func closeSidebarWithSlowDrag(
-        file: StaticString = #filePath,
-        line: UInt = #line) throws
-    {
-        let app = try XCTUnwrap(self.app, file: file, line: line)
-        // Start inside the exposed sidebar, not on the translated detail card.
-        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.72, dy: 0.5))
-        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.5))
-        start.press(
-            forDuration: 0.1,
-            thenDragTo: end,
-            withVelocity: .slow,
-            thenHoldForDuration: 0.1)
-
-        self.waitForHittable(true, of: app.buttons["RootTabs.Sidebar.Show"])
-    }
-
+    /// Selects a destination of the 4-tab shell (Chat, Agents, Activity, Settings).
+    /// "Overview" is a section of the Activity tab, so it maps to that tab.
     private func selectSidebarDestination(
         _ title: String,
         file: StaticString = #filePath,
         line: UInt = #line) throws
     {
         let app = try XCTUnwrap(self.app, file: file, line: line)
-        let hideSidebar = app.buttons["RootTabs.Sidebar.Hide"]
-        if !hideSidebar.isHittable {
-            self.tapSidebarReveal(in: app, file: file, line: line)
-            self.waitForHittable(true, of: hideSidebar)
+        let tabTitle = title == "Overview" ? "Activity" : title
+        let tab = app.tabBars.buttons[tabTitle].firstMatch
+        XCTAssertTrue(tab.waitForExistence(timeout: 5), file: file, line: line)
+        self.waitForHittable(true, of: tab)
+        tab.tap()
+        if title == "Overview" {
+            let overview = app.segmentedControls.firstMatch.buttons["Overview"]
+            if overview.waitForExistence(timeout: 3) { overview.tap() }
         }
-
-        let destination = app.buttons.matching(NSPredicate(
-            format: "label == %@ OR label BEGINSWITH %@",
-            title,
-            "\(title),")).firstMatch
-        XCTAssertTrue(destination.waitForExistence(timeout: 5), file: file, line: line)
-        self.waitForHittable(true, of: destination)
-        destination.tap()
-
-        self.waitForHittable(false, of: hideSidebar)
-        XCTAssertTrue(app.buttons["RootTabs.Sidebar.Show"].waitForExistence(timeout: 5), file: file, line: line)
-    }
-
-    private func startNewChatFromSidebar(
-        file: StaticString = #filePath,
-        line: UInt = #line) throws
-    {
-        let app = try XCTUnwrap(self.app, file: file, line: line)
-        let hideSidebar = app.buttons["RootTabs.Sidebar.Hide"]
-        if !hideSidebar.isHittable {
-            self.tapSidebarReveal(in: app, file: file, line: line)
-            self.waitForHittable(true, of: hideSidebar)
-        }
-
-        let newChat = app.buttons["New Chat"]
-        XCTAssertTrue(newChat.waitForExistence(timeout: 5), file: file, line: line)
-        XCTAssertTrue(newChat.isEnabled, file: file, line: line)
-        self.waitForHittable(true, of: newChat)
-        newChat.tap()
-
-        self.waitForHittable(false, of: hideSidebar)
-        XCTAssertTrue(app.buttons["RootTabs.Sidebar.Show"].waitForExistence(timeout: 5), file: file, line: line)
     }
 
     private func launchPairedLiveGatewayApp(

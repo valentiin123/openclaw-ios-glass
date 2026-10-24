@@ -127,6 +127,8 @@ struct WidgetChartView: View {
             self.barChart
         case .line:
             self.lineChart
+        case .area:
+            self.areaChart
         case .pie:
             self.pieChart
         case .sparkline:
@@ -192,6 +194,30 @@ struct WidgetChartView: View {
                 .accessibilityHidden(true)
         }
         .chartXSelection(value: self.$selectedX)
+        .modifier(AxisLabels(x: self.spec.xLabel, y: self.spec.yLabel, legend: self.showsLegend))
+    }
+
+    private var areaChart: some View {
+        let data: [FlatPoint] = self.flatPoints
+        let xKey: Text = self.xAxisKey
+        let yKey: Text = self.yAxisKey
+        let sKey: Text = self.seriesKey
+        return Chart(data) { (point: FlatPoint) in
+            AreaMark(
+                x: .value(xKey, point.x),
+                y: .value(yKey, point.y))
+                .foregroundStyle(by: .value(sKey, point.series))
+                .interpolationMethod(.monotone)
+                .opacity(0.35)
+                .accessibilityLabel(point.x)
+                .accessibilityValue(point.accessibilityValue)
+            LineMark(
+                x: .value(xKey, point.x),
+                y: .value(yKey, point.y))
+                .foregroundStyle(by: .value(sKey, point.series))
+                .interpolationMethod(.monotone)
+                .accessibilityHidden(true)
+        }
         .modifier(AxisLabels(x: self.spec.xLabel, y: self.spec.yLabel, legend: self.showsLegend))
     }
 

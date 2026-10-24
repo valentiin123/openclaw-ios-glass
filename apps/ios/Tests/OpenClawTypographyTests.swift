@@ -296,20 +296,29 @@ struct OpenClawTypographyTests {
         #expect(onboardingWizard.contains("if lastMode == .developerLocal"))
         #expect(onboardingWizard.contains("self.developerModeEnabled = true"))
         #expect(settingsSections.contains(".font(OpenClawType.body)"))
-        for label in ["Gateway", "Approvals", "Open Gateway"] {
-            let text = try Self.extract(settingsHub, from: "Text(\"\(label)\")", to: "}")
-            #expect(text.contains(".font(OpenClawType.subheadSemiBold)"))
+        // Gateway and Approvals rows are now native rows (title strings, no hand-styled Text).
+        for label in ["Gateway", "Approvals"] {
+            let row = try Self.extract(
+                settingsHub,
+                from: "NativeSettingsRow(\n                    title: String(localized: \"\(label)\")",
+                to: "pill:")
+            #expect(row.contains("title: String(localized: \"\(label)\")"))
         }
+        #expect(settingsHub.contains(".font(OpenClawType.body)"))
+        let openGateway = try Self.extract(settingsHub, from: "Text(\"Open Gateway\")", to: "}")
+        #expect(openGateway.contains(".font(OpenClawType.subheadSemiBold)"))
         let upgradeWarning = try Self.extract(
             settingsHub,
             from: "\"This Gateway's Dashboard is older than the app;",
             to: ".accessibilityIdentifier(\"SettingsHub.GatewayUpgradeWarning\")")
         #expect(upgradeWarning.contains(".font(OpenClawType.footnote)"))
+        // The approvals badge is a NativeSettingsPill fed with the formatted pending count.
         let approvalBadge = try Self.extract(
             settingsHub,
-            from: "Text(self.appModel.pendingExecApprovalCount.formatted())",
-            to: "}")
-        #expect(approvalBadge.contains(".font(OpenClawType.captionSemiBold)"))
+            from: "private var approvalsPill: NativeSettingsPill?",
+            to: "// MARK: - Navigation")
+        #expect(approvalBadge.contains("self.appModel.pendingExecApprovalCount"))
+        #expect(approvalBadge.contains("NativeSettingsPill(label: count.formatted(), tone: .warn)"))
         let dashboardClose = try Self.extract(dashboardPage, from: "Text(\"Done\")", to: "}")
         #expect(dashboardClose.contains(".font(OpenClawType.subheadSemiBold)"))
         #expect(settingsSections.contains("Text(warningText)"))

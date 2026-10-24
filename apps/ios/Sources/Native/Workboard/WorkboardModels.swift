@@ -1,9 +1,28 @@
 import Foundation
 
 // Tolerant decoding of the Workboard plugin responses.
-// VERIFIED: status/priority enums and the WorkboardCard shape (packages/workboard-contract/src/index.ts);
-// `boards[]` with id/total/byStatus and `cards[]` with id/status (scripts/perf/workboard-read-measure.ts).
-// NOT VERIFIED: the plugin handlers themselves (not present in the source tree), so every field is optional.
+// VERIFIED (extensions/workboard/src/gateway.ts, store-boards.ts, packages/workboard-contract/src/index.ts):
+// workboard.boards.list -> { boards: WorkboardBoardSummary[] } (id, kind?, name?, total, active, archived, byStatus, archivedAt?)
+// workboard.cards.list  -> { cards: WorkboardCard[], statuses, nextCursor?, boards, revision }
+// Decoding stays tolerant: every field except `id` is optional on the iOS side.
+
+/// Why the screen cannot show boards.
+enum WorkboardUnavailableReason: Equatable {
+    /// The Gateway hello does not advertise `workboard.boards.list` (plugin off).
+    case notAdvertised
+    /// The Gateway answered `unknown method: workboard.*`.
+    case unknownMethod
+}
+
+enum WorkboardErrors {
+    /// Gateway text is `unknown method: <name>` (src/gateway/server-methods.ts).
+    static func isUnknownMethod(_ error: Error) -> Bool {
+        let described: String = String(describing: error).lowercased()
+        let localized: String = error.localizedDescription.lowercased()
+        let needle: String = "unknown method"
+        return described.contains(needle) || localized.contains(needle)
+    }
+}
 
 enum WorkboardStatusInfo {
     /// Order from WORKBOARD_STATUSES (contract).
@@ -67,13 +86,18 @@ struct WorkboardBoard: Identifiable, Equatable {
     let name: String
     let total: Int
     let archived: Bool
+    /// "cards" or "sessions" (absent on older boards = cards).
+    let kind: String?
+
+    var isSessionsBoard: Bool { self.kind == "sessions" }
 
     static func parse(_ raw: [String: Any]) -> WorkboardBoard? {
         guard let id = raw.string("id"), !id.isEmpty else { return nil }
         let name: String = raw.string("name") ?? id
         let total: Int = raw.int("total") ?? 0
         let isArchived: Bool = raw.int("archivedAt") != nil
-        return WorkboardBoard(id: id, name: name, total: total, archived: isArchived)
+        return WorkboardBoard(
+            id: id, name: name, total: total, archived: isArchived, kind: raw.string("kind"))
     }
 }
 

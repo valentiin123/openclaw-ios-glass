@@ -1,12 +1,13 @@
 import SwiftUI
 
 /// Routes a `NativeSettingsDestination` to its native SwiftUI screen.
-/// Integration: see NATIVE_SETTINGS.md. Nothing outside NativeSettings/ references this yet.
+/// `onClose` adds a "Done" button when the screen is presented as a sheet.
 @MainActor
 struct NativeSettingsRouter: View {
     let destination: NativeSettingsDestination
     var headerSidebarAction: OpenClawSidebarHeaderAction?
     var embedded: Bool = false
+    var onClose: (() -> Void)?
 
     /// True when a Dashboard path has a native settings screen.
     static func hasNativeScreen(forPath path: String) -> Bool {
@@ -31,27 +32,33 @@ struct NativeSettingsRouter: View {
         case .appearance:
             NativeAppearanceScreen(
                 headerSidebarAction: self.headerSidebarAction,
-                embedded: self.embedded)
+                embedded: self.embedded,
+                onClose: self.onClose)
         case .notifications:
             NativeNotificationsScreen(
                 headerSidebarAction: self.headerSidebarAction,
-                embedded: self.embedded)
+                embedded: self.embedded,
+                onClose: self.onClose)
         case .permissions:
             NativePermissionsScreen(
                 headerSidebarAction: self.headerSidebarAction,
-                embedded: self.embedded)
+                embedded: self.embedded,
+                onClose: self.onClose)
         case .talkVoice:
             NativeTalkVoiceScreen(
                 headerSidebarAction: self.headerSidebarAction,
-                embedded: self.embedded)
+                embedded: self.embedded,
+                onClose: self.onClose)
         case .channels:
             NativeChannelsScreen(
                 headerSidebarAction: self.headerSidebarAction,
-                embedded: self.embedded)
+                embedded: self.embedded,
+                onClose: self.onClose)
         case .skills:
             NativeSkillsScreen(
                 headerSidebarAction: self.headerSidebarAction,
-                embedded: self.embedded)
+                embedded: self.embedded,
+                onClose: self.onClose)
         }
     }
 }

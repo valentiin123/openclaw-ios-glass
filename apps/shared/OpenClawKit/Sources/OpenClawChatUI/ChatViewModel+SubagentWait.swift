@@ -2,13 +2,20 @@ import Foundation
 
 /// A chat whose own turn has ended while a helper session it started is still running.
 struct ChatSubagentWait: Equatable {
-    struct Child: Equatable {
+    struct Child: Equatable, Identifiable {
         let key: String
         let name: String
+        var status: OpenClawChatSwarmDotStatus = .running
+
+        var id: String { self.key }
     }
 
     /// Name a single known unfinished helper; the roster may still be partial.
     let child: Child?
+
+    /// Every known unfinished helper, in roster order. May be shorter than the real count
+    /// (or empty) while the roster is still loading; the parent flag alone proves a wait.
+    var children: [Child] = []
 
     static func resolve(
         session: OpenClawChatSessionEntry?,
@@ -25,10 +32,13 @@ struct ChatSubagentWait: Equatable {
             if let parent = row.parentSessionKey ?? row.spawnedBy { return parent == session.key }
             return session.childSessions?.contains(row.key) == true
         }
-        let child = running.count == 1 ? running.first : nil
-        return ChatSubagentWait(child: child.map {
-            Child(key: $0.key, name: ChatSessionSidebarModel.displayName(for: $0))
-        })
+        let rows: [Child] = running.map { row in
+            let status: OpenClawChatSwarmDotStatus = SelfContainedSwarmHelpers.status(row) ?? .running
+            let name: String = ChatSessionSidebarModel.displayName(for: row)
+            return Child(key: row.key, name: name, status: status)
+        }
+        let single: Child? = rows.count == 1 ? rows.first : nil
+        return ChatSubagentWait(child: single, children: rows)
     }
 
     /// Match src/shared/session-run-state.ts: terminal status wins over stale liveness.

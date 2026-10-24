@@ -6,12 +6,13 @@ import SwiftUI
 
 /// Top-level destinations of the app shell.
 ///
-/// Only four of them are in the tab bar: Chat, Agents, Activity and Settings (`barTab`).
+/// Only three of them are in the tab bar: Agents, Activity and Settings (`barTab`).
 /// `overview` and `automations` stay valid destinations (deep links, `RootTabs` reads
 /// `selection`), but they are sections of the Activity tab, chosen with a segmented control.
+/// There is no Chat tab: the system chat (main session) is presented full screen on top of
+/// the shell (`AppShellNavigation.isChatPresented`) and opened from the Overview "More" menu.
 enum AppShellTab: String, CaseIterable, Hashable, Identifiable {
     case overview
-    case chat
     case agents
     case activity
     case automations
@@ -25,7 +26,6 @@ enum AppShellTab: String, CaseIterable, Hashable, Identifiable {
     var title: LocalizedStringKey {
         switch self {
         case .overview: "Overview"
-        case .chat: "Chat"
         case .agents: "Agents"
         case .activity: "Activity"
         case .automations: "Automations"
@@ -36,7 +36,6 @@ enum AppShellTab: String, CaseIterable, Hashable, Identifiable {
     var systemImage: String {
         switch self {
         case .overview: "chart.bar"
-        case .chat: "bubble.left"
         case .agents: "person.2"
         case .activity: "waveform.path.ecg"
         case .automations: "timer"
@@ -49,11 +48,11 @@ enum AppShellTab: String, CaseIterable, Hashable, Identifiable {
     }
 
     /// Tab shown in the bar for this destination. Overview, Activity and Automations share the
-    /// Activity tab, so the bar stays at four items.
+    /// Activity tab, so the bar stays at three items.
     var barTab: AppShellTab {
         switch self {
         case .overview, .activity, .automations: .activity
-        case .chat, .agents, .settings: self
+        case .agents, .settings: self
         }
     }
 
@@ -109,7 +108,7 @@ enum AppShellActivitySection: String, CaseIterable, Hashable, Identifiable {
         switch tab {
         case .overview: self = .overview
         case .automations: self = .automations
-        case .chat, .agents, .activity, .settings: self = .activity
+        case .agents, .activity, .settings: self = .activity
         }
     }
 
@@ -228,19 +227,24 @@ struct AppShellLanding: Equatable {
     var homeRoute: AppShellHomeRoute?
     var agentsSection: AppShellAgentsSection?
     var settingsRoute: SettingsRoute?
+    /// True when the landing opens the system chat (full screen) over the shell.
+    var presentsChat: Bool
 
     init(tab: AppShellTab) {
         self.tab = tab
+        self.presentsChat = false
         self.homeRoute = nil
         self.agentsSection = nil
         self.settingsRoute = nil
     }
 
     init(legacy destination: RootTabs.SidebarDestination) {
-        self.init(tab: .chat)
+        self.init(tab: .overview)
         switch destination {
         case .chat:
-            self.tab = .chat
+            // No Chat tab: the chat is presented over the Overview.
+            self.tab = .overview
+            self.presentsChat = true
         case .overview:
             self.tab = .overview
         case .activity:
@@ -302,10 +306,12 @@ final class AppShellNavigation {
     var settingsPresentation: AppShellSettingsPresentation = .hub
     var agentsSection: AppShellAgentsSection = .roster
     var presentedMore: AppShellMoreItem?
+    /// System chat (main session) presented full screen over the shell.
+    var isChatPresented: Bool = false
     private(set) var resetTokens: [AppShellTab: Int] = [:]
     @ObservationIgnored private var lastActivitySection: AppShellActivitySection = .activity
 
-    init(landing: AppShellLanding = AppShellLanding(tab: .chat)) {
+    init(landing: AppShellLanding = AppShellLanding(tab: .overview)) {
         self.selection = landing.tab
         self.apply(landing)
     }
@@ -320,7 +326,7 @@ final class AppShellNavigation {
         self.apply(landing)
     }
 
-    /// Called by the tab bar binding with one of the four bar tabs. Re-selecting the current
+    /// Called by the tab bar binding with one of the three bar tabs. Re-selecting the current
     /// tab returns it to its root; entering Activity restores the last section used there.
     func userSelected(_ tab: AppShellTab) {
         if tab == self.selection.barTab {
@@ -355,8 +361,14 @@ final class AppShellNavigation {
         self.move(to: .automations)
     }
 
+    /// Presents the system chat full screen over the current tab (no tab switch).
     func openChat() {
-        self.move(to: .chat)
+        self.presentedMore = nil
+        self.isChatPresented = true
+    }
+
+    func closeChat() {
+        self.isChatPresented = false
     }
 
     /// Opens Settings on a given route, or on the hub root when `route` is nil.
@@ -389,6 +401,7 @@ final class AppShellNavigation {
     }
 
     private func apply(_ landing: AppShellLanding) {
+        self.isChatPresented = landing.presentsChat
         self.move(to: landing.tab)
         if let section = landing.agentsSection {
             self.agentsSection = section
@@ -398,7 +411,7 @@ final class AppShellNavigation {
             self.applyHome(landing)
         case .settings:
             self.applySettings(landing)
-        case .chat, .agents, .activity, .automations:
+        case .agents, .activity, .automations:
             break
         }
     }
@@ -442,8 +455,6 @@ final class AppShellNavigation {
         case .agents, .activity, .automations:
             let next: Int = self.resetToken(for: tab) + 1
             self.resetTokens[tab] = next
-        case .chat:
-            break
         }
     }
 }

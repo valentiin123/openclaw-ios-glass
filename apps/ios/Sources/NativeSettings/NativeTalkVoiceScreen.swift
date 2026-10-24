@@ -45,9 +45,8 @@ enum NativeTalkVoiceLoader {
     }
 }
 
-/// Native replacement for the Dashboard Talk & Voice settings.
-/// Device toggles are local (`NodeAppModel.setTalkEnabled` / `setVoiceWakeEnabled`);
-/// Gateway values are shown read-only.
+/// Native Talk & Voice settings. Two toggles on this device, then the Gateway values read-only.
+/// Device toggles are local (`NodeAppModel.setTalkEnabled` / `setVoiceWakeEnabled`).
 @MainActor
 struct NativeTalkVoiceScreen: View {
     @Environment(NodeAppModel.self) private var appModel
@@ -55,10 +54,16 @@ struct NativeTalkVoiceScreen: View {
     @State private var loader: NativeSettingsLoader<NativeTalkVoiceSummary>
     var headerSidebarAction: OpenClawSidebarHeaderAction?
     var embedded: Bool = false
+    var onClose: (() -> Void)?
 
-    init(headerSidebarAction: OpenClawSidebarHeaderAction? = nil, embedded: Bool = false) {
+    init(
+        headerSidebarAction: OpenClawSidebarHeaderAction? = nil,
+        embedded: Bool = false,
+        onClose: (() -> Void)? = nil)
+    {
         self.headerSidebarAction = headerSidebarAction
         self.embedded = embedded
+        self.onClose = onClose
         let load: NativeSettingsLoader<NativeTalkVoiceSummary>.Load = { app in
             try await NativeTalkVoiceLoader.summary(app)
         }
@@ -69,7 +74,8 @@ struct NativeTalkVoiceScreen: View {
         NativeSettingsPage(
             title: NativeSettingsDestination.talkVoice.title,
             headerSidebarAction: self.headerSidebarAction,
-            embedded: self.embedded)
+            embedded: self.embedded,
+            onClose: self.onClose)
         {
             self.list
         }
@@ -109,7 +115,7 @@ struct NativeTalkVoiceScreen: View {
                     Image(systemName: "waveform")
                 }
             }
-            .frame(minHeight: 44)
+            .frame(minHeight: OpenClawHitTarget.minimum)
             Toggle(isOn: self.voiceWakeBinding) {
                 Label {
                     Text("Voice Wake")
@@ -118,13 +124,13 @@ struct NativeTalkVoiceScreen: View {
                     Image(systemName: "mic")
                 }
             }
-            .frame(minHeight: 44)
+            .frame(minHeight: OpenClawHitTarget.minimum)
         } header: {
-            Text("This device")
+            NativeSettingsHeader("This device")
         } footer: {
-            Text("Voice Wake listens for the trigger words below while the app is open.")
-                .font(OpenClawType.footnote)
+            NativeSettingsFooter("Voice Wake listens for the trigger words below while the app is open.")
         }
+        .openClawAnimation(value: self.voiceWakeEnabled)
     }
 
     private var gatewaySection: some View {
@@ -136,10 +142,9 @@ struct NativeTalkVoiceScreen: View {
                     self.summaryRows(summary)
                 })
         } header: {
-            Text("Gateway")
+            NativeSettingsHeader("Gateway")
         } footer: {
-            Text("These values are read from the Gateway and can be changed in the Dashboard.")
-                .font(OpenClawType.footnote)
+            NativeSettingsFooter("These values are read from the Gateway and can be changed in the Dashboard.")
         }
     }
 
@@ -157,12 +162,16 @@ struct NativeTalkVoiceScreen: View {
         self.valueRow(title: String(localized: "Provider"), value: providerValue, systemImage: "speaker.wave.2")
         self.valueRow(title: String(localized: "Speech language"), value: localeValue, systemImage: "globe")
         self.valueRow(title: String(localized: "Silence timeout"), value: silenceValue, systemImage: "timer")
-        self.valueRow(title: String(localized: "Interrupt on speech"), value: interruptValue, systemImage: "hand.raised")
+        self.valueRow(
+            title: String(localized: "Interrupt on speech"),
+            value: interruptValue,
+            systemImage: "hand.raised")
         self.valueRow(title: String(localized: "Wake words"), value: triggersValue, systemImage: "text.bubble")
     }
 
     private func valueRow(title: String, value: String, systemImage: String) -> some View {
         NativeSettingsRow(title: title, detail: value, systemImage: systemImage)
+            .nativeSettingsCopyMenu(value)
     }
 
     private static func silenceText(_ milliseconds: Int?, fallback: String) -> String {

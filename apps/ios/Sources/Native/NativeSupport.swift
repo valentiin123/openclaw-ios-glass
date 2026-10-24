@@ -223,6 +223,48 @@ private struct NativeChipBackground: View {
     }
 }
 
+/// One option of a `NativeSegmentedBar`.
+struct NativeSegment<ID: Hashable>: Identifiable {
+    let id: ID
+    let title: String
+}
+
+/// Segmented control pinned under the navigation bar. Falls back to a menu picker at accessibility
+/// text sizes so labels never truncate. System control: it gets Liquid Glass from the OS.
+struct NativeSegmentedBar<ID: Hashable>: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    let segments: [NativeSegment<ID>]
+    @Binding var selection: ID
+
+    var body: some View {
+        Group {
+            if self.dynamicTypeSize.isAccessibilitySize {
+                Picker(selection: self.$selection) {
+                    self.options
+                } label: {
+                    Text("Filter")
+                }
+                .pickerStyle(.menu)
+            } else {
+                Picker(selection: self.$selection) {
+                    self.options
+                } label: {
+                    Text("Filter")
+                }
+                .pickerStyle(.segmented)
+            }
+        }
+        .frame(minHeight: 44)
+        .nativeBarInset()
+    }
+
+    private var options: some View {
+        ForEach(self.segments) { segment in
+            Text(verbatim: segment.title).tag(segment.id)
+        }
+    }
+}
+
 /// Dashboard page shown in a sheet for pages that have no native screen yet.
 struct NativeWebPage: Identifiable, Equatable {
     let path: String
@@ -267,6 +309,12 @@ extension View {
                 title: item.title,
                 onClose: { page.wrappedValue = nil })
         }
+    }
+
+    /// Standard padding for a control strip (segmented picker, chip bar) pinned under the navigation bar.
+    func nativeBarInset() -> some View {
+        self.padding(.horizontal, OpenClawProMetric.pagePadding)
+            .padding(.vertical, 6)
     }
 
     @ViewBuilder

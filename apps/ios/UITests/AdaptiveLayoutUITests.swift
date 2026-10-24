@@ -1,10 +1,13 @@
 import UIKit
 import XCTest
 
+/// Adaptive layout checks for the native `AppShell` (`TabView` with four tabs:
+/// Chat, Agents, Activity, Settings). The shell has no sidebar drawer anymore.
 @MainActor
 final class AdaptiveLayoutUITests: XCTestCase {
-    func testOfflineChatAdaptsAcrossRotationAndRemembersHiddenSidebar() throws {
-        try XCTSkipUnless(UIDevice.current.userInterfaceIdiom == .pad, "iPad adaptive navigation")
+    private static let tabTitles = ["Chat", "Agents", "Activity", "Settings"]
+
+    func testOfflineChatAdaptsAcrossRotationAndKeepsFourTabs() throws {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
@@ -23,29 +26,21 @@ final class AdaptiveLayoutUITests: XCTestCase {
             app.terminate()
             XCUIDevice.shared.orientation = .portrait
         }
-        let show = app.buttons.matching(identifier: "RootTabs.Sidebar.Show").firstMatch
-        let hide = app.buttons.matching(identifier: "RootTabs.Sidebar.Hide").firstMatch
-        let usesCompactPortrait = app.frame.width < 800
-        XCTAssertTrue((usesCompactPortrait ? show : hide).waitForExistence(timeout: 30))
-        self.capture(usesCompactPortrait ? "ipad-portrait-drawer-closed" : "ipad-portrait-persistent-sidebar")
+        let root = app.descendants(matching: .any)["AppShell.Root"].firstMatch
+        XCTAssertTrue(root.waitForExistence(timeout: 30))
+        self.assertFourTabs(in: app)
+        self.capture("portrait-four-tabs")
 
         XCUIDevice.shared.orientation = .landscapeLeft
-        self.waitForLandscape(in: app)
-        XCTAssertTrue(hide.waitForExistence(timeout: 10))
-        XCTAssertGreaterThanOrEqual(app.frame.width, 800)
-        self.capture("ipad-landscape-persistent-sidebar")
-        hide.tap()
-        XCTAssertTrue(show.waitForExistence(timeout: 5))
-        self.capture("ipad-landscape-bounded-chat")
+        self.waitForLandscape(in: app, minimumWidth: 0)
+        XCTAssertTrue(root.exists)
+        self.assertFourTabs(in: app)
+        self.capture("landscape-four-tabs")
 
         XCUIDevice.shared.orientation = .portrait
         self.waitForPortrait(in: app)
-        XCTAssertTrue(show.waitForExistence(timeout: 10))
-        XCUIDevice.shared.orientation = .landscapeLeft
-        self.waitForLandscape(in: app)
-        XCTAssertTrue(show.waitForExistence(timeout: 10))
-        XCTAssertFalse(hide.exists)
-        self.capture("ipad-landscape-hidden-preference-restored")
+        XCTAssertTrue(root.waitForExistence(timeout: 10))
+        self.assertFourTabs(in: app)
     }
 
     func testPhoneOfflineChatKeepsCompactLayout() throws {
@@ -68,15 +63,14 @@ final class AdaptiveLayoutUITests: XCTestCase {
             app.terminate()
             XCUIDevice.shared.orientation = .portrait
         }
-        let show = app.buttons.matching(identifier: "RootTabs.Sidebar.Show").firstMatch
         let composer = app.otherElements["chat-composer-surface"].firstMatch
-        XCTAssertTrue(show.waitForExistence(timeout: 30))
+        XCTAssertTrue(self.tabButton("Chat", in: app).waitForExistence(timeout: 30))
         XCTAssertTrue(composer.waitForExistence(timeout: 10))
         XCTAssertGreaterThan(composer.frame.width, app.frame.width - 32)
         self.capture("iphone-portrait-compact-chat")
         XCUIDevice.shared.orientation = .landscapeLeft
         self.waitForLandscape(in: app, minimumWidth: 0)
-        XCTAssertTrue(show.exists)
+        XCTAssertTrue(self.tabButton("Chat", in: app).exists)
         // Large iPhones must not inherit the iPad's 760pt reading cap.
         if app.frame.width >= 900 {
             XCTAssertGreaterThan(composer.frame.width, 760)
@@ -84,23 +78,21 @@ final class AdaptiveLayoutUITests: XCTestCase {
         self.capture("iphone-landscape-compact-chat")
         XCUIDevice.shared.orientation = .portrait
         self.waitForPortrait(in: app)
-        show.tap()
-        let overview = app.buttons["RootTabs.Sidebar.Destination.overview"]
-        XCTAssertTrue(overview.waitForExistence(timeout: 5))
-        overview.tap()
+
+        // Activity hosts Overview, Activity and Automations behind one tab.
+        let activity = self.tabButton("Activity", in: app)
+        XCTAssertTrue(activity.waitForExistence(timeout: 5))
+        activity.tap()
         let readiness = app.descendants(matching: .any)["RootTabs.Ready"].firstMatch
-        self.expectation(for: NSPredicate(format: "value == %@", "ready:overview"), evaluatedWith: readiness)
-        self.waitForExpectations(timeout: 10)
-        XCTAssertTrue(show.waitForExistence(timeout: 5), "Selecting a drawer row must navigate and close it")
-        show.tap()
-        XCTAssertTrue(overview.waitForExistence(timeout: 5))
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
-        XCTAssertTrue(show.waitForExistence(timeout: 5), "Tapping exposed detail must dismiss the drawer")
+        XCTAssertTrue(readiness.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["AppShell.Activity"].firstMatch.waitForExistence(timeout: 10))
+        self.tabButton("Chat", in: app).tap()
+        XCTAssertTrue(composer.waitForExistence(timeout: 10), "Selecting Chat must restore the composer")
     }
 
     /// Synthetic conversation content is used only to exercise native interaction.
     /// This test deliberately does not attach screenshots as product evidence.
-    func testChatDraftAndFocusSurviveRotationAndWideSidebarToggles() throws {
+    func testChatDraftAndFocusSurviveRotationAndTabSwitches() throws {
         try XCTSkipUnless(UIDevice.current.userInterfaceIdiom == .pad, "Requires an iPad")
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
@@ -119,17 +111,13 @@ final class AdaptiveLayoutUITests: XCTestCase {
             XCUIDevice.shared.orientation = .portrait
         }
         self.waitForPortrait(in: app)
-        let usesCompactPortrait = app.frame.width < 800
         let readiness = app.descendants(matching: .any)["RootTabs.Ready"].firstMatch
         XCTAssertTrue(readiness.waitForExistence(timeout: 30))
         self.expectation(for: NSPredicate(format: "value == %@", "ready:chat"), evaluatedWith: readiness)
         self.waitForExpectations(timeout: 15)
 
         let input = app.descendants(matching: .any)["chat-message-input"].firstMatch
-        let show = app.buttons.matching(identifier: "RootTabs.Sidebar.Show").firstMatch
-        let hide = app.buttons.matching(identifier: "RootTabs.Sidebar.Hide").firstMatch
         XCTAssertTrue(input.waitForExistence(timeout: 10))
-        XCTAssertTrue((usesCompactPortrait ? show : hide).waitForExistence(timeout: 10))
         input.tap()
         // Application-level typing does not re-tap the field: subsequent keystrokes
         // prove that the same composer remains the keyboard's recipient. One
@@ -139,34 +127,18 @@ final class AdaptiveLayoutUITests: XCTestCase {
 
         XCUIDevice.shared.orientation = .landscapeLeft
         self.waitForLandscape(in: app)
-        XCTAssertTrue(hide.waitForExistence(timeout: 10))
         self.assertDraft("draft", in: input)
         app.typeText("1")
         self.assertDraft("draft1", in: input)
-
-        hide.tap()
-        XCTAssertTrue(show.waitForExistence(timeout: 10))
-        self.assertDraft("draft1", in: input)
         let composer = app.otherElements["chat-composer-surface"].firstMatch
         XCTAssertTrue(composer.exists)
-        XCTAssertGreaterThan(composer.frame.width, 700)
         XCTAssertLessThanOrEqual(composer.frame.width, 760)
-        app.typeText("2")
-        self.assertDraft("draft12", in: input)
-
-        show.tap()
-        XCTAssertTrue(hide.waitForExistence(timeout: 10))
-        self.assertDraft("draft12", in: input)
-        app.typeText("3")
-        self.assertDraft("draft123", in: input)
 
         XCUIDevice.shared.orientation = .portrait
         self.waitForPortrait(in: app)
-        XCTAssertTrue((usesCompactPortrait ? show : hide).waitForExistence(timeout: 10))
-        self.assertDraft("draft123", in: input)
-        app.typeText("4")
-        self.assertDraft("draft1234", in: input)
-        XCTAssertEqual(hide.exists, !usesCompactPortrait)
+        self.assertDraft("draft1", in: input)
+        app.typeText("2")
+        self.assertDraft("draft12", in: input)
     }
 
     /// Synthetic transport data exercises the real completed and streaming renderers.
@@ -179,7 +151,6 @@ final class AdaptiveLayoutUITests: XCTestCase {
         app.launchArguments = [
             "--openclaw-initial-destination", "chat",
             "--openclaw-screenshot-mode", "--openclaw-ui-test-readiness",
-            "--openclaw-sidebar-visibility", "hidden",
             "--openclaw-hold-initial-chat-run", "--openclaw-streaming-layout-fixture",
         ]
         app.launch()
@@ -195,14 +166,6 @@ final class AdaptiveLayoutUITests: XCTestCase {
         self.assertReadingColumn(completed, composer: composer, responseInset: 2)
         XCTAssertGreaterThan(completed.frame.width, 700, "Must detect the former 560pt assistant cap")
 
-        let show = app.buttons.matching(identifier: "RootTabs.Sidebar.Show").firstMatch
-        let hide = app.buttons.matching(identifier: "RootTabs.Sidebar.Hide").firstMatch
-        show.tap()
-        XCTAssertTrue(hide.waitForExistence(timeout: 5))
-        self.assertReadingColumn(completed, composer: composer, responseInset: 2)
-        hide.tap()
-        XCTAssertTrue(show.waitForExistence(timeout: 5))
-
         let input = app.descendants(matching: .any)["chat-message-input"].firstMatch
         input.tap()
         input.typeText("Check streaming width")
@@ -211,12 +174,25 @@ final class AdaptiveLayoutUITests: XCTestCase {
         XCTAssertTrue(streaming.waitForExistence(timeout: 10))
         self.assertReadingColumn(streaming, composer: composer, responseInset: 0)
         XCTAssertGreaterThan(streaming.frame.width, 700, "Must detect the former streaming bubble cap")
-        show.tap()
-        XCTAssertTrue(hide.waitForExistence(timeout: 5))
-        self.assertReadingColumn(streaming, composer: composer, responseInset: 0)
         XCUIDevice.shared.orientation = .portrait
         self.waitForPortrait(in: app)
         self.assertReadingColumn(streaming, composer: composer, responseInset: 0)
+    }
+
+    // MARK: - Helpers
+
+    /// The system draws the tab bar (top floating bar or sidebar on iPad). English titles are
+    /// forced by the launch arguments of the callers, so tabs are found by label.
+    private func tabButton(_ title: String, in app: XCUIApplication) -> XCUIElement {
+        app.tabBars.buttons[title].firstMatch
+    }
+
+    private func assertFourTabs(in app: XCUIApplication) {
+        for title in Self.tabTitles {
+            XCTAssertTrue(
+                self.tabButton(title, in: app).waitForExistence(timeout: 10),
+                "Tab \(title) must exist in the shell tab bar")
+        }
     }
 
     private func assertReadingColumn(_ response: XCUIElement, composer: XCUIElement, responseInset: CGFloat) {

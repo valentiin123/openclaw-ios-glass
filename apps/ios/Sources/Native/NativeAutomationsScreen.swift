@@ -155,10 +155,25 @@ final class NativeAutomationsModel {
 
 // MARK: - Screen
 
+enum NativeAutomationFilter: Hashable {
+    case all
+    case failing
+    case paused
+
+    func includes(_ job: NativeCronJob) -> Bool {
+        switch self {
+        case .all: true
+        case .failing: job.isFailing
+        case .paused: !job.enabled
+        }
+    }
+}
+
 struct NativeAutomationsScreen: View {
     @Environment(NodeAppModel.self) private var appModel
     @State private var model = NativeAutomationsModel()
     @State private var search = ""
+    @State private var filter: NativeAutomationFilter = .all
     @State private var pendingDelete: NativeCronJob?
     let title: String
     var headerSidebarAction: OpenClawSidebarHeaderAction?
@@ -213,8 +228,9 @@ struct NativeAutomationsScreen: View {
     @ViewBuilder
     private func list(_ jobs: [NativeCronJob]) -> some View {
         let visible: [NativeCronJob] = self.filtered(jobs)
-        let active: [NativeCronJob] = visible.filter { $0.enabled }
-        let paused: [NativeCronJob] = visible.filter { !$0.enabled }
+        let shown: [NativeCronJob] = visible.filter { self.filter.includes($0) }
+        let active: [NativeCronJob] = shown.filter { $0.enabled }
+        let paused: [NativeCronJob] = shown.filter { !$0.enabled }
         List {
             if !active.isEmpty {
                 Section("Active") { self.rows(active) }
@@ -225,9 +241,17 @@ struct NativeAutomationsScreen: View {
         }
         .listStyle(.insetGrouped)
         .refreshable { await self.model.load(appModel: self.appModel, showSpinner: false) }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            NativeSegmentedBar(segments: Self.segments, selection: self.$filter)
+        }
+        .openClawAnimation(value: self.filter)
         .overlay {
-            if visible.isEmpty {
-                ContentUnavailableView.search(text: self.search)
+            if shown.isEmpty {
+                if visible.isEmpty, !self.search.isEmpty {
+                    ContentUnavailableView.search(text: self.search)
+                } else {
+                    ContentUnavailableView("No automations", systemImage: "timer")
+                }
             }
         }
     }
@@ -239,7 +263,26 @@ struct NativeAutomationsScreen: View {
                 NativeAutomationRow(job: job, isBusy: self.model.busyIds.contains(job.id))
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) { self.trailingActions(job) }
+            .swipeActions(edge: .leading, allowsFullSwipe: true) { self.leadingAction(job) }
             .contextMenu { self.menu(job) }
+        }
+    }
+
+    private static let segments: [NativeSegment<NativeAutomationFilter>] = [
+        NativeSegment(id: .all, title: String(localized: "All")),
+        NativeSegment(id: .failing, title: String(localized: "Failing")),
+        NativeSegment(id: .paused, title: String(localized: "Paused")),
+    ]
+
+    @ViewBuilder
+    private func leadingAction(_ job: NativeCronJob) -> some View {
+        if !self.model.busyIds.contains(job.id) {
+            Button {
+                Task { await self.model.runNow(job: job, appModel: self.appModel) }
+            } label: {
+                Label("Run now", systemImage: "play.fill")
+            }
+            .tint(OpenClawBrand.ok)
         }
     }
 
@@ -395,6 +438,8 @@ struct NativeAutomationDetailView: View {
             Section {
                 self.controls(job)
             }
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets())
         }
         .listStyle(.insetGrouped)
     }
@@ -415,21 +460,29 @@ struct NativeAutomationDetailView: View {
     @ViewBuilder
     private func controls(_ job: NativeCronJob) -> some View {
         let busy: Bool = self.model.busyIds.contains(job.id)
-        Button {
-            Task { await self.model.runNow(job: job, appModel: self.appModel) }
-        } label: {
-            Label("Run now", systemImage: "play.fill").frame(minHeight: 44)
-        }
-        .disabled(busy)
-        Button {
-            Task { await self.model.setEnabled(!job.enabled, job: job, appModel: self.appModel) }
-        } label: {
-            if job.enabled {
-                Label("Pause", systemImage: "pause.circle").frame(minHeight: 44)
-            } else {
-                Label("Resume", systemImage: "play.circle").frame(minHeight: 44)
+        HStack(spacing: 12) {
+            Button {
+                Task { await self.model.runNow(job: job, appModel: self.appModel) }
+            } label: {
+                Label("Run now", systemImage: "play.fill")
+                    .frame(maxWidth: .infinity, minHeight: 44)
             }
+            .nativeGlassButtonStyle(prominent: true)
+            .disabled(busy)
+            Button {
+                Task { await self.model.setEnabled(!job.enabled, job: job, appModel: self.appModel) }
+            } label: {
+                if job.enabled {
+                    Label("Pause", systemImage: "pause.circle")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                } else {
+                    Label("Resume", systemImage: "play.circle")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+            }
+            .nativeGlassButtonStyle()
+            .disabled(busy)
         }
-        .disabled(busy)
+        .padding(.horizontal, OpenClawProMetric.pagePadding)
     }
 }

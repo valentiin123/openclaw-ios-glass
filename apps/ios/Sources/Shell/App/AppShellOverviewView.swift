@@ -7,14 +7,17 @@ import SwiftUI
 /// - Sessions are pushed (edge swipe-back stays enabled through `appShellSwipeBack`).
 /// - Secondary screens (Usage, Skill Workshop, Instances, Dreaming, Workboard, Docs) open in a
 ///   sheet because each hosted screen owns its own NavigationStack.
-/// - The header button of the Overview opens the "More" list (Usage, Skill Workshop, Instances,
-///   Dreaming, Workboard, Docs). Automations is a section of the Activity tab, not a row here.
+/// - The header button of the Overview opens the "More" list: "Talk to OpenClaw" first (system
+///   chat, main session, full screen over the shell), then Usage, Skill Workshop, Instances,
+///   Dreaming, Workboard, Docs. Automations is a section of the Activity tab, not a row here.
 struct AppShellOverviewView: View {
+    @Environment(NodeAppModel.self) private var appModel
     @Bindable var navigation: AppShellNavigation
     let context: AppShellContext
 
     @State private var showsMoreList: Bool = false
     @State private var pendingMore: AppShellMoreItem?
+    @State private var pendingChat: Bool = false
 
     private var moreAction: OpenClawSidebarHeaderAction {
         OpenClawSidebarHeaderAction(
@@ -46,7 +49,7 @@ struct AppShellOverviewView: View {
                 }
         }
         .sheet(isPresented: self.$showsMoreList, onDismiss: self.moreListDidDismiss) {
-            AppShellMoreListView(onSelectMore: self.chooseMore)
+            AppShellMoreListView(onSelectMore: self.chooseMore, onSelectChat: self.chooseChat)
         }
         .sheet(item: self.presentedMoreBinding) { item in
             AppShellMoreItemView(
@@ -74,9 +77,11 @@ struct AppShellOverviewView: View {
     private func destination(for route: AppShellHomeRoute) -> some View {
         switch route {
         case .sessions:
-            CommandSessionsScreen(
+            AppShellSessionsScreen(
+                model: self.context.sidebarModel,
                 headerSidebarAction: self.backAction,
-                openChat: self.openChat)
+                openChat: self.openChat,
+                openGateway: self.openGateway)
                 .appShellSwipeBack()
         case .more:
             // `.more` never stays on the path: the model turns it into a sheet.
@@ -95,9 +100,21 @@ struct AppShellOverviewView: View {
         self.showsMoreList = false
     }
 
+    private func chooseChat() {
+        self.pendingChat = true
+        self.showsMoreList = false
+    }
+
     /// Presenting a second sheet while the first is still dismissing is dropped by UIKit.
     /// The choice is applied once the list sheet is fully gone.
     private func moreListDidDismiss() {
+        if self.pendingChat {
+            self.pendingChat = false
+            // nil falls back to the main session key (the system chat).
+            self.appModel.focusChatSession(nil)
+            self.navigation.openChat()
+            return
+        }
         if let item = self.pendingMore {
             self.pendingMore = nil
             self.navigation.open(more: item)
@@ -147,10 +164,14 @@ struct AppShellMoreListView: View {
     @Environment(\.dismiss) private var dismiss
 
     let onSelectMore: (AppShellMoreItem) -> Void
+    let onSelectChat: () -> Void
 
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    self.chatRow
+                }
                 Section {
                     ForEach(AppShellMoreItem.allCases) { (item: AppShellMoreItem) in
                         self.moreRow(item)
@@ -166,6 +187,13 @@ struct AppShellMoreListView: View {
         }
         .presentationDetents([.medium, .large])
         .accessibilityIdentifier("AppShell.More.List")
+    }
+
+    private var chatRow: some View {
+        Button(action: self.onSelectChat) {
+            self.row(title: "Talk to OpenClaw", systemImage: "bubble.left")
+        }
+        .accessibilityIdentifier("AppShell.More.chat")
     }
 
     private func moreRow(_ item: AppShellMoreItem) -> some View {

@@ -474,6 +474,10 @@ Sources/Services/WatchMessagingPayloadCodec.swift
 Sources/Services/WatchMessagingService.swift
 Sources/Services/WatchSessionActivationGate.swift
 Sources/SessionKey.swift
+Sources/Sessions/AppShellSessionsScreen.swift
+Sources/Sessions/SessionsListActions.swift
+Sources/Sessions/SessionsListLayout.swift
+Sources/Sessions/SessionsListRow.swift
 Sources/Settings/DashboardPageScreen.swift
 Sources/Settings/DeviceSettings/IOSDeviceSettingsActions.swift
 Sources/Settings/DeviceSettings/IOSDeviceSettingsBridge.swift

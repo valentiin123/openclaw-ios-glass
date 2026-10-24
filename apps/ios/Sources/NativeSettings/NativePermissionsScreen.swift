@@ -117,18 +117,22 @@ final class NativePermissionsModel {
 
 /// Native replacement for the Dashboard `/settings/device/permissions` page.
 /// Reads real iOS authorization states; no Gateway call is involved.
+/// Rows that can be asked in place expose a trailing swipe action and a context-menu entry;
+/// the inline "Allow" button stays for discoverability and VoiceOver.
 @MainActor
 struct NativePermissionsScreen: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var model = NativePermissionsModel()
     var headerSidebarAction: OpenClawSidebarHeaderAction?
     var embedded: Bool = false
+    var onClose: (() -> Void)?
 
     var body: some View {
         NativeSettingsPage(
             title: NativeSettingsDestination.permissions.title,
             headerSidebarAction: self.headerSidebarAction,
-            embedded: self.embedded)
+            embedded: self.embedded,
+            onClose: self.onClose)
         {
             self.list
         }
@@ -147,34 +151,62 @@ struct NativePermissionsScreen: View {
                     self.row(item)
                 }
             } footer: {
-                Text("Denied permissions can only be changed in iOS Settings.")
-                    .font(OpenClawType.footnote)
+                NativeSettingsFooter("Denied permissions can only be changed in iOS Settings.")
             }
             Section {
                 NativeSettingsSystemSettingsButton()
             }
         }
         .refreshable { await self.model.reload() }
+        .openClawAnimation(value: self.model.items)
+    }
+
+    private func canAsk(_ item: NativePermissionItem) -> Bool {
+        item.status == .notDetermined && NativePermissionPresentation.canPromptInApp(item.permission)
     }
 
     private func row(_ item: NativePermissionItem) -> some View {
         let title: String = NativePermissionPresentation.title(item.permission)
         let icon: String = NativePermissionPresentation.icon(item.permission)
         let pill: NativeSettingsPill = NativePermissionPresentation.pill(item.status)
-        let canAsk: Bool = item.status == .notDetermined
-            && NativePermissionPresentation.canPromptInApp(item.permission)
-        return HStack(spacing: 8) {
-            NativeSettingsRow(title: title, systemImage: icon, pill: pill)
+        let canAsk: Bool = self.canAsk(item)
+        let busy: Bool = self.model.requestingID != nil
+        return HStack(spacing: OpenClawSpace.sm) {
+            NativeSettingsRow(title: title, systemImage: icon, tint: pill.tone.color, pill: pill)
             if canAsk {
                 Button {
                     Task { await self.model.request(item.permission) }
                 } label: {
                     Text("Allow")
                         .font(OpenClawType.subheadSemiBold)
-                        .frame(minWidth: 44, minHeight: 44)
+                        .frame(minWidth: OpenClawHitTarget.minimum, minHeight: OpenClawHitTarget.minimum)
                 }
                 .buttonStyle(.borderless)
-                .disabled(self.model.requestingID != nil)
+                .disabled(busy)
+            }
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            if canAsk {
+                Button {
+                    Task { await self.model.request(item.permission) }
+                } label: {
+                    Label("Allow", systemImage: "checkmark.circle")
+                }
+                .tint(OpenClawBrand.accent)
+                .disabled(busy)
+            }
+        }
+        .contextMenu {
+            if canAsk {
+                Button {
+                    Task { await self.model.request(item.permission) }
+                } label: {
+                    Label("Allow", systemImage: "checkmark.circle")
+                }
+                .disabled(busy)
+            }
+            if item.status != .granted {
+                NativeSettingsSystemSettingsButton()
             }
         }
     }

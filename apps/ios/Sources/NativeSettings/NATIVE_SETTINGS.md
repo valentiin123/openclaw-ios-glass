@@ -1,6 +1,10 @@
 # NativeSettings: native SwiftUI replacements for the Settings WebView pages
 
-Nothing outside `apps/ios/Sources/NativeSettings/` references these files yet. Integration is a small, explicit step (below).
+These screens are used by `Settings/SettingsHubScreen.swift` (embedded in its stack) and by `Native/NativeDestinations.swift` (via `NativeSettingsRouter.screen(forPath:)`).
+
+Design (redesign): few grouped sections (Connection, Agent & Voice, Notifications, Channels, Skills, Appearance, Permissions, About). Content sits on opaque list surfaces; Liquid Glass is only used through shared controls (`OpenClawGlassButton`, `OpenClawGlassSegmented`). One shared spring (`OpenClawMotion`), Reduce Motion honored, 44 pt targets, Dynamic Type (the row stacks its pill under the text at accessibility sizes), VoiceWare labels via combined accessibility elements, swipe actions and context menus (copy) where useful. Every screen accepts `onClose` to show a Done button when presented as a sheet.
+
+Older integration notes below are kept for reference.
 
 ## Files
 

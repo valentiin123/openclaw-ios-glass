@@ -3,20 +3,36 @@ import SwiftUI
 
 // MARK: - Chat
 
-/// Chat tab. `ChatProTab` does not own a NavigationStack, so the shell provides one.
-/// The shell has no sidebar, so there is no header action.
+/// System chat (main session with OpenClaw), presented full screen over the shell from the
+/// Overview "More" menu. It is not a tab. `ChatProTab` does not own a NavigationStack, so the
+/// shell provides one. The full-screen cover hides the tab bar, so the composer (a bottom
+/// safe-area inset of the chat view) sits above the keyboard and never overlaps a tab bar.
+/// A single close button replaces the sidebar action.
 struct AppShellChatView: View {
     @Bindable var navigation: AppShellNavigation
+
+    private var closeAction: OpenClawSidebarHeaderAction {
+        OpenClawSidebarHeaderAction(
+            systemName: "xmark",
+            accessibilityLabel: "Close",
+            accessibilityIdentifier: "AppShell.Chat.Close",
+            action: self.close)
+    }
 
     var body: some View {
         NavigationStack {
             ChatProTab(
-                headerSidebarAction: nil,
+                headerSidebarAction: self.closeAction,
                 openSettings: self.openGateway)
         }
         .accessibilityIdentifier("AppShell.Chat")
     }
 
+    private func close() {
+        self.navigation.closeChat()
+    }
+
+    /// `openSettings` also dismisses the chat (the landing does not present it).
     private func openGateway() {
         self.navigation.openSettings(route: .gateway)
     }

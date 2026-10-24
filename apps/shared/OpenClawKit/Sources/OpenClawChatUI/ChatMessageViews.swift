@@ -584,7 +584,8 @@ extension ChatMessageBubble {
         // Keep the guarded base condition; iOS additionally opts assistant
         // messages into bubbles via the clean-chrome environment flag.
         if self.isUser { return true }
-        return !self.isRunContent && (self.style == .onboarding || !self.isClean || self.assistantBubblesInClean)
+        // Assistant replies are full-width text, no bubble. Only the onboarding chrome keeps one.
+        return !self.isRunContent && self.style == .onboarding
     }
 
     private var shouldRenderBubble: Bool {

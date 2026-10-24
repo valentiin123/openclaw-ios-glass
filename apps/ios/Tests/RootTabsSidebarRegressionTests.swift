@@ -1,253 +1,152 @@
 import Foundation
 import Testing
+@testable import OpenClaw
 
+/// Regression guards for the native `AppShell` (iOS 26 `TabView`, four bar tabs, no sidebar).
+/// The former sidebar / drawer guards were removed together with the code they inspected.
 struct RootTabsSidebarRegressionTests {
-    @Test func `layout modes share one detail shell without conditional branches`() throws {
-        let source = try String(contentsOf: Self.rootTabsSourceURL(), encoding: .utf8)
-        let shell = try Self.extract(
-            source,
-            from: "private var sidebarSplitContent: some View",
-            to: "private var sidebarDetailShell: some View")
+    // MARK: - Source guards
 
-        #expect(shell.components(separatedBy: "RootSidebarShell(").count == 2)
-        #expect(shell.components(separatedBy: "detail: self.sidebarDetailNavigationShell").count == 2)
-        #expect(!shell.contains("if isDrawerLayout"))
-        #expect(!shell.contains(".id(isDrawerLayout)"))
+    @Test func `shell root is a four tab TabView without a sidebar`() throws {
+        let source = try String(contentsOf: Self.shellSourceURL("AppShellRootView.swift"), encoding: .utf8)
+        let body = try Self.extract(source, from: "TabView(selection:", to: ".accessibilityIdentifier(\"AppShell.Root\")")
+
+        #expect(body.components(separatedBy: "Tab(\n").count == 5)
+        for tab in ["chat", "agents", "activity", "settings"] {
+            #expect(body.contains("value: AppShellTab.\(tab))"))
+        }
+        #expect(!body.contains("value: AppShellTab.overview)"))
+        #expect(!body.contains("value: AppShellTab.automations)"))
+        #expect(body.contains(".tabViewStyle(.sidebarAdaptable)"))
+        #expect(body.contains(".tabBarMinimizeBehavior(.onScrollDown)"))
+        #expect(!source.contains("RootSidebarShell("))
+        #expect(!source.contains("RootSidebar("))
     }
 
-    @Test func `sidebar controls keep a background-free icon inside their hit target`() throws {
-        let source = try String(contentsOf: Self.openClawProComponentsSourceURL(), encoding: .utf8)
-        let revealButton = try Self.extract(
+    @Test func `shell tab bar binding maps every destination to a bar tab`() throws {
+        let source = try String(contentsOf: Self.shellSourceURL("AppShellRootView.swift"), encoding: .utf8)
+        let binding = try Self.extract(
             source,
-            from: "struct OpenClawSidebarControlButton: View",
-            to: "struct OpenClawSidebarToolbarItem: ToolbarContent")
-        let toolbarItem = try Self.extract(
-            source,
-            from: "struct OpenClawSidebarToolbarItem: ToolbarContent",
-            to: "struct OpenClawGlassControlGroup")
+            from: "private var selectionBinding",
+            to: "var body: some View")
 
-        let button = try Self.extract(
-            revealButton,
-            from: "private var button: some View",
-            to: "private var icon: some View")
-        let icon = try Self.extract(
-            revealButton,
-            from: "private var icon: some View",
-            to: "@ViewBuilder\n    private func identified")
-
-        #expect(revealButton.contains("self.identified(self.button.buttonStyle(.plain))"))
-        #expect(button.contains(".frame(width: 44, height: 44)"))
-        #expect(button.contains(".contentShape(Rectangle())"))
-        #expect(icon.contains(".foregroundStyle(OpenClawBrand.accent)"))
-        #expect(!icon.contains(".glassEffect("))
-        #expect(!icon.contains("Circle()"))
-        #expect(icon.contains("width: OpenClawProMetric.compactControlSize"))
-        #expect(toolbarItem.contains(".sharedBackgroundVisibility(.hidden)"))
+        #expect(binding.contains("self.navigation.selection.barTab"))
+        #expect(binding.contains("self.navigation.userSelected(newValue)"))
     }
 
-    @Test func `push reveal uses one full bleed card with local gesture state`() throws {
-        let source = try String(contentsOf: Self.rootTabsSourceURL(), encoding: .utf8)
-        let drawerSource = try String(contentsOf: Self.rootSidebarShellSourceURL(), encoding: .utf8)
-        let sidebarSource = try String(contentsOf: Self.rootSidebarSourceURL(), encoding: .utf8)
-        let drawerContent = try Self.extract(
-            source,
-            from: "private var sidebarSplitContent: some View",
-            to: "private var sidebarDetailShell: some View")
-        let contentCard = try Self.extract(
-            drawerSource,
-            from: "private var contentCard: some View",
-            to: "@ViewBuilder\n    private var dismissalLayer")
-        let drawerGesture = try Self.extract(
-            drawerSource,
-            from: "private var drawerGesture: some Gesture",
-            to: "static func dragDisposition(")
-        let detailShell = try Self.extract(
-            source,
-            from: "private var sidebarDetailShell: some View",
-            to: "private func sidebarColumn(")
+    @Test func `shell tabs host their screens and expose stable identifiers`() throws {
+        let tabs = try String(contentsOf: Self.shellSourceURL("AppShellTabs.swift"), encoding: .utf8)
+        let root = try String(contentsOf: Self.shellSourceURL("AppShellRootView.swift"), encoding: .utf8)
 
-        #expect(drawerContent.contains("RootSidebarShell("))
-        #expect(drawerContent
-            .contains("self.sidebarColumn(drawerSafeAreaInsets: isDrawerLayout ? proxy.safeAreaInsets : nil)"))
-        #expect(drawerContent.contains("self.sidebarDetailNavigationShell"))
-        #expect(drawerContent.contains("self.isSidebarDetailRootVisible && self.sidebarNavigationPath.isEmpty"))
-        #expect(!source.contains("sidebarDrawerContentSurface"))
-        #expect(!source.contains("sidebarDrawerContentCard"))
-        #expect(!source.contains("sidebarContentDragOffset"))
-
-        #expect(drawerSource.contains("@GestureState(resetTransaction:"))
-        #expect(drawerSource.contains(".simultaneousGesture("))
-        #expect(drawerSource.contains("isEnabled: self.isDrawerLayout && !self.reduceMotion"))
-        #expect(drawerSource.contains(".accessibilityHidden(!self.isPresented)"))
-        #expect(drawerSource.contains(".accessibilityHidden(self.isDrawerLayout && self.isPresented)"))
-        #expect(drawerSource.contains(".onTapGesture(perform: self.onHide)"))
-        #expect(drawerSource.contains(".background(OpenClawSidebarPalette.background)"))
-        #expect(drawerSource.contains(".ignoresSafeArea(.container, edges: self.isDrawerLayout ? .vertical : [])"))
-        #expect(!drawerSource.contains("Color.black.opacity(0.35)"))
-        #expect(!drawerSource.contains("UIScreenEdgePanGestureRecognizer"))
-
-        #expect(contentCard.contains(".background(OpenClawProBackground())"))
-        #expect(contentCard.contains(".ignoresSafeArea(.container, edges: self.isDrawerLayout ? .vertical : [])"))
-        #expect(contentCard.contains(".allowsHitTesting(!self.isDrawerLayout || !self.isPresented)"))
-        #expect(contentCard.contains(".clipShape(shape)"))
-        #expect(contentCard.contains("shape.strokeBorder("))
-        #expect(contentCard.contains(".offset(x: offset)"))
-        #expect(!contentCard.contains("Color(uiColor: .systemGroupedBackground)"))
-        #expect(!contentCard.contains(".shadow("))
-
-        #expect(drawerGesture.contains(".updating(self.$dragState)"))
-        #expect(drawerGesture.contains("dragSession.disposition = disposition"))
-        #expect(drawerGesture.contains("let disposition = dragSession.disposition"))
-        #expect(drawerGesture.contains("dragSession.disposition = nil"))
-        #expect(drawerGesture.contains("case .opening:"))
-        #expect(drawerGesture.contains("case .closing:"))
-        #expect(drawerGesture.contains("onShow()"))
-        #expect(drawerGesture.contains("onHide()"))
-        #expect(drawerSource.contains("UnevenRoundedRectangle("))
-        #expect(drawerSource.contains("topLeadingRadius: RootSidebarShellMetric.topLeadingRadius * progress"))
-        #expect(drawerSource.contains("bottomLeadingRadius: RootSidebarShellMetric.cornerRadius * progress"))
-
-        #expect(!source.contains("showsDismissButton:"))
-        #expect(!sidebarSource.contains("let showsDismissButton: Bool"))
-        #expect(!sidebarSource.contains("let selectSettingsRoute:"))
-        #expect(source.contains("isDismissButtonEnabled: self.isSidebarVisible"))
-        #expect(sidebarSource.contains("OpenClawSidebarControlButton(action: self.dismissAction)"))
-        #expect(sidebarSource.contains(".allowsHitTesting(self.isDismissButtonEnabled)"))
-        #expect(sidebarSource.contains(".accessibilityHidden(!self.isDismissButtonEnabled)"))
-        #expect(sidebarSource.contains("accessibilityIdentifier: self.isDismissButtonEnabled"))
-        #expect(sidebarSource.contains("systemName: \"sidebar.leading\""))
-        #expect(!sidebarSource.contains("systemName: \"xmark\""))
-        #expect(detailShell.contains(".onAppear"))
-        #expect(detailShell.contains("guard self.sidebarDetailShellID == shellID else { return }"))
-        #expect(detailShell.contains("self.isSidebarDetailRootVisible = true"))
-        #expect(detailShell.contains(".onDisappear"))
-        #expect(detailShell.contains("self.isSidebarDetailRootVisible = false"))
+        for identifier in [
+            "AppShell.Chat",
+            "AppShell.Agents",
+            "AppShell.Agents.Sections",
+            "AppShell.Activity",
+            "AppShell.Activity.Sections",
+            "AppShell.Settings.Back",
+        ] {
+            #expect(tabs.contains("\"\(identifier)\""))
+        }
+        #expect(root.contains("AppShellChatView(navigation: self.navigation)"))
+        #expect(root.contains("AppShellAgentsView(navigation: self.navigation)"))
+        #expect(root.contains("AppShellActivityView(navigation: self.navigation, context: self.context)"))
+        #expect(root.contains("AppShellSettingsView(navigation: self.navigation, context: self.context)"))
+        // Hosted screens no longer receive a sidebar reveal action.
+        #expect(!tabs.contains("headerSidebarAction: self."))
     }
 
-    @Test func `sidebar has one agent selector and one session inventory`() throws {
-        let source = try String(contentsOf: Self.rootSidebarSourceURL(), encoding: .utf8)
-        let settings = try String(contentsOf: Self.settingsProTabSectionsSourceURL(), encoding: .utf8)
-        let brandHeader = try Self.extract(
-            source,
-            from: "private var brandHeader: some View",
-            to: "private var dismissAction:")
-        let agents = try Self.extract(
-            source,
-            from: "private var agentsSection: some View",
-            to: "static func agentModelLabel")
-        let agentSelector = try Self.extract(
-            source,
-            from: "private func agentSelectorLabel(",
-            to: "private var newChatButton:")
-        let pages = try Self.extract(
-            source,
-            from: "private func pagesSection(",
-            to: "private var homeRow:")
-        let sessions = try Self.extract(
-            source,
-            from: "private func sessionsSection(",
-            to: "private func pagesSection(")
-        let sessionButton = try Self.extract(
-            source,
-            from: "private func sessionButton(",
-            to: "private func destinationButton(")
-        let footer = try Self.extract(
-            source,
-            from: "private var footer: some View",
-            to: "private var mainSessionEntry:")
+    @Test func `host mounts the shell and no longer owns sidebar split or drawer state`() throws {
+        let source = try String(contentsOf: Self.sourceURL("RootTabs.swift"), encoding: .utf8)
 
-        #expect(!source.contains("visibleAgentCount"))
-        #expect(!source.contains("More Agents"))
-        #expect(agents.contains("Menu {"))
-        #expect(agents.contains("Picker(selection:"))
-        #expect(agents.contains("ForEach(self.selectableAgents"))
-        #expect(agents.contains("self.appModel.setSelectedAgentId"))
-        #expect(agents.contains("self.newChatButton"))
-        #expect(agents.contains("RootTabs.Sidebar.AgentSelector"))
-        #expect(agents.contains("self.selectableAgents.first(where: { $0.id == self.currentAgentID })"))
-        #expect(!agents.contains("?? self.selectableAgents.first"))
-        let selectorValue = try #require(
-            agents.range(of: ".accessibilityValue(Self.agentDisplayName(selectedAgent))"))
-        let newChat = try #require(agents.range(of: "self.newChatButton"))
-        #expect(agents[selectorValue.upperBound..<newChat.lowerBound].contains("\n            }"))
-        #expect(!agents.contains(".background(.ultraThinMaterial"))
-        #expect(!agentSelector.contains(".background(OpenClawSidebarPalette.selection"))
-        #expect(!settings.contains("settings-appearance-sidebar-agents"))
-
-        #expect(!brandHeader.contains("self.selectSidebarDestination(.settings)"))
-        #expect(footer.contains("self.selectSidebarDestination(.settings)"))
-        #expect(footer.contains("RootTabs.Sidebar.Destination.settings"))
-
-        #expect(pages.contains("ForEach(pinnedSessionNodes)"))
-        #expect(sessions.contains("section.id == \"recent\""))
-        #expect(sessions.contains("String(localized: \"Sessions\")"))
-        #expect(!sessions.contains("String(localized: \"Recent\")"))
-
-        let pin = try #require(sessionButton.range(of: "Image(systemName: \"pin.fill\")"))
-        let detail = try #require(sessionButton.range(of: "CommandCenterTab.sessionDetail(session)"))
-        let openChat = try #require(sessionButton.range(of: "self.selectSession(session)"))
-        let contextActions = try #require(sessionButton.range(of: ".commandSessionActions("))
-        #expect(pin.lowerBound < detail.lowerBound)
-        #expect(openChat.lowerBound < contextActions.lowerBound)
-        #expect(sessionButton.contains("sessionAccessibilityValue"))
+        #expect(source.contains("AppShellRootView(navigation: self.shell, context: self.shellContext)"))
+        #expect(source.contains("@State private var shell = AppShellNavigation("))
+        #expect(!source.contains("sidebarSplitContent"))
+        #expect(!source.contains("sidebarDetailShell"))
+        #expect(!source.contains("sidebarNavigationPath"))
+        #expect(!source.contains("RootSidebarShell("))
     }
 
-    @Test func `sidebar selection resets embedded settings navigation path`() throws {
-        let source = try String(contentsOf: Self.rootTabsSourceURL(), encoding: .utf8)
-        let sidebarDetail = try Self.extract(
+    @Test func `settings tab resets to the hub and routes gateway through the shell`() throws {
+        let source = try String(contentsOf: Self.shellSourceURL("AppShellModel.swift"), encoding: .utf8)
+        let reselect = try Self.extract(
             source,
-            from: "private var sidebarDetail: some View",
-            to: "private var sidebarDetailNavigationShell: some View")
-        let navigationShell = try Self.extract(
-            source,
-            from: "private var sidebarDetailNavigationShell: some View",
-            to: "private var sidebarDetailShellID: String")
-        let selection = try Self.extract(
-            source,
-            from: "private func selectSidebarDestination(",
-            to: "private func handleOpenChatRequest(")
-        let resetRange = try #require(selection.range(of: "self.sidebarNavigationPath.removeAll()"))
-        let destinationRange = try #require(selection.range(of: "self.selectedSidebarDestination = destination"))
+            from: "private func reselect(",
+            to: "\n}")
+        let settingsCase = try Self.extract(reselect, from: "case .settings:", to: "case .agents")
 
-        #expect(source.contains("@State private var sidebarNavigationPath: [SettingsRoute] = []"))
-        #expect(navigationShell.contains("NavigationStack(path: self.$sidebarNavigationPath)"))
-        #expect(sidebarDetail.contains("case .settings:"))
-        #expect(resetRange.lowerBound < destinationRange.lowerBound)
+        #expect(settingsCase.contains("self.settingsPath.removeAll()"))
+        #expect(settingsCase.contains("self.settingsPresentation = .hub"))
     }
 
-    private static func rootTabsSourceURL() -> URL {
+    // MARK: - Behaviour
+
+    @Test func `overview and automations share the activity bar tab`() {
+        #expect(AppShellTab.chat.barTab == .chat)
+        #expect(AppShellTab.agents.barTab == .agents)
+        #expect(AppShellTab.settings.barTab == .settings)
+        #expect(AppShellTab.activity.barTab == .activity)
+        #expect(AppShellTab.overview.barTab == .activity)
+        #expect(AppShellTab.automations.barTab == .activity)
+
+        let barTabs = Set(AppShellTab.allCases.map(\.barTab))
+        #expect(barTabs == [.chat, .agents, .activity, .settings])
+    }
+
+    @Test func `tab accessibility identifiers use the AppShell prefix`() {
+        for tab in AppShellTab.allCases {
+            #expect(tab.accessibilityIdentifier == "AppShell.Tab.\(tab.rawValue)")
+        }
+    }
+
+    @Test @MainActor func `activity tab restores the last section after leaving`() {
+        let navigation = AppShellNavigation(landing: AppShellLanding(tab: .chat))
+
+        navigation.userSelected(.activity)
+        #expect(navigation.selection == .activity)
+
+        navigation.selectActivitySection(.automations)
+        #expect(navigation.selection == .automations)
+
+        navigation.userSelected(.settings)
+        #expect(navigation.selection == .settings)
+
+        navigation.userSelected(.activity)
+        #expect(navigation.selection == .automations)
+    }
+
+    @Test @MainActor func `legacy destinations land on the matching tab`() {
+        let navigation = AppShellNavigation(landing: AppShellLanding(tab: .chat))
+
+        navigation.land(legacy: .agentsHub)
+        #expect(navigation.selection == .agents)
+        #expect(navigation.agentsSection == .subagents)
+
+        navigation.land(legacy: .gateway)
+        #expect(navigation.selection == .settings)
+        #expect(navigation.settingsPresentation == .gateway)
+        #expect(navigation.activeSettingsRoute == .gateway)
+
+        navigation.land(legacy: .settings)
+        #expect(navigation.selection == .settings)
+        #expect(navigation.settingsPresentation == .hub)
+        #expect(navigation.activeSettingsRoute == nil)
+    }
+
+    // MARK: - Helpers
+
+    private static func iosRootURL() -> URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-            .appendingPathComponent("Sources/RootTabs.swift")
     }
 
-    private static func rootSidebarShellSourceURL() -> URL {
-        URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("Sources/RootSidebarShell.swift")
+    private static func sourceURL(_ path: String) -> URL {
+        self.iosRootURL().appendingPathComponent("Sources/\(path)")
     }
 
-    private static func rootSidebarSourceURL() -> URL {
-        URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("Sources/RootSidebar.swift")
-    }
-
-    private static func openClawProComponentsSourceURL() -> URL {
-        URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("Sources/Design/OpenClawProComponents.swift")
-    }
-
-    private static func settingsProTabSectionsSourceURL() -> URL {
-        URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("Sources/Design/SettingsProTabSections.swift")
+    private static func shellSourceURL(_ file: String) -> URL {
+        self.sourceURL("Shell/App/\(file)")
     }
 
     private static func extract(_ source: String, from start: String, to end: String) throws -> String {
