@@ -48,6 +48,10 @@ struct RootSidebar: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 10)
             }
+            .refreshable {
+                await self.model.refreshSessions(appModel: self.appModel)
+            }
+            .sensoryFeedback(.selection, trigger: self.isSearchActive)
             self.footer
         }
         .foregroundStyle(OpenClawSidebarPalette.text)
@@ -272,7 +276,7 @@ struct RootSidebar: View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(OpenClawType.subheadSemiBold)
-                .frame(width: 40, height: 44)
+                .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -702,11 +706,69 @@ struct RootSidebar: View {
                     mainSessionKey: rowPass.mainSessionKey),
                 performMutation: self.performSessionMutation,
                 fork: { self.forkSession(session) })
+            .sessionSwipeActions(
+                self.sessionSwipeActionList(session, mainSessionKey: rowPass.mainSessionKey),
+                isEnabled: self.appModel.isOperatorGatewayConnected)
             .accessibilityValue(Self.sessionAccessibilityValue(
                 isPinned: session.pinned == true,
                 isUnread: session.unread == true))
             self.attentionBadges(for: Self.flattened([node]).map(\.session), targetID: "session:\(session.key)")
         }
+    }
+
+    /// Pin, snooze and archive as rightward swipe actions; same mutations as the context menu.
+    private func sessionSwipeActionList(
+        _ session: OpenClawChatSessionEntry,
+        mainSessionKey: String) -> [SessionSwipeAction]
+    {
+        var actions: [SessionSwipeAction] = []
+        let isPinned = session.pinned == true
+        actions.append(SessionSwipeAction(
+            id: "pin",
+            title: isPinned ? String(localized: "Unpin") : String(localized: "Pin"),
+            systemImage: isPinned ? "pin.slash" : "pin",
+            tint: OpenClawSidebarPalette.accent)
+        {
+            self.performSessionMutation(resetActiveSessionKey: nil) { transport in
+                try await transport.patchSession(key: session.key, pinned: !isPinned)
+            }
+        })
+        let now = Date.now
+        if session.isMain != true, session.archived != true,
+           session.sessionId?.trimmedNonEmpty != nil,
+           let preset = OpenClawChatSessionSnooze.presets(now: now).first,
+           !session.isSnoozed(at: now)
+        {
+            actions.append(SessionSwipeAction(
+                id: "snooze",
+                title: String(localized: "Snooze"),
+                systemImage: "clock",
+                tint: .orange)
+            {
+                self.performSessionMutation(resetActiveSessionKey: nil) { transport in
+                    try await transport.patchSession(
+                        key: session.key,
+                        expectedSessionID: session.sessionId,
+                        snoozedUntil: .until(preset.wakeAt))
+                }
+            })
+        }
+        if ChatSessionSidebarModel.canArchiveSession(session, mainSessionKey: mainSessionKey) {
+            actions.append(SessionSwipeAction(
+                id: "archive",
+                title: String(localized: "Archive"),
+                systemImage: "archivebox",
+                tint: .gray)
+            {
+                self.performSessionMutation(resetActiveSessionKey: session.key) { transport in
+                    try await transport.patchSession(
+                        key: session.key,
+                        expectedSessionID: session.sessionId,
+                        archived: true)
+                }
+            })
+        }
+        return actions
     }
 
     private func attentionBadges(for sessions: [OpenClawChatSessionEntry], targetID: String) -> some View {

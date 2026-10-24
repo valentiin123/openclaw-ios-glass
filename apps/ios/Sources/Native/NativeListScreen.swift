@@ -1,0 +1,128 @@
+import Observation
+import SwiftUI
+
+/// One display row. Every list destination maps its Gateway JSON into this shape.
+struct NativeRow: Identifiable, Equatable {
+    let id: String
+    let title: String
+    var subtitle: String?
+    var trailing: String?
+    var systemImage: String
+    var tint: Color = .secondary
+
+    static func == (lhs: NativeRow, rhs: NativeRow) -> Bool {
+        lhs.id == rhs.id && lhs.title == rhs.title && lhs.subtitle == rhs.subtitle && lhs.trailing == rhs.trailing
+    }
+}
+
+@MainActor
+@Observable
+final class NativeListModel {
+    var state: NativeLoadState<[NativeRow]> = .idle
+    private(set) var footnote: String?
+
+    typealias Loader = @MainActor (NodeAppModel) async throws -> (rows: [NativeRow], footnote: String?)
+    private let loader: Loader
+
+    init(loader: @escaping Loader) {
+        self.loader = loader
+    }
+
+    func load(appModel: NodeAppModel, showSpinner: Bool) async {
+        guard appModel.isOperatorGatewayConnected else {
+            self.state = .failed(String(localized: "The operator connection is offline."))
+            return
+        }
+        if showSpinner { self.state = .loading }
+        do {
+            let result = try await self.loader(appModel)
+            self.footnote = result.footnote
+            self.state = .loaded(result.rows)
+        } catch is CancellationError {
+            return
+        } catch {
+            self.state = .failed(error.localizedDescription)
+        }
+    }
+}
+
+/// Native replacement for a Dashboard list page: NavigationStack + List, refreshable.
+struct NativeListScreen: View {
+    @Environment(NodeAppModel.self) private var appModel
+    @State private var model: NativeListModel
+    let title: String
+    let emptyTitle: LocalizedStringKey
+    let emptyIcon: String
+    var headerSidebarAction: OpenClawSidebarHeaderAction?
+
+    init(
+        title: String,
+        emptyTitle: LocalizedStringKey,
+        emptyIcon: String,
+        headerSidebarAction: OpenClawSidebarHeaderAction?,
+        loader: @escaping NativeListModel.Loader)
+    {
+        self.title = title
+        self.emptyTitle = emptyTitle
+        self.emptyIcon = emptyIcon
+        self.headerSidebarAction = headerSidebarAction
+        self._model = State(initialValue: NativeListModel(loader: loader))
+    }
+
+    var body: some View {
+        NavigationStack {
+            NativeStateView(
+                state: self.model.state,
+                isEmpty: { $0.isEmpty },
+                emptyTitle: self.emptyTitle,
+                emptyIcon: self.emptyIcon,
+                retry: { await self.model.load(appModel: self.appModel, showSpinner: true) })
+            { rows in
+                List {
+                    ForEach(rows) { row in
+                        NativeRowView(row: row)
+                    }
+                    if let footnote = self.model.footnote {
+                        Text(verbatim: footnote)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .listRowBackground(Color.clear)
+                    }
+                }
+                .refreshable { await self.model.load(appModel: self.appModel, showSpinner: false) }
+            }
+            .navigationTitle(self.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if let headerSidebarAction {
+                    OpenClawSidebarToolbarItem(action: headerSidebarAction, placement: .topBarLeading)
+                }
+            }
+        }
+        .task { await self.model.load(appModel: self.appModel, showSpinner: true) }
+    }
+}
+
+private struct NativeRowView: View {
+    let row: NativeRow
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Image(systemName: self.row.systemImage)
+                .foregroundStyle(self.row.tint)
+                .frame(width: 24)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: self.row.title).font(.body)
+                if let subtitle = self.row.subtitle {
+                    Text(verbatim: subtitle).font(.subheadline).foregroundStyle(.secondary)
+                }
+            }
+            Spacer(minLength: 8)
+            if let trailing = self.row.trailing {
+                Text(verbatim: trailing).font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}

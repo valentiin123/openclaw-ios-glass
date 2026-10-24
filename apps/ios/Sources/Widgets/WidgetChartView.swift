@@ -73,8 +73,11 @@ struct WidgetChartView: View {
             .modifier(AxisLabels(x: spec.xLabel, y: spec.yLabel, legend: spec.series.count > 1))
         case .pie:
             // Un secteur par point de la première série non vide.
-            let points = spec.series.first { !$0.points.isEmpty }?.points.filter { $0.y > 0 } ?? []
-            Chart(Array(points.enumerated()), id: \.offset) { _, point in
+            let firstSeries = spec.series.first(where: { series in !series.points.isEmpty })
+            let allPoints = firstSeries?.points ?? []
+            let points = allPoints.filter { point in point.y > 0 }
+            let indexed = Array(points.enumerated())
+            Chart(indexed, id: \.offset) { _, point in
                 SectorMark(angle: .value("Value", point.y),
                            innerRadius: .ratio(0.5),
                            angularInset: 1.5)

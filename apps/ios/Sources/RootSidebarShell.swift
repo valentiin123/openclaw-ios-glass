@@ -66,6 +66,7 @@ struct RootSidebarShell<Sidebar: View, Detail: View>: View {
             isEnabled: self.isDrawerLayout && !self.reduceMotion)
         .background(OpenClawProBackground())
         .animation(self.animation, value: self.isPresented)
+        .sensoryFeedback(.impact(weight: .light), trigger: self.isPresented)
     }
 
     private var sidebarLayer: some View {

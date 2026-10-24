@@ -307,7 +307,7 @@ struct RootTabs: View {
                 openAutomations: { self.selectSidebarDestination(.cron) },
                 openUsage: { self.selectSidebarDestination(.usage) })
         case let .dashboard(path):
-            DashboardPageScreen(
+            NativeDestinationRouter(
                 path: path,
                 title: self.selectedSidebarDestination.title,
                 headerSidebarAction: self.sidebarHeaderAction,
@@ -501,7 +501,7 @@ struct RootTabs: View {
     }
 
     private var gatewayToastAnimation: Animation? {
-        self.reduceMotion ? nil : OpenClawMotion.spring
+        OpenClawMotion.animation(reduceMotion: self.reduceMotion)
     }
 
     private func gatewayProblemToast(_ problem: GatewayConnectionProblem) -> some View {
