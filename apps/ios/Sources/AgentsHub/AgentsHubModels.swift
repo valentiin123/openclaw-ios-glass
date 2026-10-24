@@ -51,6 +51,14 @@ enum AgentsHubRunStatus: Equatable, Sendable {
     }
 }
 
+/// Decoded result of `agents.create` (AgentsCreateResultSchema). Only the fields the UI needs.
+struct AgentsHubCreatedAgent: Decodable, Equatable, Sendable {
+    let agentId: String
+    let name: String
+    let workspace: String?
+    let model: String?
+}
+
 struct SubagentNode: Identifiable, Equatable, Sendable {
     var id: String { session.key }
     let session: OpenClawChatSessionEntry

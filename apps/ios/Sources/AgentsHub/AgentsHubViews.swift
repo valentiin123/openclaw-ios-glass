@@ -13,6 +13,8 @@ import UIKit
 struct AgentsHubListView: View {
     @Bindable var model: AgentsHubViewModel
 
+    @State private var showCreate = false
+
     var body: some View {
         List {
             errorSection
@@ -20,12 +22,31 @@ struct AgentsHubListView: View {
         }
         .overlay { listOverlay }
         .navigationTitle("Agents")
+        .toolbar { createToolbar }
+        .sheet(isPresented: $showCreate) {
+            CreateAgentSheet(model: model)
+        }
         .navigationDestination(for: OpenClawChatAgentChoice.self) { agent in
             AgentDetailView(model: model, agent: agent)
         }
         .refreshable { await model.loadAgents() }
         .task { if model.agents.isEmpty { await model.loadAgents() } }
         .agentsHubAnimation(value: model.agents)
+    }
+
+    @ToolbarContentBuilder
+    private var createToolbar: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            Button(action: openCreate) {
+                Label("New agent", systemImage: "plus")
+                    .frame(minWidth: 44, minHeight: 44)
+            }
+            .disabled(!model.canCreateAgent)
+        }
+    }
+
+    private func openCreate() {
+        showCreate = true
     }
 
     @ViewBuilder

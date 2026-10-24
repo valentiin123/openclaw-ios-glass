@@ -18,6 +18,7 @@ public struct WidgetCardView: View {
     @State private var errorMessage: String?
     @StateObject private var controller = WidgetWebController()
     @State private var reloadToken = UUID()
+    @State private var showSource = false
 
     public init(payload: WidgetPayload, title: String? = nil, network: WidgetNetworkPolicy = .none) {
         self.payload = payload
@@ -126,21 +127,66 @@ public struct WidgetCardView: View {
                 .frame(maxWidth: .infinity, minHeight: 96)
                 .accessibilityLabel(String(localized: "Loading widget"))
         case let .failed(message):
-            VStack(spacing: 8) {
-                Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
-                Text(message).font(OpenClawType.subhead).multilineTextAlignment(.center)
-                Button { state = .loading; reloadToken = UUID() } label: {
-                    Text(String(localized: "Retry")).font(OpenClawType.body)
-                }
-                .buttonStyle(.glass)
-            }
-            .padding()
-            .frame(maxWidth: .infinity, minHeight: 120)
-            .background(Color(.secondarySystemBackground))
-            .accessibilityElement(children: .combine)
+            failureView(message)
         default:
             EmptyView()
         }
+    }
+
+    /// Texte brut du contenu, utilisé comme repli quand le rendu échoue.
+    private var sourceText: String? {
+        switch payload {
+        case let .html(source, _): source
+        case let .svg(source): source
+        case .chart: nil
+        }
+    }
+
+    private func failureView(_ message: String) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle")
+                .foregroundStyle(.orange)
+                .accessibilityHidden(true)
+            Text(verbatim: message)
+                .font(OpenClawType.subhead)
+                .multilineTextAlignment(.center)
+            GlassEffectContainer {
+                HStack(spacing: 8) {
+                    Button {
+                        showSource = false
+                        state = .loading
+                        reloadToken = UUID()
+                    } label: {
+                        Text(String(localized: "Retry")).font(OpenClawType.body).frame(minHeight: 44)
+                    }
+                    .buttonStyle(.glass)
+                    if sourceText != nil {
+                        Button {
+                            OpenClawMotion.perform(reduceMotion: reduceMotion) { showSource.toggle() }
+                        } label: {
+                            Text(showSource ? String(localized: "Hide source") : String(localized: "Show source"))
+                                .font(OpenClawType.body)
+                                .frame(minHeight: 44)
+                        }
+                        .buttonStyle(.glass)
+                    }
+                }
+            }
+            if showSource, let sourceText {
+                ScrollView {
+                    Text(verbatim: String(sourceText.prefix(8000)))
+                        .font(OpenClawType.footnote)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 200)
+                .transition(OpenClawMotion.appear(reduceMotion: reduceMotion))
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, minHeight: 120)
+        .background(Color(.secondarySystemBackground))
+        .accessibilityElement(children: .contain)
     }
 
     private func export(copy: Bool) async {

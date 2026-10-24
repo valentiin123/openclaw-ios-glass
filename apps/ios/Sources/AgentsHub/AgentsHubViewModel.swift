@@ -37,6 +37,10 @@ final class AgentsHubViewModel {
     /// Droits dérivés des scopes opérateur et des méthodes annoncées (voir AgentsHubScreen).
     var canLaunch = false
     var canStop = false
+    var canCreateAgent = false
+
+    private(set) var isCreatingAgent = false
+    private(set) var createAgentError: String?
 
     private var trackedAgentID: String?
     private var trackedRoot: OpenClawChatSessionEntry?
@@ -148,6 +152,36 @@ final class AgentsHubViewModel {
         }
         if let tree { await loadTree(root: tree.session) }
     }
+
+    // MARK: Create agent
+
+    /// `agents.create` (scope operator.admin). Built locally because OpenClawChatGatewayRequests has no constructor.
+    /// Returns the new agent id on success, nil on failure (see `createAgentError`).
+    func createAgent(name: String, agentID: String, emoji: String, modelID: String) async -> String? {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return nil }
+        isCreatingAgent = true
+        createAgentError = nil
+        defer { isCreatingAgent = false }
+        var params: [String: AnyCodable] = ["name": AnyCodable(trimmedName)]
+        let optional: [(String, String)] = [("agentId", agentID), ("emoji", emoji), ("model", modelID)]
+        for (key, raw) in optional {
+            let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !value.isEmpty { params[key] = AnyCodable(value) }
+        }
+        let request = OpenClawChatGatewayRequest(method: "agents.create", params: params, timeoutMs: 30000)
+        do {
+            let data = try await gateway.request(request)
+            let created = try JSONDecoder().decode(AgentsHubCreatedAgent.self, from: data)
+            await loadAgents()
+            return created.agentId
+        } catch {
+            createAgentError = error.localizedDescription
+            return nil
+        }
+    }
+
+    func clearCreateAgentError() { createAgentError = nil }
 
     // MARK: Launch
 

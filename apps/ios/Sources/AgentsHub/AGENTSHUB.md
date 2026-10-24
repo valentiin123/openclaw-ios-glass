@@ -50,3 +50,40 @@ Glass limité aux contrôles, contenu sur surfaces opaques, un seul ressort dés
 - Les champs `status` / `subagentRunState` sont des `String?` libres : le mapping de `AgentsHubRunStatus` repose sur les valeurs vues dans le code (`running`, `active`), pas sur une énumération du protocole.
 - Le paramètre `spawnedBy` de `sessions.list` filtre bien les enfants directs : déduit de la signature, non testé contre un Gateway.
 - Comportement de `chat.abort` sur un run de sous-agent, VoiceOver, Dynamic Type et Reduce Motion : à tester sur appareil.
+
+## Ajout : création d'un agent
+
+| Élément | Détail |
+| --- | --- |
+| Fichier | `AgentsHubCreateAgentSheet.swift` (`CreateAgentSheet`) |
+| Méthode Gateway | `agents.create` (scope `operator.admin`), schéma `AgentsCreateParamsSchema` : `name` obligatoire ; `agentId`, `emoji`, `model` optionnels |
+| Requête | construite localement avec `OpenClawChatGatewayRequest(method:params:timeoutMs:)` : `OpenClawChatGatewayRequests` n'a pas de constructeur `agents.create` et OpenClawKit est hors périmètre |
+| Réponse | `AgentsHubCreatedAgent` (`agentId`, `name`, `workspace?`, `model?`) |
+| ViewModel | `createAgent(name:agentID:emoji:modelID:)`, `isCreatingAgent`, `createAgentError`, `clearCreateAgentError()`, `canCreateAgent` |
+| Droit | `AgentsHubScreen.refreshCapabilities` : `operator.admin` + `supportsServerMethod("agents.create")` |
+| UI | bouton `+` (44 pt) dans la barre de `AgentsHubListView`, désactivé sans droit ; feuille de formulaire système |
+
+Non vérifié : le décodage de la réponse `agents.create` et le comportement face à un Gateway réel ; aucune compilation SwiftUI possible sous Linux (seulement `swiftc -parse`).
+
+## Mise à jour : création d agent, hôte, résumé
+
+Fichiers ajoutés ou complétés depuis la première version :
+
+| Fichier | Rôle |
+| --- | --- |
+| `AgentsHubScreen.swift` | Hôte `AgentsHubScreen(headerSidebarAction:)` : branche `AgentsHubGateway` sur `appModel.operatorSession`, calcule `canLaunch` / `canStop` / `canCreateAgent`, observe `sessions.changed`. |
+| `AgentsHubSummaryBar.swift` | Compteurs (total, actifs, échecs, live) sur capsules Liquid Glass dans un seul `GlassEffectContainer`. |
+| `AgentsHubCreateAgentSheet.swift` | `CreateAgentSheet` : formulaire `agents.create` (nom obligatoire ; agentId, emoji, modèle optionnels). |
+
+### agents.create
+
+- Méthode Gateway `agents.create`, scope `operator.admin`, schéma `AgentsCreateParamsSchema` (`name` requis ; `agentId`, `emoji`, `model`, `workspace`, `avatar`, `onboarding` optionnels).
+- `OpenClawChatGatewayRequests` n expose pas de constructeur : `AgentsHubViewModel.createAgent(name:agentID:emoji:modelID:)` construit `OpenClawChatGatewayRequest(method: "agents.create", ...)` localement. Si OpenClawKit ajoute un constructeur, le remplacer.
+- Réponse décodée par `AgentsHubCreatedAgent` (`agentId`, `name`, `workspace?`, `model?`).
+- Le bouton « New agent » (barre de la liste) est désactivé sans `canCreateAgent` ; la feuille explique le droit manquant.
+
+### Non vérifié (ajouts)
+
+- Seul `swiftc -parse` a été exécuté (Linux, sans SwiftUI) : aucun typecheck ni test sur appareil.
+- Les clés de localisation (`New agent`, `Identity`, `Advanced (optional)`, etc.) ne sont pas ajoutées aux `.lproj` (hors périmètre).
+- Le paramètre `timeoutMs` de `agents.create` (30000) est un choix local, non issu du protocole.

@@ -106,7 +106,7 @@ struct NativeUsageScreen: View {
                 }
                 Section {
                     ForEach(snapshot.days.reversed()) { day in
-                        NativeUsageDayRow(day: day, peak: snapshot.peakDay?.id == day.id)
+                        NativeUsageDayRow(day: day)
                             .contextMenu { self.menu(for: day) }
                     }
                 } header: {
@@ -208,17 +208,11 @@ private struct NativeUsageSummary: View {
 
 private struct NativeUsageDayRow: View {
     let day: NativeUsageDay
-    let peak: Bool
 
     var body: some View {
         LabeledContent {
-            HStack(spacing: 8) {
-                if self.peak {
-                    NativeBadge(text: String(localized: "Peak"), color: OpenClawBrand.warn)
-                }
-                Text(self.day.cost, format: .currency(code: "USD"))
-                    .monospacedDigit()
-            }
+            Text(self.day.cost, format: .currency(code: "USD"))
+                .monospacedDigit()
         } label: {
             Text(self.day.date, format: .dateTime.weekday(.abbreviated).month().day())
         }

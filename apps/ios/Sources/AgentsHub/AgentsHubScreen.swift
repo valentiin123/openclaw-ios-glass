@@ -65,14 +65,18 @@ struct AgentsHubScreen: View {
         guard let route = await session.currentRoute() else {
             model.canLaunch = false
             model.canStop = false
+            model.canCreateAgent = false
             return
         }
         let scopes = await session.currentOperatorScopes(ifCurrentRoute: route) ?? []
         let hasWrite = scopes.contains("operator.write") || scopes.contains("operator.admin")
         let create = await session.supportsServerMethod("sessions.create", ifCurrentRoute: route) == true
         let abort = await session.supportsServerMethod("chat.abort", ifCurrentRoute: route) == true
+        let hasAdmin = scopes.contains("operator.admin")
+        let createAgent = await session.supportsServerMethod("agents.create", ifCurrentRoute: route) == true
         model.canLaunch = hasWrite && create
         model.canStop = hasWrite && abort
+        model.canCreateAgent = hasAdmin && createAgent
     }
 
     /// Rafraîchit l'arbre lorsque la Gateway publie `sessions.changed` (la tâche est annulée avec la vue).

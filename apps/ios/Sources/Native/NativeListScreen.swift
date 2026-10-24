@@ -114,7 +114,6 @@ struct NativeListScreen: View {
                 ForEach(visible) { row in
                     NativeRowView(row: row)
                         .contextMenu { self.menu(for: row) }
-                        .swipeActions(edge: .trailing) { self.copyAction(for: row) }
                 }
             } footer: {
                 if let footnote = self.model.footnote {
@@ -138,16 +137,6 @@ struct NativeListScreen: View {
         } label: {
             Label("Copy", systemImage: "doc.on.doc")
         }
-    }
-
-    @ViewBuilder
-    private func copyAction(for row: NativeRow) -> some View {
-        Button {
-            UIPasteboard.general.string = row.copyText
-        } label: {
-            Label("Copy", systemImage: "doc.on.doc")
-        }
-        .tint(.blue)
     }
 }
 

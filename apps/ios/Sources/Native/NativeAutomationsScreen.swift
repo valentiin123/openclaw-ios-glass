@@ -239,7 +239,6 @@ struct NativeAutomationsScreen: View {
                 NativeAutomationRow(job: job, isBusy: self.model.busyIds.contains(job.id))
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) { self.trailingActions(job) }
-            .swipeActions(edge: .leading) { self.leadingActions(job) }
             .contextMenu { self.menu(job) }
         }
     }
@@ -261,16 +260,6 @@ struct NativeAutomationsScreen: View {
             }
         }
         .tint(.orange)
-    }
-
-    @ViewBuilder
-    private func leadingActions(_ job: NativeCronJob) -> some View {
-        Button {
-            Task { await self.model.runNow(job: job, appModel: self.appModel) }
-        } label: {
-            Label("Run now", systemImage: "play.fill")
-        }
-        .tint(.green)
     }
 
     @ViewBuilder
@@ -318,14 +307,10 @@ private struct NativeAutomationRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: self.job.name)
                     .font(OpenClawType.body)
-                Text(verbatim: self.job.scheduleText)
+                Text(verbatim: self.subtitle)
                     .font(OpenClawType.footnote)
                     .foregroundStyle(.secondary)
-                if let next = self.nextText {
-                    Text(verbatim: next)
-                        .font(OpenClawType.caption)
-                        .foregroundStyle(.secondary)
-                }
+                    .lineLimit(2)
             }
             Spacer(minLength: 8)
             if self.isBusy {
@@ -348,6 +333,12 @@ private struct NativeAutomationRow: View {
     private var iconColor: Color {
         if !self.job.enabled { return OpenClawBrand.warn }
         return self.job.isFailing ? OpenClawBrand.danger : Color.secondary
+    }
+
+    private var subtitle: String {
+        let next: String? = self.nextText
+        let parts: [String?] = [self.job.scheduleText, next]
+        return NativeFormat.joined(parts) ?? self.job.scheduleText
     }
 
     private var nextText: String? {

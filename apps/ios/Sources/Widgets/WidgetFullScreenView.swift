@@ -37,11 +37,13 @@ struct WidgetFullScreenView: View {
     private var content: some View {
         switch payload {
         case let .chart(spec):
-            ScrollView([.horizontal, .vertical]) {
-                WidgetChartView(spec: spec, height: 360)
-                    .padding(16)
-                    .frame(minWidth: UIScreen.main.bounds.width)
-                    .scaleEffect(min(max(scale * pinch, 1), 5), anchor: .topLeading)
+            GeometryReader { proxy in
+                ScrollView([.horizontal, .vertical]) {
+                    WidgetChartView(spec: spec, height: 360)
+                        .padding(16)
+                        .frame(minWidth: proxy.size.width)
+                        .scaleEffect(min(max(scale * pinch, 1), 5), anchor: .topLeading)
+                }
             }
             .gesture(
                 MagnifyGesture()
@@ -73,7 +75,8 @@ struct WidgetFullScreenView: View {
                 state = .loading
                 reloadToken = UUID()
             } label: {
-                Text(String(localized: "Retry")).font(OpenClawType.body).frame(minHeight: 44)
+                Text(String(localized: "Retry")).font(OpenClawType.body)
+                    .frame(minWidth: 44, minHeight: 44)
             }
             .buttonStyle(.glass)
         }

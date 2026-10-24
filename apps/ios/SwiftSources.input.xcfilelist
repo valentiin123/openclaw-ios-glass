@@ -324,6 +324,7 @@ ShareExtension/ShareComposeView.swift
 ShareExtension/ShareContentExtractor.swift
 ShareExtension/ShareDraftComposer.swift
 ShareExtension/ShareViewController.swift
+Sources/AgentsHub/AgentsHubCreateAgentSheet.swift
 Sources/AgentsHub/AgentsHubModels.swift
 Sources/AgentsHub/AgentsHubScreen.swift
 Sources/AgentsHub/AgentsHubSummaryBar.swift

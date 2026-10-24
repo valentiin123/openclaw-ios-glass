@@ -68,6 +68,7 @@ struct WidgetWebView: UIViewRepresentable {
     }
 
     static func dismantleUIView(_ web: WKWebView, coordinator: Coordinator) {
+        coordinator.cancelTimeout()
         web.stopLoading()
         web.navigationDelegate = nil
     }
@@ -81,6 +82,20 @@ struct WidgetWebView: UIViewRepresentable {
         private static let loadTimeoutSeconds = 15
 
         init(_ parent: WidgetWebView) { self.parent = parent }
+
+        func cancelTimeout() {
+            timeoutTask?.cancel()
+            timeoutTask = nil
+        }
+
+        /// Écrit l'état au tour suivant : `load` peut être appelé pendant `makeUIView`,
+        /// où modifier un `@Binding` déclenche l'avertissement « Modifying state during view update ».
+        private func deferState(_ next: WidgetLoadState) {
+            Task { @MainActor [weak self] in
+                guard let self, self.parent.state != next else { return }
+                self.parent.state = next
+            }
+        }
 
         /// Falls back to the error state (with Retry) if the page never finishes loading.
         private func armTimeout() {
@@ -121,10 +136,10 @@ struct WidgetWebView: UIViewRepresentable {
             guard let html = WidgetDocument.html(
                 for: parent.payload, network: parent.network, zoomable: parent.zoomable)
             else {
-                parent.state = .failed(String(localized: "This content cannot be displayed."))
+                deferState(.failed(String(localized: "This content cannot be displayed.")))
                 return
             }
-            parent.state = .loading
+            deferState(.loading)
             armTimeout()
             // baseURL nil : origine opaque, aucun accès aux ressources locales.
             web.loadHTMLString(html, baseURL: nil)

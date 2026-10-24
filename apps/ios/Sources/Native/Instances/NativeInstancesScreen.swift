@@ -116,14 +116,15 @@ struct NativeInstancesScreen: View {
     @ViewBuilder
     private func pendingSection(_ snapshot: InstancesSnapshot) -> some View {
         if !snapshot.pending.isEmpty {
-            Section(String(localized: "Pairing requests")) {
-                if !self.model.canResolveRequests {
-                    NativeInlineNotice(
-                        message: String(localized: "Approving or rejecting needs the operator.pairing scope."),
-                        systemImage: "lock")
-                }
+            Section {
                 ForEach(snapshot.pending) { request in
                     InstancePendingRow(model: self.model, request: request, appModel: self.appModel)
+                }
+            } header: {
+                Text("Pairing requests")
+            } footer: {
+                if !self.model.canResolveRequests {
+                    Text("Approving or rejecting needs the operator.pairing scope.")
                 }
             }
         }
@@ -194,11 +195,6 @@ private struct InstancePendingRow: View {
                     label: OpenClawTextValue.verbatim(String(localized: "Re-pairing")),
                     tone: .warn,
                     systemImage: "arrow.triangle.2.circlepath")
-            } else {
-                OpenClawStatusPill(
-                    label: OpenClawTextValue.verbatim(String(localized: "Pending")),
-                    tone: .accent,
-                    systemImage: "hourglass")
             }
         }
     }
@@ -298,11 +294,6 @@ private struct InstancePairedRow: View {
                 label: OpenClawTextValue.verbatim(String(localized: "Connected")),
                 tone: .ok,
                 systemImage: "checkmark.circle.fill")
-        } else {
-            OpenClawStatusPill(
-                label: OpenClawTextValue.verbatim(String(localized: "Offline")),
-                tone: .muted,
-                systemImage: "moon.zzz")
         }
     }
 
@@ -338,7 +329,8 @@ private struct InstancePairedRow: View {
             }
             .disabled(!self.model.canRemove)
         } label: {
-            Image(systemName: "ellipsis.circle")
+            Image(systemName: "ellipsis")
+                .foregroundStyle(.secondary)
                 .nativeMinimumTapTarget()
         }
         .disabled(busy)
@@ -351,19 +343,13 @@ private struct InstancePresenceRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(verbatim: self.device.name)
-                    .font(OpenClawType.headline)
-                Spacer(minLength: 8)
-                OpenClawStatusPill(
-                    label: OpenClawTextValue.verbatim(String(localized: "Online")),
-                    tone: .ok,
-                    systemImage: "dot.radiowaves.left.and.right")
-            }
-            ForEach(self.detailLines, id: \.self) { line in
-                Text(verbatim: line)
+            Text(verbatim: self.device.name)
+                .font(OpenClawType.headline)
+            if let summary = NativeFormat.joined(self.detailLines) {
+                Text(verbatim: summary)
                     .font(OpenClawType.subhead)
                     .foregroundStyle(.secondary)
+                    .lineLimit(2)
             }
         }
         .padding(.vertical, 4)

@@ -111,13 +111,6 @@ struct WorkboardListContent: View {
                     NativeInlineNotice(message: cardsError)
                 }
             }
-            if !self.canMove {
-                Section {
-                    NativeInlineNotice(
-                        message: String(localized: "Moving cards needs the operator.write scope and a Gateway that supports it."),
-                        systemImage: "lock")
-                }
-            }
             self.groupSections
             if self.content.hasMoreCards {
                 Section {
@@ -238,21 +231,14 @@ private struct WorkboardCardRow: View {
 
     private var metaLine: some View {
         let priorityText: String = WorkboardStatusInfo.priorityLabel(self.card.priority)
-        let priorityIcon: String = WorkboardStatusInfo.prioritySystemImage(self.card.priority)
-        let statusText: String = WorkboardStatusInfo.label(self.card.status)
-        let statusIcon: String = WorkboardStatusInfo.systemImage(self.card.status)
-        return VStack(alignment: .leading, spacing: 4) {
-            Label(statusText, systemImage: statusIcon)
-            Label(priorityText, systemImage: priorityIcon)
-            if let execution = self.card.executionStatus {
-                Label(execution.capitalized, systemImage: "gearshape.2")
-            }
-            if let updated = NativeFormat.relative(ms: self.card.updatedAtMs) {
-                Label(updated, systemImage: "clock")
-            }
-        }
-        .font(OpenClawType.footnote)
-        .foregroundStyle(.secondary)
+        let execution: String? = self.card.executionStatus?.capitalized
+        let updated: String? = NativeFormat.relative(ms: self.card.updatedAtMs)
+        let parts: [String?] = [priorityText, execution, updated]
+        let line: String = NativeFormat.joined(parts) ?? priorityText
+        return Text(verbatim: line)
+            .font(OpenClawType.footnote)
+            .foregroundStyle(.secondary)
+            .lineLimit(2)
     }
 
     @ViewBuilder
@@ -271,7 +257,7 @@ private struct WorkboardCardRow: View {
             ProgressView()
                 .frame(minWidth: 44, minHeight: 44)
                 .accessibilityLabel(Text("Moving card"))
-        } else {
+        } else if self.canMove {
             self.moveMenu
         }
     }
@@ -282,10 +268,10 @@ private struct WorkboardCardRow: View {
                 self.moveButton(status)
             }
         } label: {
-            Image(systemName: "arrow.left.arrow.right.circle")
+            Image(systemName: "ellipsis")
+                .foregroundStyle(.secondary)
                 .nativeMinimumTapTarget()
         }
-        .disabled(!self.canMove)
         .accessibilityLabel(Text("Move card"))
     }
 

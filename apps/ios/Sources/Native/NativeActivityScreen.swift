@@ -225,11 +225,21 @@ struct NativeActivityScreen: View {
     @ToolbarContentBuilder
     private var filterToolbar: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
-            Toggle(isOn: self.$model.failedOnly) {
-                Label("Failures only", systemImage: "exclamationmark.triangle")
+            Menu {
+                Toggle(isOn: self.$model.failedOnly) {
+                    Label("Failures only", systemImage: "exclamationmark.triangle")
+                }
+            } label: {
+                Image(systemName: self.filterSymbol)
             }
-            .toggleStyle(.button)
+            .accessibilityLabel(Text("Filter"))
         }
+    }
+
+    private var filterSymbol: String {
+        self.model.failedOnly
+            ? "line.3.horizontal.decrease.circle.fill"
+            : "line.3.horizontal.decrease.circle"
     }
 
     private func filtered(_ events: [NativeActivityEvent]) -> [NativeActivityEvent] {
