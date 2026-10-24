@@ -385,6 +385,7 @@ struct OpenClawToggleIndicator: View {
                     .padding(2)
                     .shadow(color: Color.black.opacity(0.14), radius: 1, x: 0, y: 1)
             }
+            .openClawAnimation(value: self.isOn)
     }
 }
 
@@ -414,7 +415,6 @@ struct OpenClawStatusBadge: View {
             Circle()
                 .fill(self.tone.color)
                 .frame(width: 7, height: 7)
-                .shadow(color: self.tone.color.opacity(0.55), radius: 3)
             self.label.text
                 .font(OpenClawType.caption2SemiBold)
                 .foregroundStyle(self.tone.color)
@@ -425,6 +425,7 @@ struct OpenClawStatusBadge: View {
             Capsule()
                 .fill(self.tone.color.opacity(self.colorScheme == .dark ? 0.14 : 0.10))
         }
+        .openClawAnimation(value: self.tone)
     }
 }
 
