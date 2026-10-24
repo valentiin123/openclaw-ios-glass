@@ -109,7 +109,9 @@ struct WidgetWebView: UIViewRepresentable {
 
         /// Reads the real content height (works even when page JavaScript is disabled: this is a native call).
         private func measure(_ web: WKWebView) {
-            let script = "Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0)"
+            // Hauteur réelle du <body> : `scrollHeight` ne descend jamais sous la hauteur du viewport,
+            // ce qui empêchait la carte de rétrécir. Le body (margin 0, padding inclus) suit le contenu.
+            let script = "document.body ? Math.ceil(document.body.getBoundingClientRect().height) : 0"
             web.evaluateJavaScript(script) { [weak self] value, _ in
                 let height: Double? = (value as? NSNumber)?.doubleValue
                 Task { @MainActor in

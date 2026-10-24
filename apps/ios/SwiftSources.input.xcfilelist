@@ -56,6 +56,7 @@
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatMermaidResources.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatMessageMetadata.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatMessageReactions.swift
+../shared/OpenClawKit/Sources/OpenClawChatUI/ChatMessageSwipeActions.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatMessageViews.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatMessageVisibleText.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatModelPickerStore.swift
@@ -126,6 +127,8 @@
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatSourceResources.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatSpeechController.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatStreamingReveal.swift
+../shared/OpenClawKit/Sources/OpenClawChatUI/ChatSubagentHeader.swift
+../shared/OpenClawKit/Sources/OpenClawChatUI/ChatSubagentWaitList.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatTalkActivityViews.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatTheme.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatToolActivityViews.swift
@@ -324,6 +327,7 @@ ShareExtension/ShareComposeView.swift
 ShareExtension/ShareContentExtractor.swift
 ShareExtension/ShareDraftComposer.swift
 ShareExtension/ShareViewController.swift
+Sources/AgentsHub/AgentsBoardScreen.swift
 Sources/AgentsHub/AgentsHubCreateAgentSheet.swift
 Sources/AgentsHub/AgentsHubModels.swift
 Sources/AgentsHub/AgentsHubScreen.swift
@@ -331,6 +335,10 @@ Sources/AgentsHub/AgentsHubSummaryBar.swift
 Sources/AgentsHub/AgentsHubSupport.swift
 Sources/AgentsHub/AgentsHubViewModel.swift
 Sources/AgentsHub/AgentsHubViews.swift
+Sources/AgentsHub/AgentTileDecor.swift
+Sources/AgentsHub/AgentTileModel.swift
+Sources/AgentsHub/AgentTileSprites.swift
+Sources/AgentsHub/AgentTileView.swift
 Sources/Calendar/CalendarService.swift
 Sources/Camera/CameraController.swift
 Sources/Chat/AppleReviewDemoChatTransport.swift

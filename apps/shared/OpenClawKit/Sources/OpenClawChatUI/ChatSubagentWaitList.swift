@@ -4,9 +4,19 @@ import SwiftUI
 /// import the app. `nil` falls back to switching the current chat session in place.
 public typealias OpenClawChatOpenSubagent = @MainActor @Sendable (_ sessionKey: String) -> Void
 
-extension EnvironmentValues {
-    @Entry public var openClawChatOpenSubagent: OpenClawChatOpenSubagent?
+// Explicit key: some SwiftPM toolchains lack the SwiftUI macro plugins that `@Entry` needs.
+// swiftformat:disable environmentEntry
+private struct OpenClawChatOpenSubagentKey: EnvironmentKey {
+    static let defaultValue: OpenClawChatOpenSubagent? = nil
 }
+
+extension EnvironmentValues {
+    public var openClawChatOpenSubagent: OpenClawChatOpenSubagent? {
+        get { self[OpenClawChatOpenSubagentKey.self] }
+        set { self[OpenClawChatOpenSubagentKey.self] = newValue }
+    }
+}
+// swiftformat:enable environmentEntry
 
 /// "Waiting on N subagents" with one tappable row per helper, on an opaque surface.
 struct ChatSubagentWaitList: View {

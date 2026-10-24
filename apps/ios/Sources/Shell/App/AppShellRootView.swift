@@ -12,7 +12,7 @@ import SwiftUI
 /// - The tab bar is never hidden or inset by hand: every hosted screen lets the system apply
 ///   the bottom safe area. The full-screen chat covers the tab bar, so its composer never
 ///   overlaps it and stays above the keyboard.
-/// - The tab bar minimises on scroll (`tabBarMinimizeBehavior`). Glass stays on navigation and
+/// - The tab bar stays in place (no minimise-on-scroll). Glass stays on navigation and
 ///   controls; hosted screens keep their opaque grouped backgrounds.
 struct AppShellRootView: View {
     @Bindable var navigation: AppShellNavigation
@@ -52,7 +52,6 @@ struct AppShellRootView: View {
             }
         }
         .tabViewStyle(.sidebarAdaptable)
-        .tabBarMinimizeBehavior(.onScrollDown)
         .sensoryFeedback(.selection, trigger: self.navigation.selection.barTab)
         .fullScreenCover(isPresented: self.$navigation.isChatPresented) {
             AppShellChatView(navigation: self.navigation)

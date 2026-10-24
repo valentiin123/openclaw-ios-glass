@@ -160,6 +160,15 @@ public enum OpenClawChatTheme {
         self.userBubble
     }
 
+    /// Discreet opaque surface behind the user's own messages. Assistant replies have no surface.
+    static var userSurface: Color {
+        #if os(macOS)
+        Color(nsColor: .quaternarySystemFill)
+        #else
+        self.adaptiveColor(light: .secondarySystemBackground, dark: IOSPalette.darkPanelRaised)
+        #endif
+    }
+
     static var danger: Color {
         #if os(macOS)
         Color(nsColor: .systemRed)

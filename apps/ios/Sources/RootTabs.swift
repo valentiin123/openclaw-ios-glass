@@ -65,13 +65,13 @@ struct RootTabs: View {
             return requested
         }
         guard let value = arguments.drop(while: { $0 != "--openclaw-initial-tab" }).dropFirst().first
-        else { return .chat }
+        else { return .overview }
         return switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "control", "overview": .overview
         case "chat", "talk", "voice": .chat
         case "agent", "agents": .agents
         case "settings": .settings
-        default: .chat
+        default: .overview
         }
     }
 

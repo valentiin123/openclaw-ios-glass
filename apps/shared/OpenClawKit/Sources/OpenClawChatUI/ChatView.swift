@@ -297,6 +297,7 @@ extension OpenClawChatView {
     private var content: some View {
         let transcript = self.transcriptPresentation
         return VStack(spacing: 0) {
+            self.subagentHeader
             self.messageList(transcript: transcript)
                 #if os(macOS)
                     .modifier(ChatTranscriptSearch(
@@ -418,6 +419,18 @@ extension OpenClawChatView {
     private var composerBottomPadding: CGFloat {
         if self.isTabletLayout || self.isDesktopLayout { return 12 }
         return self.isKeyboardVisible ? 0 : Layout.outerPaddingVertical
+    }
+
+    /// Minimal name + status strip, only for a subagent session on the compact layout.
+    @ViewBuilder
+    private var subagentHeader: some View {
+        if !self.isDesktopLayout,
+           let model = ChatSubagentHeaderModel.resolve(
+               sessionKey: self.viewModel.sessionKey,
+               session: self.viewModel.currentSessionEntry())
+        {
+            ChatSubagentHeader(model: model)
+        }
     }
 
     /// The turn has ended, but a helper it started is still running.

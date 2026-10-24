@@ -65,17 +65,38 @@ enum OpenClawBrand {
     static let carapaceSea = Color(red: 79 / 255.0, green: 200 / 255.0, blue: 174 / 255.0)
     // Accent fills stay dark enough for white content; foreground accents adapt
     // separately so small labels retain 4.5:1 contrast on dark surfaces and tinted pills.
-    static let uiAccentFill = adaptiveUIColor(light: (183, 56, 51), dark: (198, 62, 56))
-    static let uiAccent = adaptiveUIColor(light: (183, 56, 51), dark: (255, 107, 102))
-    static let uiAccentHot = adaptiveUIColor(light: (204, 75, 69), dark: (232, 92, 86))
-    static let uiAccentHotForeground = adaptiveUIColor(light: (166, 55, 50), dark: (255, 123, 115))
-    static let uiVoid = adaptiveUIColor(light: (246, 247, 249), dark: (11, 12, 17))
-    static let uiObsidian = adaptiveUIColor(light: (255, 255, 255), dark: (19, 21, 28))
-    static let uiTextSecondary = adaptiveUIColor(light: (90, 94, 110), dark: (168, 170, 191))
-    static let uiOK = adaptiveUIColor(light: (19, 122, 62), dark: (48, 209, 88))
-    static let uiWarn = adaptiveUIColor(light: (154, 87, 0), dark: (255, 214, 10))
+    // Control UI palette. Sources:
+    //  - src/canvas/wrap.ts (WIDGET_BASE_STYLES): --surface, --card, --elevated, --text,
+    //    --text-strong, --muted, --border, --border-strong, --accent, --accent-fill, status colors.
+    //  - src/gateway/control-ui-public-session-render.ts (PUBLIC_SESSION_STYLES):
+    //    --bg-muted, --hover, --panel, --primary-hover, --link.
+    // Dark page background is pure black (OLED) by product decision; the web --surface/--bg
+    // (#0e1015) is intentionally NOT used for pages. Opaque surfaces sit above it.
+    // Accent: light #bd4531 (fill) / #a83c29 (--primary-hover, used for text because #bd4531
+    // falls under 4.5:1 on tinted panels); dark #ff5c5c (--accent) / #d13c3c (--accent-fill).
+    static let uiAccentFill = adaptiveUIColor(light: (189, 69, 49), dark: (209, 60, 60))
+    static let uiAccent = adaptiveUIColor(light: (168, 60, 41), dark: (255, 92, 92))
+    static let uiAccentHot = adaptiveUIColor(light: (189, 69, 49), dark: (194, 46, 46))
+    static let uiAccentHotForeground = adaptiveUIColor(light: (168, 60, 41), dark: (255, 112, 112))
+    static let uiVoid = adaptiveUIColor(light: (250, 249, 247), dark: (0, 0, 0))
+    static let uiObsidian = adaptiveUIColor(light: (255, 255, 255), dark: (22, 25, 32))
+    static let uiTextSecondary = adaptiveUIColor(light: (110, 105, 96), dark: (139, 139, 148))
+    // Status: dark values follow wrap.ts (--ok #22c55e, --warn #f59e0b). Light values and the
+    // dark danger/info stay on the previous app values: the web ones (#15803d, #b45309, #dc2626,
+    // #2563eb light; #ef4444, #3b82f6 dark) computed under 4.5:1 on 10-12% tinted pills.
+    static let uiOK = adaptiveUIColor(light: (19, 122, 62), dark: (34, 197, 94))
+    static let uiWarn = adaptiveUIColor(light: (154, 87, 0), dark: (245, 158, 11))
     static let uiDanger = adaptiveUIColor(light: (185, 28, 28), dark: (252, 165, 165))
     static let uiInfo = adaptiveUIColor(light: (0, 91, 196), dark: (100, 168, 255))
+    // Surface and ink tokens (wrap.ts / control-ui-public-session-render.ts).
+    static let uiCard = adaptiveUIColor(light: (255, 255, 255), dark: (22, 25, 32))
+    static let uiElevated = adaptiveUIColor(light: (255, 255, 255), dark: (25, 28, 36))
+    static let uiPanel = adaptiveUIColor(light: (244, 241, 236), dark: (25, 28, 36))
+    static let uiHover = adaptiveUIColor(light: (239, 235, 228), dark: (31, 35, 48))
+    static let uiBorder = adaptiveUIColor(light: (232, 228, 220), dark: (30, 32, 40))
+    static let uiBorderStrong = adaptiveUIColor(light: (214, 208, 197), dark: (46, 48, 64))
+    static let uiTextPrimary = adaptiveUIColor(light: (64, 60, 53), dark: (212, 212, 216))
+    static let uiTextStrong = adaptiveUIColor(light: (33, 30, 26), dark: (244, 244, 245))
     // Carapace status foreground tokens. Keep these separate from the broader
     // app feedback palette so compact state indicators match the web system.
     static let uiStatusSuccess = adaptiveUIColor(light: (22, 163, 74), dark: (34, 197, 94))
@@ -89,6 +110,14 @@ enum OpenClawBrand {
     static let void = Color(uiColor: Self.uiVoid)
     static let obsidian = Color(uiColor: Self.uiObsidian)
     static let textSecondary = Color(uiColor: Self.uiTextSecondary)
+    static let surfaceCard = Color(uiColor: Self.uiCard)
+    static let surfaceElevated = Color(uiColor: Self.uiElevated)
+    static let surfacePanel = Color(uiColor: Self.uiPanel)
+    static let surfaceHover = Color(uiColor: Self.uiHover)
+    static let hairlineBorder = Color(uiColor: Self.uiBorder)
+    static let hairlineBorderStrong = Color(uiColor: Self.uiBorderStrong)
+    static let textPrimary = Color(uiColor: Self.uiTextPrimary)
+    static let textStrong = Color(uiColor: Self.uiTextStrong)
     static let danger = Color(uiColor: Self.uiDanger)
     static let ok = Color(uiColor: Self.uiOK)
     static let warn = Color(uiColor: Self.uiWarn)
@@ -100,35 +129,37 @@ enum OpenClawBrand {
     static let providerOpenAI = Color(red: 16 / 255.0, green: 163 / 255.0, blue: 127 / 255.0)
     static let providerAnthropic = Color(red: 217 / 255.0, green: 119 / 255.0, blue: 87 / 255.0)
     static let providerGoogle = Color(red: 66 / 255.0, green: 133 / 255.0, blue: 244 / 255.0)
-    static let activationCanvas = Color(uiColor: adaptiveUIColor(light: (255, 255, 255), dark: (18, 14, 15)))
-    static let activationSurface = Color(uiColor: adaptiveUIColor(light: (255, 253, 252), dark: (33, 29, 30)))
-    static let activationInsetSurface = Color(uiColor: adaptiveUIColor(light: (246, 241, 238), dark: (44, 37, 38)))
-    static let activationNeutralSurface = Color(uiColor: adaptiveUIColor(light: (242, 242, 247), dark: (34, 34, 37)))
+    // Activation surfaces follow the same Control UI ink/paper ramp (wrap.ts --surface/--card/--elevated,
+    // control-ui-public-session-render.ts --panel); dark canvas is OLED black.
+    static let activationCanvas = Color(uiColor: adaptiveUIColor(light: (250, 249, 247), dark: (0, 0, 0)))
+    static let activationSurface = Color(uiColor: adaptiveUIColor(light: (255, 255, 255), dark: (22, 25, 32)))
+    static let activationInsetSurface = Color(uiColor: adaptiveUIColor(light: (244, 241, 236), dark: (25, 28, 36)))
+    static let activationNeutralSurface = Color(uiColor: adaptiveUIColor(light: (255, 255, 255), dark: (22, 25, 32)))
     static let activationNeutralInsetSurface = Color(uiColor: adaptiveUIColor(
-        light: (247, 247, 249),
-        dark: (42, 42, 45)))
+        light: (244, 241, 236),
+        dark: (25, 28, 36)))
     static let activationNeutralStroke = Color(uiColor: adaptiveUIColor(
         light: (0, 0, 0),
         dark: (255, 255, 255)).withAlphaComponent(0.08))
     static let activationNeutralDivider = Color(uiColor: adaptiveUIColor(
         light: (0, 0, 0),
         dark: (255, 255, 255)).withAlphaComponent(0.09))
-    static let activationPrimaryAction = Color(uiColor: adaptiveUIColor(light: (209, 54, 51), dark: (238, 82, 76)))
+    // Same values as uiAccentFill (wrap.ts --accent-fill) so white label text keeps >= 4.5:1.
+    static let activationPrimaryAction = Color(uiColor: adaptiveUIColor(light: (189, 69, 49), dark: (209, 60, 60)))
     static let activationPrimaryActionText = Color.white
     static let activationHairline = Color(uiColor: adaptiveUIColor(
         light: (136, 44, 40),
         dark: (255, 210, 205)).withAlphaComponent(0.13))
-    static let activationGlow = Color(uiColor: adaptiveUIColor(light: (228, 78, 67), dark: (255, 111, 96)))
+    static let activationGlow = Color(uiColor: adaptiveUIColor(light: (189, 69, 49), dark: (255, 92, 92)))
 
     static var sheetBackground: LinearGradient {
         LinearGradient(
             colors: [
                 void,
-                obsidian.opacity(0.96),
-                Color(uiColor: .systemBackground),
+                void,
             ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing)
+            startPoint: .top,
+            endPoint: .bottom)
     }
 
     static var activationCanvasGradient: LinearGradient {
@@ -165,13 +196,11 @@ enum OpenClawBrand {
     static var activationPrimaryGradient: LinearGradient {
         LinearGradient(
             colors: [
-                Color(red: 1.0, green: 0.42, blue: 0.34),
-                activationGlow,
                 activationPrimaryAction,
-                Color(red: 0.66, green: 0.12, blue: 0.12),
+                activationPrimaryAction,
             ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing)
+            startPoint: .top,
+            endPoint: .bottom)
     }
 
     private static func adaptiveUIColor(
@@ -233,25 +262,16 @@ extension View {
             }
     }
 
-    func openClawCraftSurface(cornerRadius: CGFloat = 24) -> some View {
+    /// Opaque content surface: flat fill, hairline border, no glass, no highlight.
+    func openClawCraftSurface(cornerRadius: CGFloat = 12) -> some View {
         self
             .background {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(OpenClawBrand.activationSurface)
-                    .shadow(
-                        color: Color.black.opacity(0.07),
-                        radius: 16,
-                        x: 0,
-                        y: 8)
-            }
-            .overlay(alignment: .top) {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(Color.white.opacity(0.36), lineWidth: 0.5)
-                    .blendMode(.plusLighter)
             }
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(OpenClawBrand.activationHairline, lineWidth: 0.5)
+                    .strokeBorder(OpenClawBrand.hairlineBorderStrong, lineWidth: 1)
             }
     }
 }

@@ -16,6 +16,12 @@ Rien n'a été compilé (Linux). Tout est relu à la main, non exécuté.
 - `ChatView.messageRow` : branche le swipe avec la même éligibilité que les boutons Répondre/Copier ; l'appui long reste le menu contextuel existant.
 - Fondu mot par mot : déjà en place (`ChatStreamingReveal`, `ChatStreamingAssistantTextBody`), désactivé sous Reduce Motion. Aucun changement.
 
+## Ajouté le 2026-10-25 (en-tête sous-agent, non compilé, `swiftc -parse` OK)
+
+- `OpenClawChatUI/ChatSubagentHeader.swift` (nouveau, **à ajouter à `apps/ios/SwiftSources.input.xcfilelist`**) : `ChatSubagentHeaderModel.resolve(sessionKey:session:)` (nil hors session `:subagent:`) et `ChatSubagentHeader` : bandeau plat nom + une ligne de statut (Working / Waiting on helpers / Done / Failed / Idle), point de couleur, filet 0,5 pt, aucun glass.
+- `ChatView.content` : `subagentHeader` en tête de la VStack, uniquement hors layout desktop. Le composer reste en `safeAreaInset(.bottom)`.
+- Retour : swipe-back système de la navigation (rien d'ajouté dans le chat).
+
 ## Non fait / à traiter
 
 - Boutons du composer (pièce jointe, envoi, dictée, Talk) non restylés individuellement : seule la surface du composer est en glass.

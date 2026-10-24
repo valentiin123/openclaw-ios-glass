@@ -42,6 +42,12 @@ final class AgentsHubViewModel {
     private(set) var isCreatingAgent = false
     private(set) var createAgentError: String?
 
+    /// Agents board (grid of tiles): flat session list of the selected agent plus the direct children of its main session.
+    private(set) var boardSessions: [OpenClawChatSessionEntry] = []
+    private(set) var boardAgentID: String?
+    private(set) var isLoadingBoard = false
+    private(set) var boardError: String?
+
     private var trackedAgentID: String?
     private var trackedRoot: OpenClawChatSessionEntry?
 
@@ -77,6 +83,53 @@ final class AgentsHubViewModel {
     func refresh() async {
         if let agentID = trackedAgentID { await loadSessions(agentID: agentID) }
         if let root = trackedRoot, !isLoadingTree { await loadTree(root: root) }
+        if let boardID = boardAgentID { await loadBoard(agentID: boardID) }
+    }
+
+    // MARK: Board
+
+    /// Loads the sessions shown by the Agents board: `sessions.list` for the agent, merged with
+    /// `sessions.list(spawnedBy: <main session>)` so subagents are found even when the plain list omits them.
+    func loadBoard(agentID: String) async {
+        if boardAgentID != agentID { boardSessions = [] }
+        boardAgentID = agentID
+        isLoadingBoard = true
+        boardError = nil
+        defer { isLoadingBoard = false }
+        var rows: [OpenClawChatSessionEntry] = []
+        do {
+            let data = try await gateway.request(OpenClawChatGatewayRequests.sessionsList(
+                limit: Self.pageLimit, search: nil, archived: false, agentID: agentID,
+                includeGlobal: false))
+            rows = try JSONDecoder().decode(OpenClawChatSessionsListResponse.self, from: data).sessions
+        } catch is CancellationError {
+            return
+        } catch {
+            boardError = error.localizedDescription
+            return
+        }
+        var known: Set<String> = []
+        for row in rows { known.insert(row.key) }
+        var mainKey: String = "agent:\(agentID):main"
+        for row in rows where row.isMain == true {
+            mainKey = row.key
+            break
+        }
+        do {
+            let data = try await gateway.request(OpenClawChatGatewayRequests.sessionsList(
+                limit: Self.pageLimit, search: nil, archived: false, agentID: agentID,
+                includeGlobal: false, spawnedBy: mainKey))
+            let page = try JSONDecoder().decode(OpenClawChatSessionsListResponse.self, from: data)
+            for row in page.sessions where !known.contains(row.key) {
+                known.insert(row.key)
+                rows.append(row)
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            // The base list is still usable; keep it.
+        }
+        if boardAgentID == agentID { boardSessions = rows }
     }
 
     func loadSessions(agentID: String) async {

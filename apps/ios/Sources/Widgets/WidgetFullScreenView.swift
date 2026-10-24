@@ -38,14 +38,16 @@ struct WidgetFullScreenView: View {
         switch payload {
         case let .chart(spec):
             GeometryReader { proxy in
+                // Le zoom redimensionne réellement le graphique (rendu net, étendue de défilement correcte)
+                // au lieu d'étirer un rendu de taille fixe avec scaleEffect.
+                let zoom: CGFloat = min(max(scale * pinch, 1), 5)
                 ScrollView([.horizontal, .vertical]) {
-                    WidgetChartView(spec: spec, height: 360)
+                    WidgetChartView(spec: spec, height: 360 * zoom)
                         .padding(16)
-                        .frame(minWidth: proxy.size.width)
-                        .scaleEffect(min(max(scale * pinch, 1), 5), anchor: .topLeading)
+                        .frame(width: proxy.size.width * zoom, alignment: .topLeading)
                 }
             }
-            .gesture(
+            .simultaneousGesture(
                 MagnifyGesture()
                     .updating($pinch) { value, state, _ in state = value.magnification }
                     .onEnded { value in scale = min(max(scale * value.magnification, 1), 5) })

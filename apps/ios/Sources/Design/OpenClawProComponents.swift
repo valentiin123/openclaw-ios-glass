@@ -3,16 +3,18 @@ import SwiftUI
 
 enum OpenClawProMetric {
     static let pagePadding: CGFloat = 16
-    static let cardRadius: CGFloat = 16
-    static let controlRadius: CGFloat = 12
+    // Claude-like restrained corners: small radii on content, glass keeps its own shapes.
+    static let cardRadius: CGFloat = 12
+    static let controlRadius: CGFloat = 8
+    static let borderWidth: CGFloat = 1
     static let compactControlSize: CGFloat = 36
     static let bottomScrollInset: CGFloat = 96
 }
 
 enum OpenClawRadius {
-    static let xs: CGFloat = 8
-    static let sm: CGFloat = 10
-    static let md: CGFloat = 12
+    static let xs: CGFloat = 6
+    static let sm: CGFloat = 8
+    static let md: CGFloat = 10
 }
 
 enum OpenClawTextValue: ExpressibleByStringLiteral {
@@ -39,7 +41,8 @@ enum OpenClawTextValue: ExpressibleByStringLiteral {
 
 struct OpenClawProBackground: View {
     var body: some View {
-        Color(uiColor: .systemGroupedBackground)
+        // Page background: OLED black in dark, warm paper (#faf9f7) in light.
+        OpenClawBrand.void
             .ignoresSafeArea()
     }
 }
@@ -95,34 +98,34 @@ extension View {
 }
 
 private struct ProPanelSurfaceModifier: ViewModifier {
-    @Environment(\.colorScheme) private var colorScheme
     let tint: Color?
     let radius: CGFloat
     let isProminent: Bool
+
+    /// Opaque, flat content surface: no shadow, no glass, hairline border.
+    private var fillColor: Color {
+        self.isProminent ? OpenClawBrand.surfaceElevated : OpenClawBrand.surfaceCard
+    }
 
     func body(content: Content) -> some View {
         content
             .background {
                 let shape = RoundedRectangle(cornerRadius: self.radius, style: .continuous)
+                let border: Color = self.borderStyle
                 shape
-                    .fill(Color(uiColor: self.isProminent ? .systemBackground : .secondarySystemGroupedBackground))
+                    .fill(self.fillColor)
                     .overlay {
-                        shape.strokeBorder(self.borderStyle, lineWidth: 1)
+                        shape.strokeBorder(border, lineWidth: OpenClawProMetric.borderWidth)
                     }
             }
-            .shadow(
-                color: self.isProminent
-                    ? (self.colorScheme == .dark ? .black.opacity(0.14) : .black.opacity(0.045))
-                    : .clear,
-                radius: self.isProminent ? 5 : 0,
-                y: self.isProminent ? 2 : 0)
     }
 
     private var borderStyle: Color {
         if let tint {
-            return tint.opacity(self.isProminent ? 0.18 : 0.10)
+            let strength: Double = self.isProminent ? 0.45 : 0.30
+            return tint.opacity(strength)
         }
-        return Color(uiColor: .separator).opacity(self.colorScheme == .dark ? 0.22 : 0.12)
+        return OpenClawBrand.hairlineBorderStrong
     }
 }
 
@@ -167,7 +170,7 @@ struct OpenClawSidebarControlButton: View {
 
     private var icon: some View {
         Image(systemName: self.action.systemName)
-            .font(.system(size: 15, weight: .semibold))
+            .font(OpenClawType.subheadSemiBold)
             .foregroundStyle(OpenClawBrand.accent)
             .frame(
                 width: OpenClawProMetric.compactControlSize,
@@ -422,8 +425,9 @@ struct OpenClawStatusBadge: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
         .background {
-            Capsule()
-                .fill(self.tone.color.opacity(self.colorScheme == .dark ? 0.14 : 0.10))
+            let shape = RoundedRectangle(cornerRadius: OpenClawRadius.xs, style: .continuous)
+            let opacity: Double = self.colorScheme == .dark ? 0.14 : 0.10
+            shape.fill(self.tone.color.opacity(opacity))
         }
         .openClawAnimation(value: self.tone)
     }

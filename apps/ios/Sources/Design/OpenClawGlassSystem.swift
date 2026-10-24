@@ -287,7 +287,11 @@ struct OpenClawEmptyState<Actions: View>: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 64, height: 64)
                 .background {
-                    Circle().fill(Color(uiColor: .tertiarySystemFill))
+                    let shape = RoundedRectangle(cornerRadius: OpenClawRadius.md, style: .continuous)
+                    shape.fill(OpenClawBrand.surfaceCard)
+                        .overlay {
+                            shape.strokeBorder(OpenClawBrand.hairlineBorderStrong, lineWidth: OpenClawProMetric.borderWidth)
+                        }
                 }
                 .accessibilityHidden(true)
 
@@ -347,8 +351,9 @@ struct OpenClawStatusPill: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
         .background {
-            Capsule()
-                .fill(self.tone.color.opacity(self.colorScheme == .dark ? 0.16 : 0.10))
+            let shape = RoundedRectangle(cornerRadius: OpenClawRadius.xs, style: .continuous)
+            let opacity: Double = self.colorScheme == .dark ? 0.16 : 0.10
+            shape.fill(self.tone.color.opacity(opacity))
         }
         .accessibilityElement(children: .combine)
         .openClawAnimation(value: self.tone)

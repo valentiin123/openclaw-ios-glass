@@ -82,7 +82,6 @@ struct RootTabsSidebarRegressionTests {
     // MARK: - Behaviour
 
     @Test func `overview and automations share the activity bar tab`() {
-        #expect(AppShellTab.chat.barTab == .chat)
         #expect(AppShellTab.agents.barTab == .agents)
         #expect(AppShellTab.settings.barTab == .settings)
         #expect(AppShellTab.activity.barTab == .activity)

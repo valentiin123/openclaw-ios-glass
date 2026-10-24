@@ -40,70 +40,16 @@ struct AppShellChatView: View {
 
 // MARK: - Agents
 
-/// Agents tab: a glass segmented control chooses between roster, subagents and files.
-/// The control is a floating inset above the hosted content; content stays opaque.
+/// Agents tab: only a glass agent selector (top left) and a grid of subagent tiles.
+/// The board owns its view model; content stays opaque, glass is limited to the selector.
 struct AppShellAgentsView: View {
     @Bindable var navigation: AppShellNavigation
 
-    private var sectionOptions: [OpenClawGlassSegmented<AppShellAgentsSection>.Option] {
-        var result: [OpenClawGlassSegmented<AppShellAgentsSection>.Option] = []
-        for section in AppShellAgentsSection.allCases {
-            let option = OpenClawGlassSegmented<AppShellAgentsSection>.Option(
-                section,
-                title: section.title,
-                systemImage: section.systemImage)
-            result.append(option)
-        }
-        return result
-    }
-
     var body: some View {
-        self.content
-            .safeAreaInset(edge: .top, spacing: 0) {
-                self.sectionPicker
-            }
-            .background(OpenClawProBackground())
-            .accessibilityIdentifier("AppShell.Agents")
-    }
-
-    private var sectionPicker: some View {
-        OpenClawGlassSegmented(
-            selection: self.$navigation.agentsSection,
-            options: self.sectionOptions)
-            .padding(.horizontal, OpenClawProMetric.pagePadding)
-            .padding(.vertical, 8)
-            .accessibilityIdentifier("AppShell.Agents.Sections")
-    }
-
-    @ViewBuilder
-    private var content: some View {
         let token: Int = self.navigation.resetToken(for: .agents)
-        switch self.navigation.agentsSection {
-        case .roster:
-            NavigationStack {
-                AgentProTab(
-                    directRoute: .agents,
-                    headerSidebarAction: nil,
-                    openSettings: self.openGateway)
-            }
-            .id("roster-\(token)")
-        case .files:
-            NavigationStack {
-                AgentProTab(
-                    directRoute: .files,
-                    headerSidebarAction: nil,
-                    openSettings: self.openGateway)
-            }
-            .id("files-\(token)")
-        case .subagents:
-            // AgentsHubScreen owns its NavigationStack.
-            AgentsHubScreen(headerSidebarAction: nil)
-                .id("subagents-\(token)")
-        }
-    }
-
-    private func openGateway() {
-        self.navigation.openSettings(route: .gateway)
+        return AgentsBoardScreen()
+            .id("agents-board-\(token)")
+            .accessibilityIdentifier("AppShell.Agents")
     }
 }
 

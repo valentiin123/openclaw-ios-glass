@@ -346,7 +346,7 @@ struct ChatMessageBubble: View {
 
                 self.messageBody
                     .frame(
-                        maxWidth: self.usesReadingColumn ? .infinity : ChatUIConstants.bubbleMaxWidth,
+                        maxWidth: self.assistantMaxWidth,
                         alignment: .leading)
                     .contentShape(.accessibility, Rectangle())
                     .accessibilityElement(children: .contain)
@@ -362,6 +362,12 @@ struct ChatMessageBubble: View {
 
     private var isUser: Bool {
         self.message.role.lowercased() == "user"
+    }
+
+    /// Unboxed assistant text uses the whole column; only the onboarding bubble stays capped.
+    private var assistantMaxWidth: CGFloat {
+        if self.usesReadingColumn || self.style != .onboarding { return .infinity }
+        return ChatUIConstants.bubbleMaxWidth
     }
 }
 
@@ -450,9 +456,8 @@ extension ChatMessageBubble {
         if self.isDesktopLayout {
             return OpenClawChatTheme.desktopText(in: self.colorScheme, contrast: self.colorSchemeContrast)
         }
-        return self.isUser
-            ? OpenClawChatTheme.userText(on: self.userAccent)
-            : OpenClawChatTheme.assistantText
+        // User messages sit on a discreet surface, so they use the regular reading ink.
+        return OpenClawChatTheme.assistantText
     }
 
     private func messageContent(text: String, textColor: Color) -> some View {
@@ -537,15 +542,12 @@ extension ChatMessageBubble {
             } label: {
                 Text(String(localized: self.userMessageExpanded ? "Show less" : "Show more"))
                     .font(OpenClawChatTypography.caption)
-                    .foregroundStyle(textColor.opacity(self.isDesktopLayout ? 1 : 0.78))
+                    .foregroundStyle(OpenClawChatTheme.muted)
                     .padding(.horizontal, 10)
                     .frame(minHeight: 30)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(Color.white.opacity(self.isDesktopLayout ? 0.04 : 0.14)))
                     .overlay(
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(Color.white.opacity(0.12), lineWidth: 0.5))
+                            .stroke(OpenClawChatTheme.divider, lineWidth: 0.5))
             }
             .buttonStyle(.plain)
             .accessibilityValue(String(
@@ -687,7 +689,7 @@ extension ChatMessageBubble {
             if self.isDesktopLayout {
                 return OpenClawChatTheme.desktopUserBubble(in: self.colorScheme, accent: self.userAccent)
             }
-            return self.userAccent ?? OpenClawChatTheme.userBubble
+            return OpenClawChatTheme.userSurface
         }
         if self.style == .onboarding {
             return OpenClawChatTheme.onboardingAssistantBubble
@@ -697,12 +699,12 @@ extension ChatMessageBubble {
 
     private var bubbleBorderColor: Color {
         if self.isUser {
-            return Color.white.opacity(0.12)
+            return OpenClawChatTheme.divider
         }
         if self.style == .onboarding {
             return OpenClawChatTheme.onboardingAssistantBorder
         }
-        return Color.white.opacity(0.08)
+        return OpenClawChatTheme.divider
     }
 
     private var bubbleBorderWidth: CGFloat {
@@ -820,9 +822,7 @@ private struct AttachmentRow: View {
             Spacer()
         }
         .padding(10)
-        .background(self.isUser
-            ? Color.white.opacity(self.isDesktopLayout ? 0.04 : 0.2)
-            : Color.black.opacity(0.04))
+        .background(self.attachmentFill)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
@@ -1031,9 +1031,17 @@ private struct AssistantBubbleContainerStyle: ViewModifier {
     @Environment(\.openClawAssistantBubblesInCleanChrome) private var bubblesInClean
     @Environment(\.openClawAssistantUsesReadingColumn) private var usesReadingColumn
 
+    private var containerMaxWidth: CGFloat {
+        if self.isClean || self.usesReadingColumn { return .infinity }
+        return ChatUIConstants.bubbleMaxWidth
+    }
+
     func body(content: Content) -> some View {
-        Group {
-            if self.isRunContent || (self.isClean && !self.bubblesInClean) {
+        let maxWidth: CGFloat = self.containerMaxWidth
+        return Group {
+            // Assistant text is never boxed in the clean chrome, even if a host still sets
+            // `openClawAssistantBubblesInCleanChrome`: replies are full-width text.
+            if self.isRunContent || self.isClean {
                 content
             } else {
                 content
@@ -1044,10 +1052,10 @@ private struct AssistantBubbleContainerStyle: ViewModifier {
                                 .fill(OpenClawChatTheme.assistantBubble))
                         .overlay(
                             RoundedRectangle(cornerRadius: self.cornerRadius, style: .continuous)
-                                .strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
+                                .strokeBorder(OpenClawChatTheme.divider, lineWidth: 1))
             }
         }
-        .frame(maxWidth: self.usesReadingColumn ? .infinity : ChatUIConstants.bubbleMaxWidth, alignment: .leading)
+        .frame(maxWidth: maxWidth, alignment: .leading)
     }
 }
 

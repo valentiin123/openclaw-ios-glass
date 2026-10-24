@@ -157,6 +157,8 @@ struct NativeUsageScreen: View {
                         x: .value("Day", day.date, unit: .day),
                         y: .value("Cost", day.cost))
                         .foregroundStyle(self.barColor(for: day))
+                        .accessibilityLabel(day.date.formatted(.dateTime.weekday(.abbreviated).month().day()))
+                        .accessibilityValue(day.cost.formatted(.currency(code: "USD")))
                 }
                 if let average = Self.average(days) {
                     RuleMark(y: .value("Average", average))
@@ -165,6 +167,17 @@ struct NativeUsageScreen: View {
                 }
             }
             .chartXSelection(value: self.$selectedDate)
+            .chartXAxis {
+                // 7 jours : un libellé par jour ; 31 jours : un libellé par semaine, sinon l'axe est illisible.
+                AxisMarks(values: .stride(by: .day, count: self.range == .week ? 1 : 7)) { _ in
+                    AxisTick()
+                    AxisValueLabel(
+                        format: self.range == .week
+                            ? Date.FormatStyle().weekday(.abbreviated)
+                            : Date.FormatStyle().month(.abbreviated).day(),
+                        centered: true)
+                }
+            }
             .chartYAxis {
                 AxisMarks(position: .leading) { value in
                     AxisGridLine()
