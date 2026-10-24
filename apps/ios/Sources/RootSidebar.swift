@@ -723,16 +723,22 @@ struct RootSidebar: View {
     {
         var actions: [SessionSwipeAction] = []
         let isPinned = session.pinned == true
-        actions.append(SessionSwipeAction(
-            id: "pin",
-            title: isPinned ? String(localized: "Unpin") : String(localized: "Pin"),
-            systemImage: isPinned ? "pin.slash" : "pin",
-            tint: OpenClawSidebarPalette.accent)
-        {
+        let pinTitle: String = isPinned ? String(localized: "Unpin") : String(localized: "Pin")
+        let pinIcon: String = isPinned ? "pin.slash" : "pin"
+        let pinTint: Color = OpenClawSidebarPalette.accent
+        let pinKey: String = session.key
+        let pinAction: () -> Void = {
             self.performSessionMutation(resetActiveSessionKey: nil) { transport in
-                try await transport.patchSession(key: session.key, pinned: !isPinned)
+                try await transport.patchSession(key: pinKey, pinned: !isPinned)
             }
-        })
+        }
+        let pinSwipe = SessionSwipeAction(
+            id: "pin",
+            title: pinTitle,
+            systemImage: pinIcon,
+            tint: pinTint,
+            perform: pinAction)
+        actions.append(pinSwipe)
         let now = Date.now
         if session.isMain != true, session.archived != true,
            session.sessionId?.trimmedNonEmpty != nil,
