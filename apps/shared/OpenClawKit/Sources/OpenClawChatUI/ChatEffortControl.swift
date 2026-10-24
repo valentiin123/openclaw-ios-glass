@@ -3,7 +3,6 @@ import SwiftUI
 
 @MainActor
 public struct OpenClawChatEffortControl: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let thinkingOptions: [OpenClawChatThinkingLevelOption]
     private let thinkingLevel: String?
@@ -114,7 +113,7 @@ public struct OpenClawChatEffortControl: View {
         HStack(spacing: 6) {
             if !self.thinkingOptions.isEmpty {
                 ChatEffortGauge(angle: self.needleAngle, isOff: self.thinkingLevel == "off")
-                    .animation(self.reduceMotion ? nil : .easeOut(duration: 0.18), value: self.needleAngle)
+                    .openClawChatAnimation(value: self.needleAngle)
             }
             if self.fastModeEnabled || self.thinkingOptions.isEmpty {
                 Image(systemName: "bolt.fill")

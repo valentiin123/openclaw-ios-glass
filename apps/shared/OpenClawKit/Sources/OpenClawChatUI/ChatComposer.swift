@@ -113,6 +113,7 @@ struct OpenClawChatComposer: View {
     @Environment(\.dynamicTypeSize) var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Bindable var viewModel: OpenClawChatViewModel
     let style: OpenClawChatView.Style
     let showsSessionSwitcher: Bool
@@ -1130,7 +1131,7 @@ extension OpenClawChatComposer {
     }
 
     private func setSlashPanelPresented(_ presented: Bool) {
-        withAnimation(.easeInOut(duration: 0.18)) {
+        OpenClawChatMotion.perform(reduceMotion: self.reduceMotion) {
             self.isSlashPopoverPresented = presented
         }
         if presented {

@@ -8,18 +8,32 @@ import UIKit
 
 @MainActor
 struct ChatCodeBlockView: View {
+    @Environment(\.openClawChatRichBlockRenderer) private var richBlockRenderer
     let block: ChatCodeBlock
 
     var body: some View {
         #if os(iOS) || os(macOS)
         if self.block.language == "mermaid", self.block.isComplete {
             ChatMermaidBlockView(source: self.block.code)
+        } else if let rich = self.richBlock {
+            rich
         } else {
             self.codeBody
         }
         #else
         self.codeBody
         #endif
+    }
+
+    /// Host-rendered chart/svg/html block. Only complete fences are handed over, so a
+    /// streaming block stays a plain code block until it closes. `nil` falls back to code.
+    private var richBlock: AnyView? {
+        guard self.block.isComplete,
+              let language = self.block.language?.lowercased(),
+              OpenClawChatRichBlockRenderer.supportedLanguages.contains(language),
+              let renderer = self.richBlockRenderer
+        else { return nil }
+        return renderer.render(language, self.block.code)
     }
 
     private var codeBody: some View {

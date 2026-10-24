@@ -24,6 +24,7 @@ struct ChatProTab: View {
 
     @Environment(NodeAppModel.self) private var appModel
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(GatewayConnectionController.self) private var gatewayController
     @AppStorage("openclaw.webchat.showAssistantTrace")
     private var showsAssistantTrace = true
@@ -59,6 +60,17 @@ struct ChatProTab: View {
             }
     }
 
+    /// Renders complete ```chart / ```svg / ```html fences with the app's WidgetCardView.
+    /// Scripts stay disabled; unrecognized payloads return nil and fall back to a code block.
+    private static let richBlockRenderer = OpenClawChatRichBlockRenderer { language, body in
+        guard let payload = WidgetPayloadDetector.payload(
+            language: language,
+            body: body,
+            allowsScripts: false)
+        else { return nil }
+        return AnyView(WidgetCardView(payload: payload))
+    }
+
     private var isGatewayTransitionPending: Bool {
         self.appModel.isGatewayPickerRequestInFlight ||
             self.gatewayController.hasPendingConnectionHandoff ||
@@ -74,6 +86,7 @@ struct ChatProTab: View {
             // The shared canvas supplies color for the native blur. Automatic
             // edge effects harden to black when the host inserts an opaque fill.
                 .scrollEdgeEffectStyle(.soft, for: .vertical)
+                .environment(\.openClawChatRichBlockRenderer, Self.richBlockRenderer)
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -213,7 +226,7 @@ struct ChatProTab: View {
             .accessibilityElement(children: .contain) // Keep the parent reachable and its child actionable.
             .accessibilityIdentifier("chat-agent-identity")
             .accessibilityValue(self.showsExpandedGatewayStatus ? "Expanded" : "Collapsed")
-            .animation(.snappy(duration: 0.24), value: self.showsExpandedGatewayStatus)
+            .openClawAnimation(value: self.showsExpandedGatewayStatus)
     }
 
     private var headerAgentIdentityControl: some View {
@@ -277,7 +290,7 @@ struct ChatProTab: View {
 
     private func handleHeaderAgentIdentityTap() {
         if self.gatewayStatusIsHealthy {
-            withAnimation(.snappy(duration: 0.24)) {
+            OpenClawMotion.perform(reduceMotion: self.reduceMotion) {
                 self.isGatewayStatusManuallyExpanded.toggle()
             }
         } else {

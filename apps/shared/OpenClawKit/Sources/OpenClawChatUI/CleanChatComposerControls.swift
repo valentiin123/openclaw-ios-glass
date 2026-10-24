@@ -17,7 +17,6 @@ struct CleanChatComposerSurface: ViewModifier {
             .overlay(
                 RoundedRectangle(cornerRadius: self.cornerRadius, style: .continuous)
                     .strokeBorder(OpenClawChatTheme.composerBorder, lineWidth: 1))
-            .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
     }
 
     @ViewBuilder
@@ -30,15 +29,8 @@ struct CleanChatComposerSurface: ViewModifier {
                         ? AnyShapeStyle(OpenClawChatTheme.desktopComposer(in: self.colorScheme))
                         : OpenClawChatTheme.composerField))
         #else
-        if #available(iOS 26.0, *) {
-            content
-                .glassEffect(.regular, in: .rect(cornerRadius: self.cornerRadius))
-        } else {
-            content
-                .background(
-                    .regularMaterial,
-                    in: RoundedRectangle(cornerRadius: self.cornerRadius, style: .continuous))
-        }
+        // Composer is chrome: Liquid Glass on iOS 26, thin material before (see ChatMotion.swift).
+        content.openClawChatGlass(cornerRadius: self.cornerRadius)
         #endif
     }
 }

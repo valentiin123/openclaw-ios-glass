@@ -231,7 +231,7 @@ private struct ChatToolActivityRowContent: View {
         VStack(alignment: .leading, spacing: 4) {
             if self.expandable {
                 Button {
-                    withAnimation(self.reduceMotion ? nil : .easeOut(duration: 0.15)) {
+                    OpenClawChatMotion.perform(reduceMotion: self.reduceMotion) {
                         self.expanded.toggle()
                     }
                 } label: {

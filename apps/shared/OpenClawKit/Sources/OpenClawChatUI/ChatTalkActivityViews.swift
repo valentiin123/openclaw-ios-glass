@@ -27,6 +27,7 @@ struct ChatTalkTranscriptStripModel: Equatable {
 struct ChatTalkActivityStrip: View {
     let control: OpenClawChatTalkControl
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isExpanded = false
 
     var body: some View {
@@ -38,7 +39,7 @@ struct ChatTalkActivityStrip: View {
             VStack(alignment: .leading, spacing: 6) {
                 if model.hasTranscript {
                     Button {
-                        withAnimation(.easeInOut(duration: 0.16)) {
+                        OpenClawChatMotion.perform(reduceMotion: self.reduceMotion) {
                             self.isExpanded.toggle()
                         }
                     } label: {

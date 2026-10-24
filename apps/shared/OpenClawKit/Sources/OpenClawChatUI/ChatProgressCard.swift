@@ -16,18 +16,14 @@ private struct ChatProgressCardSurface: ViewModifier {
                 RoundedRectangle(cornerRadius: self.cornerRadius, style: .continuous)
                     .strokeBorder(OpenClawChatTheme.composerBorder, lineWidth: 1))
         #else
-        if #available(iOS 26.0, *) {
-            content
-                .glassEffect(.regular, in: .rect(cornerRadius: self.cornerRadius))
-        } else {
-            content
-                .background(
-                    .regularMaterial,
-                    in: RoundedRectangle(cornerRadius: self.cornerRadius, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: self.cornerRadius, style: .continuous)
-                        .strokeBorder(OpenClawChatTheme.composerBorder, lineWidth: 1))
-        }
+        // Opaque content surface: glass is reserved for chrome and controls (DESIGN-GLASS.md).
+        content
+            .background(
+                RoundedRectangle(cornerRadius: self.cornerRadius, style: .continuous)
+                    .fill(OpenClawChatTheme.subtleCard))
+            .overlay(
+                RoundedRectangle(cornerRadius: self.cornerRadius, style: .continuous)
+                    .strokeBorder(OpenClawChatTheme.composerBorder, lineWidth: 1))
         #endif
     }
 }
@@ -205,7 +201,7 @@ struct ChatProgressCard: View {
     }
 
     private func toggle() {
-        withAnimation(self.reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+        OpenClawChatMotion.perform(reduceMotion: self.reduceMotion) {
             self.isExpanded.toggle()
         }
     }

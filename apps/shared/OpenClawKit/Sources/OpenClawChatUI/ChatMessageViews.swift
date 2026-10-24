@@ -297,6 +297,7 @@ struct ChatMessageBubble: View {
     @Environment(\.openClawChatDesktopLayout) private var isDesktopLayout
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let message: OpenClawChatMessage
     var liveToolCalls: [OpenClawChatPendingToolCall] = []
     var metadata: ChatMessageMetadata?
@@ -530,7 +531,7 @@ extension ChatMessageBubble {
 
         if preview != nil {
             Button {
-                withAnimation(.easeOut(duration: 0.16)) {
+                OpenClawChatMotion.perform(reduceMotion: self.reduceMotion) {
                     self.onToggleUserMessageExpanded()
                 }
             } label: {
