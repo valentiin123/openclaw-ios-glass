@@ -149,6 +149,7 @@ struct SubagentTreeView: View {
                         SubagentRowView(
                             row: row,
                             busy: model.busyKeys.contains(row.node.id),
+                            canStop: model.canStop,
                             onToggle: { model.toggle(row.node.id) },
                             onStop: { confirmStop = row.node },
                             onResult: { resultNode = row.node })
@@ -171,6 +172,7 @@ struct SubagentTreeView: View {
                 Button { showLaunch = true } label: {
                     Label("Launch subagent", systemImage: "plus")
                 }
+                .disabled(!model.canLaunch)
                 .frame(minWidth: 44, minHeight: 44)
             }
         }
@@ -211,6 +213,7 @@ struct SubagentTreeView: View {
 private struct SubagentRowView: View {
     let row: FlatSubagentRow
     let busy: Bool
+    let canStop: Bool
     let onToggle: () -> Void
     let onStop: () -> Void
     let onResult: () -> Void
@@ -247,6 +250,7 @@ private struct SubagentRowView: View {
                     Button("View result", systemImage: "doc.text", action: onResult)
                     if !row.node.activeRuns.isEmpty {
                         Button("Stop", systemImage: "stop.circle", role: .destructive, action: onStop)
+                            .disabled(!canStop)
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle").frame(width: 44, height: 44)
@@ -302,7 +306,8 @@ struct LaunchSubagentSheet: View {
                             }
                         }
                     }
-                    .disabled(agentID.isEmpty
+                    .disabled(!model.canLaunch
+                        || agentID.isEmpty
                         || task.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                         || model.busyKeys.contains(parent.key))
                 }

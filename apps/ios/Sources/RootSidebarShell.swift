@@ -39,7 +39,7 @@ struct RootSidebarShell<Sidebar: View, Detail: View>: View {
     let detail: Detail
 
     @State private var dragSession = DragSession()
-    @GestureState(resetTransaction: Transaction(animation: .spring(response: 0.35, dampingFraction: 0.86)))
+    @GestureState(resetTransaction: Transaction(animation: OpenClawMotion.spring))
     private var dragState = DragState()
 
     var body: some View {

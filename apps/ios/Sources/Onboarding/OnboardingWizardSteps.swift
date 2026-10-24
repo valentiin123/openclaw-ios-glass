@@ -172,6 +172,7 @@ private struct OnboardingSecurityNotice: View {
 }
 
 private struct OnboardingCommandChip: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var didCopy = false
     private let command = "openclaw qr"
 
@@ -212,12 +213,12 @@ private struct OnboardingCommandChip: View {
 
     private func copyCommand() {
         UIPasteboard.general.string = self.command
-        withAnimation(.smooth(duration: 0.14)) {
+        OpenClawMotion.perform(reduceMotion: self.reduceMotion) {
             self.didCopy = true
         }
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 1_100_000_000)
-            withAnimation(.smooth(duration: 0.16)) {
+            OpenClawMotion.perform(reduceMotion: self.reduceMotion) {
                 self.didCopy = false
             }
         }
@@ -270,6 +271,7 @@ struct OnboardingIntroStep: View {
 }
 
 struct OnboardingWelcomeStep: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let statusLine: String
     let isConnecting: Bool
     let onScanQRCode: () -> Void
@@ -336,7 +338,7 @@ struct OnboardingWelcomeStep: View {
 
                 Spacer(minLength: 40)
             }
-            .animation(.smooth(duration: 0.18), value: statusText)
+            .animation(OpenClawMotion.animation(reduceMotion: self.reduceMotion), value: statusText)
         }
     }
 }

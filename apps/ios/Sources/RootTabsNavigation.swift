@@ -22,6 +22,7 @@ extension RootTabs {
         case overview
         case activity
         case agents
+        case agentsHub
         case workboard
         case skillWorkshop
         case instances
@@ -46,6 +47,7 @@ extension RootTabs {
             case .overview: String(localized: "Overview")
             case .activity: String(localized: "Activity")
             case .agents: String(localized: "Agents")
+            case .agentsHub: String(localized: "Subagents")
             case .workboard: String(localized: "Workboard")
             case .skillWorkshop: String(localized: "Skill Workshop")
             case .instances: String(localized: "Instances")
@@ -75,6 +77,7 @@ extension RootTabs {
             case .overview: "chart.bar"
             case .activity: "waveform.path.ecg"
             case .agents: "person.2"
+            case .agentsHub: "person.3"
             case .workboard: "folder"
             case .skillWorkshop: "hammer"
             case .instances: "dot.radiowaves.left.and.right"
@@ -103,6 +106,7 @@ extension RootTabs {
             case .chat: .chat
             case .overview: .overview
             case .agents: .agents
+            case .agentsHub: .agentsHub
             case .sessions: .sessions
             case .files: .files
             case .desktop: .desktop
@@ -120,7 +124,7 @@ extension RootTabs {
 
     enum SidebarScreen: Equatable {
         case dashboard(String)
-        case chat, overview, agents, sessions, files, desktop, terminal, docs, settings, gateway
+        case chat, overview, agents, agentsHub, sessions, files, desktop, terminal, docs, settings, gateway
     }
 
     static func notificationSettingsPath(servingEnabled: Bool, disclosureAccepted: Bool) -> String {
@@ -272,6 +276,7 @@ extension RootTabs {
         .activity,
         .skillWorkshop,
         .agents,
+        .agentsHub,
         .instances,
         .files,
         .dreaming,

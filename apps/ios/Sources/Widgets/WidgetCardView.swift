@@ -109,7 +109,7 @@ public struct WidgetCardView: View {
                 .id(reloadToken)
                 .frame(height: inlineHeight)
                 .opacity(state == .loaded ? 1 : 0)
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: state)
+                .animation(OpenClawMotion.animation(reduceMotion: reduceMotion), value: state)
                 .accessibilityLabel(title ?? payload.kindLabel)
         }
     }

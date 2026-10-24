@@ -18,6 +18,7 @@ struct OnboardingWizardView: View {
     @Environment(GatewayConnectionController.self) private var gatewayController: GatewayConnectionController
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("node.instanceId") private var instanceId: String = UUID().uuidString
     @AppStorage("gateway.discovery.domain") private var discoveryDomain: String = ""
     @AppStorage("onboarding.developerMode") private var developerModeEnabled: Bool = false
@@ -413,7 +414,7 @@ struct OnboardingWizardView: View {
             .padding(.trailing, 20)
             .padding(.bottom, 10)
             .transition(.opacity.combined(with: .scale(scale: 0.96)))
-            .animation(.smooth(duration: 0.16), value: self.focusedField)
+            .animation(OpenClawMotion.animation(reduceMotion: self.reduceMotion), value: self.focusedField)
         }
     }
 

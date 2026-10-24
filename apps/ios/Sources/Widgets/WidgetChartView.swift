@@ -31,7 +31,7 @@ struct WidgetChartView: View {
         .onAppear {
             guard !appeared else { return }
             if reduceMotion { appeared = true } else {
-                withAnimation(.easeOut(duration: 0.35)) { appeared = true }
+                withAnimation(OpenClawMotion.animation(reduceMotion: reduceMotion)) { appeared = true }
             }
         }
     }
@@ -41,8 +41,8 @@ struct WidgetChartView: View {
         switch spec.kind {
         case .bar:
             Chart {
-                ForEach(spec.series, id: \.name) { series in
-                    ForEach(series.points, id: \.x) { point in
+                ForEach(Array(spec.series.enumerated()), id: \.offset) { _, series in
+                    ForEach(Array(series.points.enumerated()), id: \.offset) { _, point in
                         BarMark(x: .value(spec.xLabel ?? "X", point.x),
                                 y: .value(spec.yLabel ?? "Y", point.y))
                             .foregroundStyle(by: .value("Series", series.name))
@@ -55,8 +55,8 @@ struct WidgetChartView: View {
             .modifier(AxisLabels(x: spec.xLabel, y: spec.yLabel, legend: spec.series.count > 1))
         case .line:
             Chart {
-                ForEach(spec.series, id: \.name) { series in
-                    ForEach(series.points, id: \.x) { point in
+                ForEach(Array(spec.series.enumerated()), id: \.offset) { _, series in
+                    ForEach(Array(series.points.enumerated()), id: \.offset) { _, point in
                         LineMark(x: .value(spec.xLabel ?? "X", point.x),
                                  y: .value(spec.yLabel ?? "Y", point.y))
                             .foregroundStyle(by: .value("Series", series.name))
@@ -74,7 +74,7 @@ struct WidgetChartView: View {
         case .pie:
             // Un secteur par point de la première série non vide.
             let points = spec.series.first { !$0.points.isEmpty }?.points.filter { $0.y > 0 } ?? []
-            Chart(points, id: \.x) { point in
+            Chart(Array(points.enumerated()), id: \.offset) { _, point in
                 SectorMark(angle: .value("Value", point.y),
                            innerRadius: .ratio(0.5),
                            angularInset: 1.5)

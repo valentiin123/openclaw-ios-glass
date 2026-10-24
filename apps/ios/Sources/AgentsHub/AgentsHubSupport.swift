@@ -1,8 +1,10 @@
 import SwiftUI
 
-/// Single spring used by every AgentsHub transition. Disabled when Reduce Motion is on.
+/// AgentsHub reuses the app-wide motion vocabulary (`OpenClawMotion`).
 enum AgentsHubMotion {
-    static let spring = Animation.spring(duration: 0.35, bounce: 0.15)
+    static func animation(reduceMotion: Bool) -> Animation {
+        OpenClawMotion.animation(reduceMotion: reduceMotion)
+    }
 }
 
 private struct AgentsHubAnimation<Value: Equatable>: ViewModifier {
@@ -10,7 +12,7 @@ private struct AgentsHubAnimation<Value: Equatable>: ViewModifier {
     let value: Value
 
     func body(content: Content) -> some View {
-        content.animation(reduceMotion ? nil : AgentsHubMotion.spring, value: value)
+        content.animation(AgentsHubMotion.animation(reduceMotion: reduceMotion), value: value)
     }
 }
 

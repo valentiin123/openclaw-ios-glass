@@ -320,6 +320,10 @@ struct RootTabs: View {
                 headerSidebarAction: self.sidebarHeaderAction,
                 openSettings: { self.selectSidebarDestination(.gateway) })
                 .id(self.selectedSidebarDestination.id)
+        case .agentsHub:
+            AgentsHubScreen(
+                headerSidebarAction: self.sidebarHeaderAction)
+                .id(self.selectedSidebarDestination.id)
         case .sessions:
             CommandSessionsScreen(
                 headerSidebarAction: self.sidebarHeaderAction,
@@ -411,7 +415,7 @@ struct RootTabs: View {
     }
 
     private var sidebarAnimation: Animation? {
-        self.reduceMotion ? .easeOut(duration: 0.16) : .spring(response: 0.35, dampingFraction: 0.86)
+        OpenClawMotion.animation(reduceMotion: self.reduceMotion)
     }
 
     private func sidebarLayoutMode(containerSize: CGSize) -> SidebarLayoutMode {
@@ -497,7 +501,7 @@ struct RootTabs: View {
     }
 
     private var gatewayToastAnimation: Animation? {
-        self.reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.85)
+        self.reduceMotion ? nil : OpenClawMotion.spring
     }
 
     private func gatewayProblemToast(_ problem: GatewayConnectionProblem) -> some View {
@@ -550,12 +554,12 @@ struct RootTabs: View {
                 let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty else { return }
 
-                withAnimation(self.reduceMotion ? .none : .spring(response: 0.25, dampingFraction: 0.85)) {
+                OpenClawMotion.perform(reduceMotion: self.reduceMotion) {
                     self.voiceWakeToastText = trimmed
                 }
 
                 self.toastDismissGate.schedule(after: .milliseconds(2300)) {
-                    withAnimation(self.reduceMotion ? .none : .easeOut(duration: 0.25)) {
+                    OpenClawMotion.perform(reduceMotion: self.reduceMotion) {
                         self.voiceWakeToastText = nil
                     }
                 }
@@ -1006,11 +1010,11 @@ private struct RootCameraFlashOverlay: View {
     }
 
     private func showFlash() {
-        withAnimation(.easeOut(duration: 0.08)) {
+        withAnimation(OpenClawMotion.reducedFade) {
             self.opacity = 0.85
         }
         self.dismissGate.schedule(after: .milliseconds(110)) {
-            withAnimation(.easeOut(duration: 0.32)) {
+            withAnimation(OpenClawMotion.reducedFade) {
                 self.opacity = 0
             }
         }

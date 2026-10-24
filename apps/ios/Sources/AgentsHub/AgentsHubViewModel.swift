@@ -34,6 +34,13 @@ final class AgentsHubViewModel {
     private(set) var resultText: String?
     private(set) var isLoadingResult = false
 
+    /// Droits dérivés des scopes opérateur et des méthodes annoncées (voir AgentsHubScreen).
+    var canLaunch = false
+    var canStop = false
+
+    private var trackedAgentID: String?
+    private var trackedRoot: OpenClawChatSessionEntry?
+
     private let gateway: AgentsHubGateway
     private static let maxDepth = 8
     private static let pageLimit = 200
@@ -62,7 +69,14 @@ final class AgentsHubViewModel {
         }
     }
 
+    /// Recharge ce qui est affiché (sessions de l'agent courant et arbre ouvert) après `sessions.changed`.
+    func refresh() async {
+        if let agentID = trackedAgentID { await loadSessions(agentID: agentID) }
+        if let root = trackedRoot, !isLoadingTree { await loadTree(root: root) }
+    }
+
     func loadSessions(agentID: String) async {
+        trackedAgentID = agentID
         do {
             let data = try await gateway.request(OpenClawChatGatewayRequests.sessionsList(
                 limit: Self.pageLimit, search: nil, archived: false, agentID: agentID,
@@ -78,6 +92,7 @@ final class AgentsHubViewModel {
 
     /// Breadth-first load of descendants via `sessions.list(spawnedBy:)`.
     func loadTree(root: OpenClawChatSessionEntry) async {
+        trackedRoot = root
         isLoadingTree = true
         treeError = nil
         defer { isLoadingTree = false }

@@ -47,7 +47,7 @@ struct WidgetFullScreenView: View {
                     .updating($pinch) { value, state, _ in state = value.magnification }
                     .onEnded { value in scale = min(max(scale * value.magnification, 1), 5) })
             .onTapGesture(count: 2) {
-                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { scale = scale > 1 ? 1 : 2 }
+                OpenClawMotion.perform(reduceMotion: reduceMotion) { scale = scale > 1 ? 1 : 2 }
             }
             .accessibilityElement(children: .contain)
         default:

@@ -6,6 +6,7 @@ struct RootSidebar: View {
     @Environment(NodeAppModel.self) private var appModel
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Bindable var model: RootSidebarModel
     @State private var searchText = ""
     @State private var isSearchActive = false
@@ -112,7 +113,7 @@ struct RootSidebar: View {
                 systemName: "magnifyingglass",
                 label: String(localized: "Search sessions"))
             {
-                withAnimation(.easeInOut(duration: 0.15)) {
+                OpenClawMotion.perform(reduceMotion: self.reduceMotion) {
                     self.isSearchActive.toggle()
                 }
                 if self.isSearchActive {

@@ -99,8 +99,9 @@ struct WidgetWebView: UIViewRepresentable {
             decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void)
         {
             // Seul le chargement initial du document est permis ; liens, formulaires et redirections sont annulés.
-            decisionHandler(action.navigationType == .other && action.request.url?.scheme == "about" ||
-                action.navigationType == .other && action.request.url == nil ? .allow : .cancel)
+            let isInitialLoad = action.navigationType == .other
+                && (action.request.url == nil || action.request.url?.scheme == "about")
+            decisionHandler(isInitialLoad ? .allow : .cancel)
         }
 
         func webView(_ web: WKWebView, didFinish _: WKNavigation?) {
