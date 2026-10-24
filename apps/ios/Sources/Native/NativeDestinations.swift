@@ -54,12 +54,19 @@ struct NativeDestinationRouter: View {
         case DashboardRouteMap.devicePermissionsSettingsPath:
             NativePermissionsScreen(headerSidebarAction: self.headerSidebarAction)
         default:
-            DashboardPageScreen(
-                path: self.path,
-                title: self.title,
-                headerSidebarAction: self.headerSidebarAction,
-                onRouteChange: self.onRouteChange,
-                onApprovalNotificationsRoute: self.onApprovalNotificationsRoute)
+            if let native = NativeSettingsRouter.screen(
+                forPath: self.path,
+                headerSidebarAction: self.headerSidebarAction)
+            {
+                native
+            } else {
+                DashboardPageScreen(
+                    path: self.path,
+                    title: self.title,
+                    headerSidebarAction: self.headerSidebarAction,
+                    onRouteChange: self.onRouteChange,
+                    onApprovalNotificationsRoute: self.onApprovalNotificationsRoute)
+            }
         }
     }
 }
