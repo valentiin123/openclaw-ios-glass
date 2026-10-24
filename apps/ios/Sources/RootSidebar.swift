@@ -732,6 +732,31 @@ struct RootSidebar: View {
         self.performSessionMutation(resetActiveSessionKey: nil, mutation)
     }
 
+    private func snoozeSession(key: String, sessionID: String?, patch: OpenClawChatSnoozePatch) {
+        let mutation: CommandSessionActionsModifier.Mutation = { (transport: any OpenClawChatTransport) async throws -> Void in
+            _ = try await transport.patchSession(
+                key: key,
+                expectedSessionID: sessionID,
+                snoozedUntil: patch)
+        }
+        self.performSessionMutation(resetActiveSessionKey: nil, mutation)
+    }
+
+    private func archiveSession(key: String, sessionID: String?) {
+        let mutation: CommandSessionActionsModifier.Mutation = { (transport: any OpenClawChatTransport) async throws -> Void in
+            _ = try await transport.patchSession(
+                key: key,
+                expectedSessionID: sessionID,
+                label: nil,
+                category: nil,
+                color: nil,
+                pinned: nil,
+                archived: true,
+                unread: nil)
+        }
+        self.performSessionMutation(resetActiveSessionKey: key, mutation)
+    }
+
     /// Pin, snooze and archive as rightward swipe actions; same mutations as the context menu.
     private func sessionSwipeActionList(
         _ session: OpenClawChatSessionEntry,
@@ -757,34 +782,33 @@ struct RootSidebar: View {
            let preset = OpenClawChatSessionSnooze.presets(now: now).first,
            !session.isSnoozed(at: now)
         {
-            actions.append(SessionSwipeAction(
+            let snoozeKey: String = session.key
+            let snoozeSessionID: String? = session.sessionId
+            let snoozeWake: OpenClawChatSnoozePatch = .until(preset.wakeAt)
+            let snoozeAction: () -> Void = {
+                self.snoozeSession(key: snoozeKey, sessionID: snoozeSessionID, patch: snoozeWake)
+            }
+            let snoozeSwipe = SessionSwipeAction(
                 id: "snooze",
                 title: String(localized: "Snooze"),
                 systemImage: "clock",
-                tint: .orange)
-            {
-                self.performSessionMutation(resetActiveSessionKey: nil) { transport in
-                    _ = try await transport.patchSession(
-                        key: session.key,
-                        expectedSessionID: session.sessionId,
-                        snoozedUntil: .until(preset.wakeAt))
-                }
-            })
+                tint: Color.orange,
+                perform: snoozeAction)
+            actions.append(snoozeSwipe)
         }
         if ChatSessionSidebarModel.canArchiveSession(session, mainSessionKey: mainSessionKey) {
-            actions.append(SessionSwipeAction(
+            let archiveKey: String = session.key
+            let archiveSessionID: String? = session.sessionId
+            let archiveAction: () -> Void = {
+                self.archiveSession(key: archiveKey, sessionID: archiveSessionID)
+            }
+            let archiveSwipe = SessionSwipeAction(
                 id: "archive",
                 title: String(localized: "Archive"),
                 systemImage: "archivebox",
-                tint: .gray)
-            {
-                self.performSessionMutation(resetActiveSessionKey: session.key) { transport in
-                    _ = try await transport.patchSession(
-                        key: session.key,
-                        expectedSessionID: session.sessionId,
-                        archived: true)
-                }
-            })
+                tint: Color.gray,
+                perform: archiveAction)
+            actions.append(archiveSwipe)
         }
         return actions
     }
