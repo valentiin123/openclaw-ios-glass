@@ -58,6 +58,8 @@ targets:
       Release: Signing.xcconfig
     sources:
       - path: Sources
+        excludes:
+          - "**/*.md"
       - path: Resources/Licenses
         type: folder
         buildPhase: resources
