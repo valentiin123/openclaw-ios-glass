@@ -31,6 +31,19 @@ jobs:
       - name: Install JS deps (protocol + mermaid generators)
         run: pnpm install --frozen-lockfile --ignore-scripts --filter "@openclaw/gateway-protocol..." --filter "@openclaw/mermaid-renderer..."
 
+      - name: Write generated iOS build inputs
+        run: |
+          set -euo pipefail
+          mkdir -p apps/ios/build
+          cat > apps/ios/build/Version.xcconfig <<EOF
+          OPENCLAW_IOS_VERSION = 2026.10.7
+          OPENCLAW_MARKETING_VERSION = 2026.10.7
+          OPENCLAW_BUILD_VERSION = ${{ github.run_number }}
+          OPENCLAW_GIT_COMMIT = ${{ github.sha }}
+          OPENCLAW_BUILD_TIMESTAMP = $(date -u +%Y-%m-%dT%H:%M:%SZ)
+          EOF
+          node scripts/ios-write-swift-filelist.mts
+
       - name: Install XcodeGen
         run: brew install xcodegen
 
