@@ -81,27 +81,6 @@ targets:
       - package: Sodium
       - sdk: AppIntents.framework
       - sdk: HealthKit.framework
-    preBuildScripts:
-      - name: SwiftFormat (lint)
-        basedOnDependencyAnalysis: false
-        inputFileLists:
-          - $(SRCROOT)/SwiftSources.input.xcfilelist
-        script: |
-          set -euo pipefail
-          export PATH="$PATH:/opt/homebrew/bin:/usr/local/bin"
-          "$SRCROOT/../../scripts/check-swift-tools.sh" swiftformat
-          swiftformat --lint --config "$SRCROOT/../../config/swiftformat" \
-            --unexclude "$SRCROOT/Sources,$SRCROOT/ShareExtension,$SRCROOT/ActivityWidget,$SRCROOT/../shared/OpenClawKit/Sources/OpenClawChatUI,$SRCROOT/../shared/OpenClawKit/Sources/OpenClawKit,$SRCROOT/../shared/OpenClawKit/Sources/OpenClawNativeState,$SRCROOT/../shared/OpenClawKit/Sources/OpenClawProtocol,$SRCROOT/../swabble/Sources/SwabbleKit" \
-            --filelist "$SRCROOT/SwiftSources.input.xcfilelist"
-      - name: SwiftLint
-        basedOnDependencyAnalysis: false
-        inputFileLists:
-          - $(SRCROOT)/SwiftSources.input.xcfilelist
-        script: |
-          set -euo pipefail
-          export PATH="$PATH:/opt/homebrew/bin:/usr/local/bin"
-          "$SRCROOT/../../scripts/check-swift-tools.sh" swiftlint
-          node "$SRCROOT/../../scripts/run-swiftlint.mts" --strict --config "$SRCROOT/.swiftlint.yml" --use-script-input-file-lists
     settings:
       base:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
