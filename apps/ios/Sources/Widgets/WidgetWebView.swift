@@ -77,8 +77,44 @@ struct WidgetWebView: UIViewRepresentable {
         var parent: WidgetWebView
         var loadedPayload: WidgetPayload?
         private var terminatedOnce = false
+        private var timeoutTask: Task<Void, Never>?
+        private static let loadTimeoutSeconds = 15
 
         init(_ parent: WidgetWebView) { self.parent = parent }
+
+        /// Falls back to the error state (with Retry) if the page never finishes loading.
+        private func armTimeout() {
+            timeoutTask?.cancel()
+            timeoutTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(Self.loadTimeoutSeconds))
+                guard let self, !Task.isCancelled, self.parent.state == .loading else { return }
+                self.parent.state = .failed(String(localized: "The widget took too long to load."))
+            }
+        }
+
+        /// Reads the real content height (works even when page JavaScript is disabled: this is a native call).
+        private func measure(_ web: WKWebView) {
+            let script = "Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0)"
+            web.evaluateJavaScript(script) { [weak self] value, _ in
+                let height: Double? = (value as? NSNumber)?.doubleValue
+                Task { @MainActor in
+                    guard let self, let height, height.isFinite, height > 0 else { return }
+                    let next = CGFloat(height)
+                    if abs(next - self.parent.contentHeight) > 1 { self.parent.contentHeight = next }
+                }
+            }
+        }
+
+        /// Late images and fonts change the height: measure again shortly after load.
+        private func remeasureLater(_ web: WKWebView) {
+            Task { @MainActor [weak self, weak web] in
+                for delay in [300, 1000] {
+                    try? await Task.sleep(for: .milliseconds(delay))
+                    guard let self, let web else { return }
+                    self.measure(web)
+                }
+            }
+        }
 
         func load(into web: WKWebView) {
             loadedPayload = parent.payload
@@ -89,6 +125,7 @@ struct WidgetWebView: UIViewRepresentable {
                 return
             }
             parent.state = .loading
+            armTimeout()
             // baseURL nil : origine opaque, aucun accès aux ressources locales.
             web.loadHTMLString(html, baseURL: nil)
         }
@@ -105,25 +142,25 @@ struct WidgetWebView: UIViewRepresentable {
         }
 
         func webView(_ web: WKWebView, didFinish _: WKNavigation?) {
-            web.evaluateJavaScript("document.documentElement.scrollHeight") { [weak self] value, _ in
-                Task { @MainActor in
-                    guard let self else { return }
-                    if let h = value as? Double { self.parent.contentHeight = CGFloat(h) }
-                    self.parent.state = .loaded
-                }
-            }
+            timeoutTask?.cancel()
+            parent.state = .loaded
+            measure(web)
+            remeasureLater(web)
         }
 
         func webView(_: WKWebView, didFail _: WKNavigation?, withError error: any Error) {
+            timeoutTask?.cancel()
             parent.state = .failed(error.localizedDescription)
         }
 
         func webView(_: WKWebView, didFailProvisionalNavigation _: WKNavigation?, withError error: any Error) {
+            timeoutTask?.cancel()
             parent.state = .failed(error.localizedDescription)
         }
 
         func webViewWebContentProcessDidTerminate(_ web: WKWebView) {
             if terminatedOnce {
+                timeoutTask?.cancel()
                 parent.state = .failed(String(localized: "The widget stopped unexpectedly."))
             } else {
                 terminatedOnce = true

@@ -18,6 +18,7 @@ struct WidgetFullScreenView: View {
     @GestureState private var pinch: CGFloat = 1
     @State private var shareItem: WidgetShareItem?
     @State private var exportFailed = false
+    @State private var reloadToken = UUID()
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -55,12 +56,31 @@ struct WidgetFullScreenView: View {
                 WidgetWebView(
                     payload: payload, network: network, zoomable: true,
                     state: $state, contentHeight: $contentHeight, controller: controller)
+                    .id(reloadToken)
                 if state == .loading { ProgressView().accessibilityLabel(String(localized: "Loading widget")) }
                 if case let .failed(message) = state {
-                    Text(message).font(OpenClawType.body).padding()
+                    failureView(message)
                 }
             }
         }
+    }
+
+    private func failureView(_ message: String) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
+            Text(message).font(OpenClawType.body).multilineTextAlignment(.center)
+            Button {
+                state = .loading
+                reloadToken = UUID()
+            } label: {
+                Text(String(localized: "Retry")).font(OpenClawType.body).frame(minHeight: 44)
+            }
+            .buttonStyle(.glass)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(.systemBackground))
+        .accessibilityElement(children: .combine)
     }
 
     private var controls: some View {

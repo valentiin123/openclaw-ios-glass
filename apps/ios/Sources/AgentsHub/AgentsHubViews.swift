@@ -1,9 +1,12 @@
 import OpenClawChatUI
 import SwiftUI
+import UIKit
 
-// Native screens: agents list -> agent detail (sessions) -> subagent tree -> launch / result.
+// Native screens: agents list -> agent detail (sessions) -> subagent tree -> launch / run detail.
 // Content sits on system opaque List surfaces. Glass is only used by the system toolbar and the
 // `.glass` button styles on controls (never behind rows).
+// Compiler hygiene: no nested trailing closures in swipe actions, heavy expressions are hoisted
+// into typed properties, and ViewBuilders only reference properties/methods.
 
 // MARK: - Agents list
 
@@ -12,31 +15,10 @@ struct AgentsHubListView: View {
 
     var body: some View {
         List {
-            if let error = model.agentsError {
-                Section {
-                    Label(error, systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.red)
-                        .accessibilityLabel(Text("Error: \(error)"))
-                    Button("Retry") { Task { await model.loadAgents() } }
-                        .frame(minHeight: 44)
-                }
-            }
-            Section {
-                ForEach(model.agents) { agent in
-                    NavigationLink(value: agent) {
-                        AgentRow(agent: agent, isDefault: agent.id == model.defaultAgentID)
-                    }
-                    .frame(minHeight: 44)
-                }
-            }
+            errorSection
+            agentsSection
         }
-        .overlay {
-            if model.agents.isEmpty, model.isLoadingAgents {
-                ProgressView().accessibilityLabel(Text("Loading agents"))
-            } else if model.agents.isEmpty, model.agentsError == nil {
-                ContentUnavailableView("No agents", systemImage: "person.crop.circle.badge.questionmark")
-            }
-        }
+        .overlay { listOverlay }
         .navigationTitle("Agents")
         .navigationDestination(for: OpenClawChatAgentChoice.self) { agent in
             AgentDetailView(model: model, agent: agent)
@@ -44,6 +26,44 @@ struct AgentsHubListView: View {
         .refreshable { await model.loadAgents() }
         .task { if model.agents.isEmpty { await model.loadAgents() } }
         .agentsHubAnimation(value: model.agents)
+    }
+
+    @ViewBuilder
+    private var errorSection: some View {
+        if let error = model.agentsError {
+            Section {
+                AgentsHubErrorRow(message: error, retry: retryAgents)
+            }
+        }
+    }
+
+    private var agentsSection: some View {
+        Section {
+            ForEach(model.agents) { agent in
+                agentLink(agent)
+            }
+        }
+    }
+
+    private func agentLink(_ agent: OpenClawChatAgentChoice) -> some View {
+        let isDefault: Bool = agent.id == model.defaultAgentID
+        return NavigationLink(value: agent) {
+            AgentRow(agent: agent, isDefault: isDefault)
+        }
+        .frame(minHeight: 44)
+    }
+
+    @ViewBuilder
+    private var listOverlay: some View {
+        if model.agents.isEmpty, model.isLoadingAgents {
+            ProgressView().accessibilityLabel(Text("Loading agents"))
+        } else if model.agents.isEmpty, model.agentsError == nil {
+            ContentUnavailableView("No agents", systemImage: "person.crop.circle.badge.questionmark")
+        }
+    }
+
+    private func retryAgents() {
+        Task { await model.loadAgents() }
     }
 }
 
@@ -54,24 +74,34 @@ private struct AgentRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Text(agent.avatarText)
-                .font(.title3)
+                .font(OpenClawType.title3)
                 .frame(width: 44, height: 44)
                 .background(.quaternary, in: Circle())
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(agent.displayName).font(.headline)
-                if agent.displayName != agent.id {
-                    Text(agent.id).font(.caption).foregroundStyle(.secondary)
-                }
+                Text(agent.displayName).font(OpenClawType.headline)
+                secondaryID
             }
             Spacer(minLength: 0)
-            if isDefault {
-                Text("Default")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-            }
+            defaultTag
         }
         .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var secondaryID: some View {
+        if agent.displayName != agent.id {
+            Text(agent.id).font(OpenClawType.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var defaultTag: some View {
+        if isDefault {
+            Text("Default")
+                .font(OpenClawType.caption2SemiBold)
+                .foregroundStyle(.secondary)
+        }
     }
 }
 
@@ -83,27 +113,8 @@ struct AgentDetailView: View {
 
     var body: some View {
         List {
-            Section("Agent") {
-                LabeledContent("ID", value: agent.id)
-                if let workspace = agent.workspace {
-                    LabeledContent("Workspace", value: workspace)
-                }
-            }
-            Section("Sessions") {
-                ForEach(model.sessions) { session in
-                    NavigationLink(value: session) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(sessionTitle(session)).font(.body)
-                            AgentsHubStatusBadge(status: AgentsHubRunStatus(session))
-                        }
-                        .accessibilityElement(children: .combine)
-                    }
-                    .frame(minHeight: 44)
-                }
-                if model.sessions.isEmpty {
-                    Text("No sessions").foregroundStyle(.secondary)
-                }
-            }
+            infoSection
+            sessionsSection
         }
         .navigationTitle(agent.displayName)
         .navigationBarTitleDisplayMode(.inline)
@@ -112,10 +123,55 @@ struct AgentDetailView: View {
         }
         .refreshable { await model.loadSessions(agentID: agent.id) }
         .task(id: agent.id) { await model.loadSessions(agentID: agent.id) }
+        .agentsHubAnimation(value: model.sessions)
+    }
+
+    private var infoSection: some View {
+        Section("Agent") {
+            LabeledContent("ID", value: agent.id)
+            workspaceRow
+        }
+    }
+
+    @ViewBuilder
+    private var workspaceRow: some View {
+        if let workspace = agent.workspace {
+            LabeledContent("Workspace", value: workspace)
+        }
+    }
+
+    private var sessionsSection: some View {
+        Section("Sessions") {
+            ForEach(model.sessions) { session in
+                sessionLink(session)
+            }
+            emptySessions
+        }
+    }
+
+    private func sessionLink(_ session: OpenClawChatSessionEntry) -> some View {
+        let status: AgentsHubRunStatus = AgentsHubRunStatus(session)
+        let title: String = sessionTitle(session)
+        return NavigationLink(value: session) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(OpenClawType.body)
+                AgentsHubStatusBadge(status: status)
+            }
+            .accessibilityElement(children: .combine)
+        }
+        .frame(minHeight: 44)
+    }
+
+    @ViewBuilder
+    private var emptySessions: some View {
+        if model.sessions.isEmpty {
+            Text("No sessions").foregroundStyle(.secondary)
+        }
     }
 
     private func sessionTitle(_ s: OpenClawChatSessionEntry) -> String {
-        for c in [s.label, s.displayName, s.derivedTitle] {
+        let candidates: [String?] = [s.label, s.displayName, s.derivedTitle]
+        for c in candidates {
             if let t = c?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty { return t }
         }
         return s.key
@@ -129,86 +185,154 @@ struct SubagentTreeView: View {
     let root: OpenClawChatSessionEntry
 
     @State private var showLaunch = false
-    @State private var resultNode: SubagentNode?
+    @State private var detailNode: SubagentNode?
     @State private var confirmStop: SubagentNode?
 
     var body: some View {
         List {
-            if let error = model.treeError {
-                Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red)
-            }
-            if let error = model.actionError {
-                Label(error, systemImage: "exclamationmark.octagon.fill").foregroundStyle(.red)
-            }
-            if let tree = model.tree {
-                Section {
-                    summary(tree)
-                }
-                Section("Subagents") {
-                    ForEach(model.visibleRows) { row in
-                        SubagentRowView(
-                            row: row,
-                            busy: model.busyKeys.contains(row.node.id),
-                            canStop: model.canStop,
-                            onToggle: { model.toggle(row.node.id) },
-                            onStop: { confirmStop = row.node },
-                            onResult: { resultNode = row.node })
-                    }
-                    if tree.children.isEmpty {
-                        Text("No subagents").foregroundStyle(.secondary)
-                    }
-                }
-            }
+            messagesSection
+            treeSections
         }
-        .overlay {
-            if model.tree == nil, model.isLoadingTree {
-                ProgressView().accessibilityLabel(Text("Loading subagents"))
-            }
-        }
+        .overlay { treeOverlay }
         .navigationTitle("Subagents")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button { showLaunch = true } label: {
-                    Label("Launch subagent", systemImage: "plus")
-                }
-                .disabled(!model.canLaunch)
-                .frame(minWidth: 44, minHeight: 44)
-            }
-        }
+        .toolbar { launchToolbar }
         .refreshable { await model.loadTree(root: root) }
         .task(id: root.key) { await model.loadTree(root: root) }
         .sheet(isPresented: $showLaunch) {
             LaunchSubagentSheet(model: model, parent: root)
         }
-        .sheet(item: $resultNode) { node in
+        .sheet(item: $detailNode) { node in
             SubagentResultSheet(model: model, node: node)
         }
         .confirmationDialog(
             "Stop this subagent and its descendants?",
-            isPresented: Binding(get: { confirmStop != nil }, set: { if !$0 { confirmStop = nil } }),
-            titleVisibility: .visible)
-        {
-            Button("Stop", role: .destructive) {
-                if let node = confirmStop { Task { await model.stop(node) } }
-                confirmStop = nil
-            }
-            Button("Cancel", role: .cancel) { confirmStop = nil }
-        }
+            isPresented: confirmStopBinding,
+            titleVisibility: .visible,
+            actions: { stopDialogActions })
         .agentsHubAnimation(value: model.collapsed)
         .agentsHubAnimation(value: model.visibleRows)
     }
 
+    // MARK: Bindings and helpers
+
+    private var confirmStopBinding: Binding<Bool> {
+        Binding<Bool>(
+            get: { confirmStop != nil },
+            set: { newValue in if !newValue { confirmStop = nil } })
+    }
+
+    private func requestStop(_ node: SubagentNode) {
+        confirmStop = node
+    }
+
+    private func showDetail(_ node: SubagentNode) {
+        detailNode = node
+    }
+
+    private func confirmStopNow() {
+        guard let node = confirmStop else { return }
+        confirmStop = nil
+        Task { await model.stop(node) }
+    }
+
+    private func cancelStop() {
+        confirmStop = nil
+    }
+
+    private func reloadTree() {
+        Task { await model.loadTree(root: root) }
+    }
+
+    private func openLaunch() {
+        showLaunch = true
+    }
+
+    // MARK: Pieces
+
+    @ViewBuilder
+    private var stopDialogActions: some View {
+        Button("Stop", role: .destructive, action: confirmStopNow)
+        Button("Cancel", role: .cancel, action: cancelStop)
+    }
+
+    @ToolbarContentBuilder
+    private var launchToolbar: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            Button(action: openLaunch) {
+                Label("Launch subagent", systemImage: "plus")
+                    .frame(minWidth: 44, minHeight: 44)
+            }
+            .disabled(!model.canLaunch)
+        }
+    }
+
+    @ViewBuilder
+    private var messagesSection: some View {
+        if let error = model.treeError {
+            AgentsHubErrorRow(message: error, retry: reloadTree)
+        }
+        if let error = model.actionError {
+            AgentsHubErrorRow(message: error, retry: nil)
+        }
+    }
+
+    @ViewBuilder
+    private var treeSections: some View {
+        if let tree = model.tree {
+            Section { summary(tree) }
+            Section("Subagents") {
+                rowsContent(tree)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func rowsContent(_ tree: SubagentNode) -> some View {
+        ForEach(model.visibleRows) { row in
+            treeRow(row)
+        }
+        if tree.children.isEmpty {
+            Text("No subagents").foregroundStyle(.secondary)
+        }
+    }
+
+    private func treeRow(_ row: FlatSubagentRow) -> some View {
+        let busy: Bool = model.busyKeys.contains(row.node.id)
+        let id: String = row.node.id
+        return SubagentRowView(
+            row: row,
+            busy: busy,
+            canStop: model.canStop,
+            onToggle: { model.toggle(id) },
+            onStop: { requestStop(row.node) },
+            onResult: { showDetail(row.node) })
+    }
+
+    @ViewBuilder
+    private var treeOverlay: some View {
+        if model.tree == nil, model.isLoadingTree {
+            ProgressView().accessibilityLabel(Text("Loading subagents"))
+        }
+    }
+
     private func summary(_ tree: SubagentNode) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            AgentsHubStatusBadge(status: tree.status)
-            Text("\(tree.descendantCount) descendants · \(tree.activeDescendantCount) active · \(tree.failedDescendantCount) failed")
-                .font(.footnote)
+        let isLive: Bool = tree.status.isActive || tree.activeDescendantCount > 0
+        let counts: String = "\(tree.descendantCount) descendants · \(tree.activeDescendantCount) active · \(tree.failedDescendantCount) failed"
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 12) {
+                AgentsHubStatusBadge(status: tree.status)
+                if isLive { AgentsHubLiveBadge() }
+            }
+            Text(counts)
+                .font(OpenClawType.footnote)
                 .foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .combine)
     }
 }
+
+// MARK: - Row
 
 private struct SubagentRowView: View {
     let row: FlatSubagentRow
@@ -218,48 +342,121 @@ private struct SubagentRowView: View {
     let onStop: () -> Void
     let onResult: () -> Void
 
+    private var hasActiveRuns: Bool { !row.node.activeRuns.isEmpty }
+    private var hasChildren: Bool { !row.node.children.isEmpty }
+    private var indent: CGFloat { CGFloat(row.depth) * 16 }
+
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            if !row.node.children.isEmpty {
-                Button(action: onToggle) {
-                    Image(systemName: row.isExpanded ? "chevron.down" : "chevron.right")
-                        .frame(width: 44, height: 44)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Text(row.isExpanded ? "Collapse" : "Expand"))
-            } else {
-                Color.clear.frame(width: 44, height: 44)
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                Text(row.node.title).font(.body)
-                AgentsHubStatusBadge(status: row.node.status)
-                if let d = AgentsHubFormat.duration(ms: row.node.session.runtimeMs) {
-                    Text(d).font(.caption).foregroundStyle(.secondary)
-                }
-                if !row.node.children.isEmpty {
-                    Text("\(row.node.descendantCount) descendants")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-            }
-            .accessibilityElement(children: .combine)
+            disclosure
+            textColumn
             Spacer(minLength: 0)
-            if busy {
-                ProgressView()
-            } else {
-                Menu {
-                    Button("View result", systemImage: "doc.text", action: onResult)
-                    if !row.node.activeRuns.isEmpty {
-                        Button("Stop", systemImage: "stop.circle", role: .destructive, action: onStop)
-                            .disabled(!canStop)
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle").frame(width: 44, height: 44)
-                }
-                .accessibilityLabel(Text("Actions for \(row.node.title)"))
-            }
+            trailing
         }
-        .padding(.leading, CGFloat(row.depth) * 16)
+        .padding(.leading, indent)
         .frame(minHeight: 44)
+        .contentShape(Rectangle())
+        .contextMenu { menuItems }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) { stopSwipe }
+        .swipeActions(edge: .leading, allowsFullSwipe: true) { resultSwipe }
+        .accessibilityAction(named: Text("View details"), onResult)
+        .accessibilityAction(named: Text("Stop"), stopIfAllowed)
+    }
+
+    // MARK: Pieces
+
+    @ViewBuilder
+    private var disclosure: some View {
+        if hasChildren {
+            Button(action: onToggle) {
+                Image(systemName: row.isExpanded ? "chevron.down" : "chevron.right")
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(row.isExpanded ? "Collapse" : "Expand"))
+        } else {
+            Color.clear.frame(width: 44, height: 44)
+        }
+    }
+
+    private var textColumn: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(row.node.title).font(OpenClawType.body)
+            AgentsHubStatusBadge(status: row.node.status)
+            durationLine
+            childrenLine
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var durationLine: some View {
+        if let d = AgentsHubFormat.duration(ms: row.node.session.runtimeMs) {
+            Text(d).font(OpenClawType.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var childrenLine: some View {
+        if hasChildren {
+            Text("\(row.node.descendantCount) descendants")
+                .font(OpenClawType.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var trailing: some View {
+        if busy {
+            ProgressView().frame(width: 44, height: 44)
+        } else {
+            Menu { menuItems } label: { menuLabel }
+                .accessibilityLabel(Text("Actions for \(row.node.title)"))
+        }
+    }
+
+    private var menuLabel: some View {
+        Image(systemName: "ellipsis.circle").frame(width: 44, height: 44)
+    }
+
+    /// Shared by the ellipsis menu and the long-press context menu.
+    @ViewBuilder
+    private var menuItems: some View {
+        Button("View details", systemImage: "doc.text", action: onResult)
+        Button("Copy session key", systemImage: "doc.on.doc", action: copyKey)
+        if hasActiveRuns {
+            Button("Stop", systemImage: "stop.circle", role: .destructive, action: onStop)
+                .disabled(!canStop)
+        }
+    }
+
+    // MARK: Swipe actions (one flat Button each, no nested trailing closures)
+
+    @ViewBuilder
+    private var stopSwipe: some View {
+        if hasActiveRuns {
+            Button(role: .destructive, action: onStop) {
+                Label("Stop", systemImage: "stop.circle")
+            }
+            .disabled(!canStop)
+        }
+    }
+
+    private var resultSwipe: some View {
+        Button(action: onResult) {
+            Label("Details", systemImage: "doc.text")
+        }
+        .tint(.accentColor)
+    }
+
+    // MARK: Actions
+
+    private func copyKey() {
+        UIPasteboard.general.string = row.node.session.key
+    }
+
+    private func stopIfAllowed() {
+        if hasActiveRuns, canStop { onStop() }
     }
 }
 
@@ -274,85 +471,191 @@ struct LaunchSubagentSheet: View {
     @State private var label = ""
     @State private var task = ""
 
+    private var trimmedTask: String {
+        task.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var canSubmit: Bool {
+        let hasAgent: Bool = !agentID.isEmpty
+        let hasTask: Bool = !trimmedTask.isEmpty
+        let notBusy: Bool = !model.busyKeys.contains(parent.key)
+        return model.canLaunch && hasAgent && hasTask && notBusy
+    }
+
     var body: some View {
         NavigationStack {
             Form {
-                Section("Agent") {
-                    Picker("Agent", selection: $agentID) {
-                        ForEach(model.agents) { Text($0.displayName).tag($0.id) }
-                    }
-                }
-                Section("Label (optional)") {
-                    TextField("Label", text: $label)
-                }
-                Section("Task") {
-                    TextEditor(text: $task).frame(minHeight: 120)
-                }
-                if let error = model.actionError {
-                    Section { Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red) }
-                }
+                agentSection
+                labelSection
+                taskSection
+                errorSection
             }
             .navigationTitle("Launch subagent")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Launch") {
-                        Task {
-                            if await model.launch(parent: parent, agentID: agentID, label: label, task: task) != nil {
-                                dismiss()
-                            }
-                        }
-                    }
-                    .disabled(!model.canLaunch
-                        || agentID.isEmpty
-                        || task.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                        || model.busyKeys.contains(parent.key))
-                }
-            }
-            .onAppear {
-                if agentID.isEmpty { agentID = parent.agentId ?? model.defaultAgentID ?? model.agents.first?.id ?? "" }
-            }
+            .toolbar { toolbarContent }
+            .onAppear(perform: seedAgent)
         }
         .presentationDetents([.medium, .large])
     }
+
+    private var agentSection: some View {
+        Section("Agent") {
+            Picker("Agent", selection: $agentID) {
+                ForEach(model.agents) { agent in
+                    Text(agent.displayName).tag(agent.id)
+                }
+            }
+        }
+    }
+
+    private var labelSection: some View {
+        Section("Label (optional)") {
+            TextField("Label", text: $label)
+                .frame(minHeight: 44)
+        }
+    }
+
+    private var taskSection: some View {
+        Section("Task") {
+            TextEditor(text: $task)
+                .font(OpenClawType.body)
+                .frame(minHeight: 120)
+        }
+    }
+
+    @ViewBuilder
+    private var errorSection: some View {
+        if let error = model.actionError {
+            Section { AgentsHubErrorRow(message: error, retry: nil) }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .cancellationAction) {
+            Button("Cancel", action: close)
+        }
+        ToolbarItem(placement: .confirmationAction) {
+            Button("Launch", action: submit)
+                .disabled(!canSubmit)
+        }
+    }
+
+    private func close() {
+        dismiss()
+    }
+
+    private func seedAgent() {
+        guard agentID.isEmpty else { return }
+        let fallback: String = model.defaultAgentID ?? model.agents.first?.id ?? ""
+        agentID = parent.agentId ?? fallback
+    }
+
+    private func submit() {
+        let chosenAgent: String = agentID
+        let chosenLabel: String = label
+        let chosenTask: String = task
+        Task {
+            let created: String? = await model.launch(
+                parent: parent, agentID: chosenAgent, label: chosenLabel, task: chosenTask)
+            if created != nil { dismiss() }
+        }
+    }
 }
 
-// MARK: - Result
+// MARK: - Run detail
 
 struct SubagentResultSheet: View {
     @Bindable var model: AgentsHubViewModel
     let node: SubagentNode
     @Environment(\.dismiss) private var dismiss
 
+    private struct DetailItem: Identifiable {
+        let id: String
+        let value: String
+    }
+
+    private var details: [DetailItem] {
+        var items: [DetailItem] = []
+        let session: OpenClawChatSessionEntry = node.session
+        if let model = session.model, !model.isEmpty {
+            items.append(DetailItem(id: String(localized: "Model"), value: model))
+        }
+        if let started = AgentsHubFormat.date(ms: session.startedAt) {
+            items.append(DetailItem(id: String(localized: "Started"), value: started))
+        }
+        if let ended = AgentsHubFormat.date(ms: session.endedAt) {
+            items.append(DetailItem(id: String(localized: "Ended"), value: ended))
+        }
+        if let duration = AgentsHubFormat.duration(ms: session.runtimeMs) {
+            items.append(DetailItem(id: String(localized: "Duration"), value: duration))
+        }
+        if let tokens = AgentsHubFormat.tokens(session.totalTokens) {
+            items.append(DetailItem(id: String(localized: "Tokens"), value: tokens))
+        }
+        return items
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     AgentsHubStatusBadge(status: node.status)
-                    if let err = node.session.lastRunError, !err.isEmpty {
-                        Text(err).foregroundStyle(.red)
-                    }
-                    if model.isLoadingResult {
-                        ProgressView().accessibilityLabel(Text("Loading result"))
-                    } else if let text = model.resultText, !text.isEmpty {
-                        Text(text).textSelection(.enabled)
-                    } else {
-                        Text("No result available").foregroundStyle(.secondary)
-                    }
+                    errorText
+                    detailRows
+                    resultBlock
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
             }
             .navigationTitle(node.title)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
-            }
+            .toolbar { doneToolbar }
             .task { await model.loadResult(for: node) }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    @ViewBuilder
+    private var errorText: some View {
+        if let err = node.session.lastRunError, !err.isEmpty {
+            Text(err)
+                .font(OpenClawType.subhead)
+                .foregroundStyle(.red)
+                .textSelection(.enabled)
+        }
+    }
+
+    private var detailRows: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(details) { item in
+                LabeledContent(item.id, value: item.value)
+                    .font(OpenClawType.subhead)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var resultBlock: some View {
+        if model.isLoadingResult {
+            ProgressView().accessibilityLabel(Text("Loading result"))
+        } else if let text = model.resultText, !text.isEmpty {
+            Text(text)
+                .font(OpenClawType.body)
+                .textSelection(.enabled)
+        } else {
+            Text("No result available").foregroundStyle(.secondary)
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var doneToolbar: some ToolbarContent {
+        ToolbarItem(placement: .confirmationAction) {
+            Button("Done", action: close)
+        }
+    }
+
+    private func close() {
+        dismiss()
     }
 }

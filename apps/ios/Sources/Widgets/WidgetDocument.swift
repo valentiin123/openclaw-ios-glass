@@ -62,8 +62,9 @@ enum WidgetDocument {
         <meta name="color-scheme" content="light dark">
         <style>
         :root{color-scheme:light dark}
-        html,body{margin:0;padding:0;background:transparent;font:-apple-system-body;
+        html,body{margin:0;padding:0;background:transparent;color:CanvasText;font:-apple-system-body;
           -webkit-text-size-adjust:100%;word-wrap:break-word}
+        a{color:LinkText}
         body{padding:12px}
         svg{max-width:100%;height:auto}
         img{max-width:100%;height:auto}
