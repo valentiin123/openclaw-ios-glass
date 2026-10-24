@@ -29,7 +29,7 @@ jobs:
           cache: pnpm
 
       - name: Install JS deps (protocol + mermaid generators)
-        run: pnpm install --frozen-lockfile --filter "@openclaw/gateway-protocol..." --filter "@openclaw/mermaid-renderer..."
+        run: pnpm install --frozen-lockfile --ignore-scripts --filter "@openclaw/gateway-protocol..." --filter "@openclaw/mermaid-renderer..."
 
       - name: Install XcodeGen
         run: brew install xcodegen
