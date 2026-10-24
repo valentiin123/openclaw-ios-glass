@@ -716,6 +716,12 @@ struct RootSidebar: View {
         }
     }
 
+    private func togglePin(key: String, currentlyPinned: Bool) {
+        self.performSessionMutation(resetActiveSessionKey: nil) { transport in
+            try await transport.patchSession(key: key, pinned: !currentlyPinned)
+        }
+    }
+
     /// Pin, snooze and archive as rightward swipe actions; same mutations as the context menu.
     private func sessionSwipeActionList(
         _ session: OpenClawChatSessionEntry,
@@ -727,11 +733,7 @@ struct RootSidebar: View {
         let pinIcon: String = isPinned ? "pin.slash" : "pin"
         let pinTint: Color = OpenClawSidebarPalette.accent
         let pinKey: String = session.key
-        let pinAction: () -> Void = {
-            self.performSessionMutation(resetActiveSessionKey: nil) { transport in
-                try await transport.patchSession(key: pinKey, pinned: !isPinned)
-            }
-        }
+        let pinAction: () -> Void = { self.togglePin(key: pinKey, currentlyPinned: isPinned) }
         let pinSwipe = SessionSwipeAction(
             id: "pin",
             title: pinTitle,
