@@ -46,7 +46,6 @@ public struct WidgetCardView: View {
             .frame(maxWidth: .infinity)
             .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.primary.opacity(0.1)))
             .contentShape(Rectangle())
             .onTapGesture { showFullScreen = true }
             .accessibilityAddTraits(.isButton)
@@ -82,16 +81,12 @@ public struct WidgetCardView: View {
                     Label { Text(String(localized: "Share")).font(OpenClawType.body) }
                         icon: { Image(systemName: "square.and.arrow.up") }
                 }
-                Button { showFullScreen = true } label: {
-                    Label { Text(String(localized: "Full screen")).font(OpenClawType.body) }
-                        icon: { Image(systemName: "arrow.up.left.and.arrow.down.right") }
-                }
             } label: {
                 Image(systemName: "ellipsis")
+                    .foregroundStyle(.secondary)
                     .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(.glass)
-            .buttonBorderShape(.circle)
             .accessibilityLabel(String(localized: "Widget actions"))
         }
     }
@@ -150,26 +145,25 @@ public struct WidgetCardView: View {
             Text(verbatim: message)
                 .font(OpenClawType.subhead)
                 .multilineTextAlignment(.center)
-            GlassEffectContainer {
-                HStack(spacing: 8) {
+            HStack(spacing: 8) {
+                Button {
+                    showSource = false
+                    state = .loading
+                    reloadToken = UUID()
+                } label: {
+                    Text(String(localized: "Retry")).font(OpenClawType.body).frame(minHeight: 44)
+                }
+                .buttonStyle(.glass)
+                if sourceText != nil {
                     Button {
-                        showSource = false
-                        state = .loading
-                        reloadToken = UUID()
+                        OpenClawMotion.perform(reduceMotion: reduceMotion) { showSource.toggle() }
                     } label: {
-                        Text(String(localized: "Retry")).font(OpenClawType.body).frame(minHeight: 44)
+                        Text(showSource ? String(localized: "Hide source") : String(localized: "Show source"))
+                            .font(OpenClawType.body)
+                            .foregroundStyle(.secondary)
+                            .frame(minHeight: 44)
                     }
-                    .buttonStyle(.glass)
-                    if sourceText != nil {
-                        Button {
-                            OpenClawMotion.perform(reduceMotion: reduceMotion) { showSource.toggle() }
-                        } label: {
-                            Text(showSource ? String(localized: "Hide source") : String(localized: "Show source"))
-                                .font(OpenClawType.body)
-                                .frame(minHeight: 44)
-                        }
-                        .buttonStyle(.glass)
-                    }
+                    .buttonStyle(.plain)
                 }
             }
             if showSource, let sourceText {

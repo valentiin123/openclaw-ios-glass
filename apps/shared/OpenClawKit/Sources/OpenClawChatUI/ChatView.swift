@@ -333,16 +333,14 @@ extension OpenClawChatView {
                 .padding(.horizontal, self.isTabletLayout ? self.tabletHorizontalMargin : Layout.swarmPaddingHorizontal)
                 .padding(.vertical, Layout.swarmPaddingVertical)
                 .padding(.top, Layout.stackSpacing)
-            if self.showsComposer {
-                self.composer
-                    .frame(maxWidth: self.readingColumnWidth)
-                    .padding(.horizontal, self.composerHorizontalMargin)
-                    .padding(.top, Layout.stackSpacing)
-                    .padding(.bottom, self.isTabletLayout || self.isDesktopLayout ? 12 : Layout.outerPaddingVertical)
-            }
         }
         .padding(.top, Layout.outerPaddingVertical)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        // The composer is a bottom safe-area inset: the system adds the tab bar height when the
+        // keyboard is down and the keyboard height when it is up, so no constant is needed.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            self.composerInset
+        }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { self.contentWidth = $0 }
         .environment(\.openClawAssistantUsesReadingColumn, self.isTabletLayout)
     }
@@ -400,6 +398,26 @@ extension OpenClawChatView {
             voiceNoteControl: self.voiceNoteControl,
             focusRequest: self.composerFocusRequest,
             resolveInputModel: self.resolveComposerModel)
+    }
+
+    @ViewBuilder
+    private var composerInset: some View {
+        if self.showsComposer {
+            let bottomPadding: CGFloat = self.composerBottomPadding
+            self.composer
+                .frame(maxWidth: self.readingColumnWidth)
+                .padding(.horizontal, self.composerHorizontalMargin)
+                .padding(.top, Layout.stackSpacing)
+                .padding(.bottom, bottomPadding)
+                .frame(maxWidth: .infinity)
+        }
+    }
+
+    /// Keyboard up: the composer sits flush on the keyboard. Keyboard down: a small gap above
+    /// the safe area, which already includes the tab bar.
+    private var composerBottomPadding: CGFloat {
+        if self.isTabletLayout || self.isDesktopLayout { return 12 }
+        return self.isKeyboardVisible ? 0 : Layout.outerPaddingVertical
     }
 
     /// The turn has ended, but a helper it started is still running.

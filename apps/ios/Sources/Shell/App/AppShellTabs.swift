@@ -91,7 +91,85 @@ struct AppShellAgentsView: View {
     }
 }
 
-// MARK: - Native Gateway list tabs (Activity, Automations)
+// MARK: - Activity tab (Overview, Activity, Automations)
+
+/// Activity tab: a glass segmented control chooses between Overview, the activity feed and
+/// Automations. Each section keeps its own NavigationStack; the system handles the bottom
+/// safe area (tab bar) for all of them.
+struct AppShellActivityView: View {
+    @Bindable var navigation: AppShellNavigation
+    let context: AppShellContext
+
+    private var currentSection: AppShellActivitySection {
+        AppShellActivitySection(tab: self.navigation.selection)
+    }
+
+    private var sectionBinding: Binding<AppShellActivitySection> {
+        Binding<AppShellActivitySection>(
+            get: { self.currentSection },
+            set: { newValue in self.navigation.selectActivitySection(newValue) })
+    }
+
+    private var sectionOptions: [OpenClawGlassSegmented<AppShellActivitySection>.Option] {
+        var result: [OpenClawGlassSegmented<AppShellActivitySection>.Option] = []
+        for section in AppShellActivitySection.allCases {
+            let option = OpenClawGlassSegmented<AppShellActivitySection>.Option(
+                section,
+                title: section.title,
+                systemImage: section.systemImage)
+            result.append(option)
+        }
+        return result
+    }
+
+    var body: some View {
+        self.content
+            .safeAreaInset(edge: .top, spacing: 0) {
+                self.sectionPicker
+            }
+            .background(OpenClawProBackground())
+            .accessibilityIdentifier("AppShell.Activity")
+    }
+
+    private var sectionPicker: some View {
+        OpenClawGlassSegmented(
+            selection: self.sectionBinding,
+            options: self.sectionOptions)
+            .padding(.horizontal, OpenClawProMetric.pagePadding)
+            .padding(.vertical, 8)
+            .accessibilityIdentifier("AppShell.Activity.Sections")
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch self.currentSection {
+        case .overview:
+            AppShellOverviewView(navigation: self.navigation, context: self.context)
+        case .activity:
+            self.nativeList(
+                tab: .activity,
+                path: DashboardRouteMap.activityPagePath,
+                titleText: String(localized: "Activity"))
+        case .automations:
+            self.nativeList(
+                tab: .automations,
+                path: DashboardRouteMap.cronJobsPagePath,
+                titleText: String(localized: "Automations"))
+        }
+    }
+
+    private func nativeList(tab: AppShellTab, path: String, titleText: String) -> some View {
+        let token: Int = self.navigation.resetToken(for: tab)
+        return AppShellNativeListView(
+            tab: tab,
+            path: path,
+            titleText: titleText,
+            resetToken: token,
+            context: self.context)
+    }
+}
+
+// MARK: - Native Gateway list (Activity, Automations)
 
 /// Hosts a dashboard path through `NativeDestinationRouter`, which resolves to native
 /// list screens that own their NavigationStack, search and pull-to-refresh.

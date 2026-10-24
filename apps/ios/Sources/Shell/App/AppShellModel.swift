@@ -6,9 +6,9 @@ import SwiftUI
 
 /// Top-level destinations of the app shell.
 ///
-/// Five of them live in the iPhone tab bar. `automations` is a real tab too, but it is
-/// hidden from the compact tab bar (the bar stays at five items). It shows in the iPad
-/// sidebar and is reached from the Overview menu on iPhone.
+/// Only four of them are in the tab bar: Chat, Agents, Activity and Settings (`barTab`).
+/// `overview` and `automations` stay valid destinations (deep links, `RootTabs` reads
+/// `selection`), but they are sections of the Activity tab, chosen with a segmented control.
 enum AppShellTab: String, CaseIterable, Hashable, Identifiable {
     case overview
     case chat
@@ -48,8 +48,17 @@ enum AppShellTab: String, CaseIterable, Hashable, Identifiable {
         "AppShell.Tab.\(self.rawValue)"
     }
 
+    /// Tab shown in the bar for this destination. Overview, Activity and Automations share the
+    /// Activity tab, so the bar stays at four items.
+    var barTab: AppShellTab {
+        switch self {
+        case .overview, .activity, .automations: .activity
+        case .chat, .agents, .settings: self
+        }
+    }
+
     var isInCompactTabBar: Bool {
-        self != .automations
+        self == self.barTab
     }
 }
 
@@ -79,6 +88,52 @@ enum AppShellAgentsSection: String, CaseIterable, Hashable, Identifiable {
         case .roster: "person.2"
         case .subagents: "person.3"
         case .files: "folder"
+        }
+    }
+}
+
+// MARK: - Activity sections
+
+/// Sections of the Activity tab. Each maps to an `AppShellTab` destination, so legacy landings
+/// (`.overview`, `.cron`) keep working and the host can still read `selection`.
+enum AppShellActivitySection: String, CaseIterable, Hashable, Identifiable {
+    case overview
+    case activity
+    case automations
+
+    var id: String {
+        self.rawValue
+    }
+
+    init(tab: AppShellTab) {
+        switch tab {
+        case .overview: self = .overview
+        case .automations: self = .automations
+        case .chat, .agents, .activity, .settings: self = .activity
+        }
+    }
+
+    var tab: AppShellTab {
+        switch self {
+        case .overview: .overview
+        case .activity: .activity
+        case .automations: .automations
+        }
+    }
+
+    var title: OpenClawTextValue {
+        switch self {
+        case .overview: "Overview"
+        case .activity: "Activity"
+        case .automations: "Automations"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .overview: "chart.bar"
+        case .activity: "waveform.path.ecg"
+        case .automations: "timer"
         }
     }
 }
@@ -248,6 +303,7 @@ final class AppShellNavigation {
     var agentsSection: AppShellAgentsSection = .roster
     var presentedMore: AppShellMoreItem?
     private(set) var resetTokens: [AppShellTab: Int] = [:]
+    @ObservationIgnored private var lastActivitySection: AppShellActivitySection = .activity
 
     init(landing: AppShellLanding = AppShellLanding(tab: .chat)) {
         self.selection = landing.tab
@@ -264,33 +320,43 @@ final class AppShellNavigation {
         self.apply(landing)
     }
 
-    /// Called by the tab selection binding. Re-selecting the current tab returns it to its root.
+    /// Called by the tab bar binding with one of the four bar tabs. Re-selecting the current
+    /// tab returns it to its root; entering Activity restores the last section used there.
     func userSelected(_ tab: AppShellTab) {
-        if tab == self.selection {
-            self.reselect(tab)
+        if tab == self.selection.barTab {
+            self.reselect(self.selection)
+        } else if tab == .activity {
+            self.move(to: self.lastActivitySection.tab)
         } else {
-            self.selection = tab
+            self.move(to: tab)
         }
+    }
+
+    /// Segmented control of the Activity tab.
+    func selectActivitySection(_ section: AppShellActivitySection) {
+        guard section.tab != self.selection else { return }
+        self.presentedMore = nil
+        self.move(to: section.tab)
     }
 
     func openSessions() {
         self.presentedMore = nil
-        self.selection = .overview
+        self.move(to: .overview)
         self.homePath = [.sessions]
     }
 
     func open(more item: AppShellMoreItem) {
-        self.selection = .overview
+        self.move(to: .overview)
         self.homePath = []
         self.presentedMore = item
     }
 
     func openAutomations() {
-        self.selection = .automations
+        self.move(to: .automations)
     }
 
     func openChat() {
-        self.selection = .chat
+        self.move(to: .chat)
     }
 
     /// Opens Settings on a given route, or on the hub root when `route` is nil.
@@ -314,8 +380,16 @@ final class AppShellNavigation {
 
     // MARK: Internals
 
+    /// Single place that changes `selection`, so the Activity tab can remember its section.
+    private func move(to tab: AppShellTab) {
+        if self.selection.barTab == .activity, tab.barTab != .activity {
+            self.lastActivitySection = AppShellActivitySection(tab: self.selection)
+        }
+        self.selection = tab
+    }
+
     private func apply(_ landing: AppShellLanding) {
-        self.selection = landing.tab
+        self.move(to: landing.tab)
         if let section = landing.agentsSection {
             self.agentsSection = section
         }

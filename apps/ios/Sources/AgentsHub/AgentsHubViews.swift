@@ -378,7 +378,6 @@ private struct SubagentRowView: View {
         .accessibilityAddTraits(.isButton)
         .contextMenu { menuItems }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) { stopSwipe }
-        .swipeActions(edge: .leading, allowsFullSwipe: true) { resultSwipe }
         .accessibilityAction(named: Text("View details"), onResult)
         .accessibilityAction(named: Text("Stop"), stopIfAllowed)
     }
@@ -403,25 +402,25 @@ private struct SubagentRowView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(row.node.title).font(OpenClawType.body)
             AgentsHubStatusBadge(status: row.node.status)
-            durationLine
-            childrenLine
+            metaLine
         }
         .accessibilityElement(children: .combine)
     }
 
-    @ViewBuilder
-    private var durationLine: some View {
-        if let d = AgentsHubFormat.duration(ms: row.node.session.runtimeMs) {
-            Text(d).font(OpenClawType.caption).foregroundStyle(.secondary)
-        }
+    private var metaText: String {
+        let duration: String? = AgentsHubFormat.duration(ms: row.node.session.runtimeMs)
+        let count: Int = row.node.descendantCount
+        let descendants: String? = hasChildren ? String(localized: "\(count) descendants") : nil
+        let parts: [String?] = [duration, descendants]
+        let present: [String] = parts.compactMap { $0 }
+        return present.joined(separator: " · ")
     }
 
     @ViewBuilder
-    private var childrenLine: some View {
-        if hasChildren {
-            Text("\(row.node.descendantCount) descendants")
-                .font(OpenClawType.caption)
-                .foregroundStyle(.secondary)
+    private var metaLine: some View {
+        let line: String = metaText
+        if !line.isEmpty {
+            Text(line).font(OpenClawType.caption).foregroundStyle(.secondary)
         }
     }
 
@@ -436,7 +435,9 @@ private struct SubagentRowView: View {
     }
 
     private var menuLabel: some View {
-        Image(systemName: "ellipsis.circle").frame(width: 44, height: 44)
+        Image(systemName: "ellipsis")
+            .foregroundStyle(.secondary)
+            .frame(width: 44, height: 44)
     }
 
     /// Shared by the ellipsis menu and the long-press context menu.
@@ -460,13 +461,6 @@ private struct SubagentRowView: View {
             }
             .disabled(!canStop)
         }
-    }
-
-    private var resultSwipe: some View {
-        Button(action: onResult) {
-            Label("Details", systemImage: "doc.text")
-        }
-        .tint(.accentColor)
     }
 
     // MARK: Actions

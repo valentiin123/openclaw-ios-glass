@@ -5,45 +5,26 @@ import SwiftUI
 
 /// Root of the native shell: an iOS 26 `TabView` (Liquid Glass tab bar drawn by the system).
 ///
-/// - iPhone: five tabs (Overview, Chat, Agents, Activity, Settings). Automations is hidden
-///   from the bar and reached from the Overview menu.
-/// - iPad: `.sidebarAdaptable` shows all six, including Automations.
+/// - Four tabs only: Chat, Agents, Activity, Settings.
+/// - Activity hosts Overview, Activity and Automations behind a segmented control; the
+///   Overview "More" list holds Usage, Skill Workshop, Instances, Dreaming, Workboard and Docs.
+/// - The tab bar is never hidden or inset by hand: every hosted screen lets the system apply
+///   the bottom safe area (the chat composer is a bottom safe-area inset of the chat view).
 /// - The tab bar minimises on scroll (`tabBarMinimizeBehavior`). Glass stays on navigation and
 ///   controls; hosted screens keep their opaque grouped backgrounds.
 struct AppShellRootView: View {
     @Bindable var navigation: AppShellNavigation
     let context: AppShellContext
 
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-
+    /// The bar only knows four tabs; Overview and Automations map to the Activity tab.
     private var selectionBinding: Binding<AppShellTab> {
         Binding<AppShellTab>(
-            get: { self.navigation.selection },
+            get: { self.navigation.selection.barTab },
             set: { newValue in self.navigation.userSelected(newValue) })
-    }
-
-    private var hidesAutomationsTab: Bool {
-        self.horizontalSizeClass == .compact
-    }
-
-    private var activityTitle: String {
-        String(localized: "Activity")
-    }
-
-    private var automationsTitle: String {
-        String(localized: "Automations")
     }
 
     var body: some View {
         TabView(selection: self.selectionBinding) {
-            Tab(
-                AppShellTab.overview.title,
-                systemImage: AppShellTab.overview.systemImage,
-                value: AppShellTab.overview)
-            {
-                AppShellOverviewView(navigation: self.navigation, context: self.context)
-            }
-
             Tab(
                 AppShellTab.chat.title,
                 systemImage: AppShellTab.chat.systemImage,
@@ -65,17 +46,8 @@ struct AppShellRootView: View {
                 systemImage: AppShellTab.activity.systemImage,
                 value: AppShellTab.activity)
             {
-                self.activityScreen
+                AppShellActivityView(navigation: self.navigation, context: self.context)
             }
-
-            Tab(
-                AppShellTab.automations.title,
-                systemImage: AppShellTab.automations.systemImage,
-                value: AppShellTab.automations)
-            {
-                self.automationsScreen
-            }
-            .hidden(self.hidesAutomationsTab)
 
             Tab(
                 AppShellTab.settings.title,
@@ -87,27 +59,7 @@ struct AppShellRootView: View {
         }
         .tabViewStyle(.sidebarAdaptable)
         .tabBarMinimizeBehavior(.onScrollDown)
-        .sensoryFeedback(.selection, trigger: self.navigation.selection)
+        .sensoryFeedback(.selection, trigger: self.navigation.selection.barTab)
         .accessibilityIdentifier("AppShell.Root")
-    }
-
-    private var activityScreen: some View {
-        let token: Int = self.navigation.resetToken(for: .activity)
-        return AppShellNativeListView(
-            tab: .activity,
-            path: DashboardRouteMap.activityPagePath,
-            titleText: self.activityTitle,
-            resetToken: token,
-            context: self.context)
-    }
-
-    private var automationsScreen: some View {
-        let token: Int = self.navigation.resetToken(for: .automations)
-        return AppShellNativeListView(
-            tab: .automations,
-            path: DashboardRouteMap.cronJobsPagePath,
-            titleText: self.automationsTitle,
-            resetToken: token,
-            context: self.context)
     }
 }

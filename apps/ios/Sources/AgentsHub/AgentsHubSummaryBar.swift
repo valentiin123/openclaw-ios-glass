@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Compteurs de l'arbre sur des capsules Liquid Glass (contrôles/chrome uniquement, jamais derrière du contenu lu).
-/// Les capsules partagent un seul `GlassEffectContainer` : elles fusionnent et se déforment ensemble.
+/// Compteurs de l'arbre sur une seule ligne sobre. Ce sont des données (contenu), donc pas de Liquid Glass
+/// ni d'animation décorative : la couleur porte le sens, le changement de valeur utilise le ressort partagé.
 struct AgentsHubSummaryBar: View {
     let total: Int
     let active: Int
@@ -9,20 +9,15 @@ struct AgentsHubSummaryBar: View {
     let isLive: Bool
 
     var body: some View {
-        GlassEffectContainer(spacing: OpenClawGlassMetric.containerSpacing) {
-            row
+        HStack(spacing: OpenClawSpace.lg) {
+            liveBadge
+            countLabel(symbol: "person.2.fill", value: total, tint: nil)
+            countLabel(symbol: "play.circle.fill", value: active, tint: activeTint)
+            countLabel(symbol: "exclamationmark.triangle.fill", value: failed, tint: failedTint)
+            Spacer(minLength: 0)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(verbatim: spokenSummary))
-    }
-
-    private var row: some View {
-        HStack(spacing: OpenClawSpace.sm) {
-            liveCapsule
-            countCapsule(symbol: "person.2.fill", value: total, tint: nil)
-            countCapsule(symbol: "play.circle.fill", value: active, tint: activeTint)
-            countCapsule(symbol: "exclamationmark.triangle.fill", value: failed, tint: failedTint)
-        }
     }
 
     private var activeTint: Color? {
@@ -34,18 +29,14 @@ struct AgentsHubSummaryBar: View {
     }
 
     @ViewBuilder
-    private var liveCapsule: some View {
+    private var liveBadge: some View {
         if isLive {
             AgentsHubLiveBadge()
-                .openClawPulse()
-                .padding(.horizontal, OpenClawGlassMetric.chipHorizontalPadding)
-                .padding(.vertical, OpenClawGlassMetric.chipVerticalPadding)
-                .openClawGlassCapsule(tint: Color.accentColor.opacity(OpenClawOpacity.selectedTint))
         }
     }
 
-    private func countCapsule(symbol: String, value: Int, tint: Color?) -> some View {
-        let shade: Color? = tint.map { color in color.opacity(OpenClawOpacity.selectedTint) }
+    private func countLabel(symbol: String, value: Int, tint: Color?) -> some View {
+        let color: Color = tint ?? Color.secondary
         return HStack(spacing: OpenClawSpace.xs) {
             Image(systemName: symbol)
                 .font(OpenClawType.caption2SemiBold)
@@ -54,10 +45,7 @@ struct AgentsHubSummaryBar: View {
                 .font(OpenClawType.captionSemiBold)
                 .contentTransition(.numericText())
         }
-        .foregroundStyle(tint ?? Color.secondary)
-        .padding(.horizontal, OpenClawGlassMetric.chipHorizontalPadding)
-        .padding(.vertical, OpenClawGlassMetric.chipVerticalPadding)
-        .openClawGlassCapsule(tint: shade)
+        .foregroundStyle(color)
         .openClawAnimation(value: value)
     }
 

@@ -1,11 +1,11 @@
 import OpenClawKit
 import SwiftUI
 
+/// Native Settings hub. No web content: every row pushes a SwiftUI screen.
+/// `SettingsRoute` rows go through the typed `navigationPath`; native Dashboard replacements
+/// (`NativeSettingsDestination`) use destination links so the typed path stays `[SettingsRoute]`.
 struct SettingsHubScreen: View {
     @Environment(NodeAppModel.self) private var appModel
-    @Environment(AppAppearanceModel.self) private var appearanceModel
-    @Environment(GatewayConnectionController.self) private var gatewayController
-    @State private var embedCompatibility = DashboardEmbedCompatibility()
     @Binding var navigationPath: [SettingsRoute]
     var headerSidebarAction: OpenClawSidebarHeaderAction?
     var onRouteChange: ((SettingsRoute?) -> Void)?
@@ -21,74 +21,136 @@ struct SettingsHubScreen: View {
         }
     }
 
-    @ViewBuilder private var root: some View {
-        let config = self.appModel.activeGatewayConnectConfig
-        if config?.ingressAuthorization == nil, Self.usesDashboard(
-            isOperatorConnected: self.appModel.isOperatorGatewayConnected,
-            hasOperatorAdminScope: self.appModel.hasOperatorAdminScope,
-            isDemoMode: self.appModel.isAppleReviewDemoModeEnabled,
-            isScreenshotMode: ProcessInfo.processInfo.arguments.contains("--openclaw-screenshot-mode")),
-            let url = AuthenticatedControlUI.pageURL(
-                config: config,
-                path: DashboardRouteMap.settingsPath,
-                queryItems: [])
-        {
-            EmbeddedDashboardContent(
-                appModel: self.appModel,
-                appearanceModel: self.appearanceModel,
-                gatewayController: self.gatewayController,
-                url: url,
-                config: config,
-                openPanel: self.openPanel,
-                embedCompatibility: self.embedCompatibility,
-                openGateway: { self.push(.gateway) })
-                .navigationTitle("Settings")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    if let headerSidebarAction {
-                        OpenClawSidebarToolbarItem(action: headerSidebarAction, placement: .topBarLeading)
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            self.push(.gateway)
-                        } label: {
-                            Text("Gateway")
-                                .font(OpenClawType.subheadSemiBold)
-                        }
-                        .accessibilityIdentifier("SettingsHub.Gateway")
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            self.push(.approvals)
-                        } label: {
-                            HStack(spacing: 4) {
-                                Label {
-                                    Text("Approvals")
-                                        .font(OpenClawType.subheadSemiBold)
-                                } icon: {
-                                    Image(systemName: "checkmark.shield")
-                                }
-                                .labelStyle(.iconOnly)
-                                if self.appModel.pendingExecApprovalCount > 0 {
-                                    Text(self.appModel.pendingExecApprovalCount.formatted())
-                                        .font(OpenClawType.captionSemiBold)
-                                        .padding(.horizontal, 5)
-                                        .background(OpenClawBrand.warn.opacity(0.2), in: Capsule())
-                                }
-                            }
-                        }
-                        .accessibilityLabel("Approvals")
-                        .accessibilityValue(self.appModel.pendingExecApprovalCount.formatted())
-                        .accessibilityIdentifier("SettingsHub.Approvals")
-                    }
-                }
-        } else {
-            SettingsProTab(
-                registersNavigationDestinations: false,
-                headerSidebarAction: self.headerSidebarAction,
-                onApprovalNotificationsRoute: self.onApprovalNotificationsRoute)
+    private var root: some View {
+        List {
+            self.gatewaySection
+            self.appSection
+            if self.appModel.isOperatorGatewayConnected {
+                self.agentSection
+            }
+            self.deviceSection
+            self.aboutSection
+        }
+        .font(OpenClawType.body)
+        .accessibilityIdentifier("SettingsHub.Fallback")
+        .navigationTitle("Settings")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let headerSidebarAction {
+                OpenClawSidebarToolbarItem(action: headerSidebarAction, placement: .topBarLeading)
+            }
         }
     }
+
+    // MARK: - Sections
+
+    private var gatewaySection: some View {
+        Section {
+            NavigationLink(value: SettingsRoute.gateway) {
+                NativeSettingsRow(
+                    title: String(localized: "Gateway"),
+                    detail: self.gatewayDetail,
+                    systemImage: "network",
+                    tint: OpenClawBrand.accent,
+                    pill: self.gatewayPill)
+            }
+            .accessibilityIdentifier("SettingsHub.Gateway")
+            NavigationLink(value: SettingsRoute.approvals) {
+                NativeSettingsRow(
+                    title: String(localized: "Approvals"),
+                    systemImage: "checkmark.shield",
+                    tint: OpenClawBrand.accent,
+                    pill: self.approvalsPill)
+            }
+            .accessibilityIdentifier("SettingsHub.Approvals")
+        }
+    }
+
+    private var appSection: some View {
+        Section {
+            self.nativeLink(.appearance)
+            self.nativeLink(.notifications)
+            self.nativeLink(.talkVoice)
+        }
+    }
+
+    private var agentSection: some View {
+        Section {
+            self.nativeLink(.channels)
+            self.nativeLink(.skills)
+        }
+    }
+
+    private var deviceSection: some View {
+        Section {
+            self.nativeLink(.permissions)
+            self.routeLink(
+                .diagnostics,
+                title: String(localized: "Diagnostics"),
+                systemImage: "stethoscope")
+        }
+    }
+
+    private var aboutSection: some View {
+        Section {
+            self.routeLink(
+                .licenses,
+                title: String(localized: "Licenses"),
+                systemImage: "doc.text")
+                .accessibilityIdentifier("settings-licenses-row")
+            self.routeLink(
+                .about,
+                title: String(localized: "About"),
+                systemImage: "info.circle")
+        }
+    }
+
+    // MARK: - Rows
+
+    private func nativeLink(_ destination: NativeSettingsDestination) -> some View {
+        NavigationLink {
+            NativeSettingsRouter(destination: destination, embedded: true)
+        } label: {
+            NativeSettingsRow(
+                title: destination.title,
+                systemImage: destination.systemImage,
+                tint: OpenClawBrand.accent)
+        }
+        .accessibilityIdentifier("SettingsHub.\(destination.rawValue)")
+    }
+
+    private func routeLink(_ route: SettingsRoute, title: String, systemImage: String) -> some View {
+        NavigationLink(value: route) {
+            NativeSettingsRow(
+                title: title,
+                systemImage: systemImage,
+                tint: OpenClawBrand.accent)
+        }
+    }
+
+    // MARK: - Gateway summary
+
+    private var gatewayPill: NativeSettingsPill {
+        if self.appModel.isOperatorGatewayConnected {
+            return NativeSettingsPill(label: String(localized: "Connected"), tone: .ok)
+        }
+        return NativeSettingsPill(label: String(localized: "Offline"), tone: .muted)
+    }
+
+    private var gatewayDetail: String? {
+        let name: String = self.appModel.gatewayServerName ?? ""
+        let trimmed: String = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return nil }
+        return trimmed
+    }
+
+    private var approvalsPill: NativeSettingsPill? {
+        let count: Int = self.appModel.pendingExecApprovalCount
+        if count <= 0 { return nil }
+        return NativeSettingsPill(label: count.formatted(), tone: .warn)
+    }
+
+    // MARK: - Navigation
 
     private func nativeScreen(route: SettingsRoute) -> some View {
         SettingsProTab(
@@ -98,15 +160,7 @@ struct SettingsHubScreen: View {
             onApprovalNotificationsRoute: self.onApprovalNotificationsRoute)
     }
 
-    private func push(_ route: SettingsRoute) {
-        self.navigationPath.append(route)
-    }
-
-    private func openPanel(_ panel: DeviceSettingsPanel) {
-        guard let route = Self.route(for: panel) else { return }
-        self.push(route)
-    }
-
+    /// Kept for `DashboardPageScreen` and tests; the Settings hub itself no longer embeds the Dashboard.
     static func usesDashboard(
         isOperatorConnected: Bool,
         hasOperatorAdminScope: Bool,

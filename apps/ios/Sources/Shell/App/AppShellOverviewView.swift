@@ -7,14 +7,14 @@ import SwiftUI
 /// - Sessions are pushed (edge swipe-back stays enabled through `appShellSwipeBack`).
 /// - Secondary screens (Usage, Skill Workshop, Instances, Dreaming, Workboard, Docs) open in a
 ///   sheet because each hosted screen owns its own NavigationStack.
-/// - The header button of the Overview opens the "More" list, which also holds Automations.
+/// - The header button of the Overview opens the "More" list (Usage, Skill Workshop, Instances,
+///   Dreaming, Workboard, Docs). Automations is a section of the Activity tab, not a row here.
 struct AppShellOverviewView: View {
     @Bindable var navigation: AppShellNavigation
     let context: AppShellContext
 
     @State private var showsMoreList: Bool = false
     @State private var pendingMore: AppShellMoreItem?
-    @State private var pendingAutomations: Bool = false
 
     private var moreAction: OpenClawSidebarHeaderAction {
         OpenClawSidebarHeaderAction(
@@ -46,9 +46,7 @@ struct AppShellOverviewView: View {
                 }
         }
         .sheet(isPresented: self.$showsMoreList, onDismiss: self.moreListDidDismiss) {
-            AppShellMoreListView(
-                onSelectMore: self.chooseMore,
-                onSelectAutomations: self.chooseAutomations)
+            AppShellMoreListView(onSelectMore: self.chooseMore)
         }
         .sheet(item: self.presentedMoreBinding) { item in
             AppShellMoreItemView(
@@ -97,20 +95,12 @@ struct AppShellOverviewView: View {
         self.showsMoreList = false
     }
 
-    private func chooseAutomations() {
-        self.pendingAutomations = true
-        self.showsMoreList = false
-    }
-
     /// Presenting a second sheet while the first is still dismissing is dropped by UIKit.
     /// The choice is applied once the list sheet is fully gone.
     private func moreListDidDismiss() {
         if let item = self.pendingMore {
             self.pendingMore = nil
             self.navigation.open(more: item)
-        } else if self.pendingAutomations {
-            self.pendingAutomations = false
-            self.navigation.openAutomations()
         }
     }
 
@@ -157,19 +147,10 @@ struct AppShellMoreListView: View {
     @Environment(\.dismiss) private var dismiss
 
     let onSelectMore: (AppShellMoreItem) -> Void
-    let onSelectAutomations: () -> Void
 
     var body: some View {
         NavigationStack {
             List {
-                Section {
-                    Button(action: self.onSelectAutomations) {
-                        self.row(
-                            title: AppShellTab.automations.title,
-                            systemImage: AppShellTab.automations.systemImage)
-                    }
-                    .accessibilityIdentifier(AppShellTab.automations.accessibilityIdentifier)
-                }
                 Section {
                     ForEach(AppShellMoreItem.allCases) { (item: AppShellMoreItem) in
                         self.moreRow(item)

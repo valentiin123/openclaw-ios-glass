@@ -11,7 +11,9 @@ enum OpenClawMotion {
     static let reducedFade: Animation = .easeOut(duration: 0.12)
 
     /// Stagger step used by entrance choreography.
-    static let staggerStep: Double = 0.04
+    static let staggerStep: Double = 0.03
+    /// Rows beyond this index appear without extra delay, so long lists never feel slow.
+    static let staggerMaxIndex: Int = 4
     /// Vertical travel of an entrance, in points.
     static let entranceOffset: CGFloat = 8
     /// Scale used by press feedback and appear transitions.
@@ -69,9 +71,9 @@ private struct OpenClawEntranceModifier: ViewModifier {
                 .onAppear {
                     guard !self.shown else { return }
                     let base = OpenClawMotion.animation(reduceMotion: self.reduceMotion)
-                    let animation = self.reduceMotion
-                        ? base
-                        : base.delay(Double(self.index) * OpenClawMotion.staggerStep)
+                    let steps: Int = min(self.index, OpenClawMotion.staggerMaxIndex)
+                    let delay: Double = Double(steps) * OpenClawMotion.staggerStep
+                    let animation: Animation = self.reduceMotion ? base : base.delay(delay)
                     withAnimation(animation) {
                         self.shown = true
                     }
@@ -271,7 +273,7 @@ private struct OpenClawGlassSelectionBackground: View {
 
 // MARK: - Empty state
 
-/// Animated empty state: icon, title, message and optional actions rise in with a short stagger.
+/// Empty state: icon, title, message and optional actions appear together with one short entrance.
 struct OpenClawEmptyState<Actions: View>: View {
     let systemImage: String
     let title: OpenClawTextValue
@@ -288,12 +290,10 @@ struct OpenClawEmptyState<Actions: View>: View {
                     Circle().fill(Color(uiColor: .tertiarySystemFill))
                 }
                 .accessibilityHidden(true)
-                .openClawEntrance(index: 0)
 
             self.title.text
                 .font(OpenClawType.headline)
                 .multilineTextAlignment(.center)
-                .openClawEntrance(index: 1)
 
             if let message {
                 message.text
@@ -301,12 +301,11 @@ struct OpenClawEmptyState<Actions: View>: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
-                    .openClawEntrance(index: 2)
             }
 
             self.actions
-                .openClawEntrance(index: 3)
         }
+        .openClawEntrance(index: 0)
         .padding(OpenClawProMetric.pagePadding)
         .frame(maxWidth: 360)
         .frame(maxWidth: .infinity)
