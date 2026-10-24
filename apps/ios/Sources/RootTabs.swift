@@ -199,7 +199,7 @@ struct RootTabs: View {
                 onShow: self.showSidebar,
                 onHide: self.hideSidebar,
                 sidebar: self.sidebarColumn(drawerSafeAreaInsets: isDrawerLayout ? proxy.safeAreaInsets : nil),
-                detail: self.sidebarDetailNavigationShell)
+                detail: self.sidebarDetailWithTabBar)
                 .onAppear {
                     self.updateSidebarLayout(containerSize: layoutContainerSize)
                 }
@@ -240,6 +240,20 @@ struct RootTabs: View {
             sidebarRefreshID: self.sidebarRefreshID,
             isSceneActive: self.scenePhase == .active,
             isSidebarVisible: self.isSidebarVisible)
+    }
+
+    /// Native shell: floating Liquid Glass tab bar (Chat, Workboard, Activity, Automations, Usage + More)
+    /// over the existing detail navigation. The bar hides while the drawer is open.
+    private var sidebarDetailWithTabBar: some View {
+        let barVisible: Bool = !(self.isSidebarDrawerLayout && self.isSidebarVisible)
+        let onSelect: (SidebarDestination) -> Void = { (destination: SidebarDestination) -> Void in
+            self.selectSidebarDestination(destination)
+        }
+        return self.sidebarDetailNavigationShell
+            .shellTabBar(
+                selection: self.selectedSidebarDestination,
+                isVisible: barVisible,
+                onSelect: onSelect)
     }
 
     private var sidebarRefreshID: String {

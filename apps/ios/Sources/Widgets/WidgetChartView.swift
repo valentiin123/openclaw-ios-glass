@@ -9,6 +9,7 @@ struct WidgetChartView: View {
     var height: CGFloat = 240
 
     @State private var appeared = false
+    @State private var selectedX: String?
 
     /// Point aplati avec tous ses textes précalculés : le compilateur n'a plus rien à inférer dans le builder.
     private struct FlatPoint: Identifiable {
@@ -20,8 +21,34 @@ struct WidgetChartView: View {
     }
 
     private var chartHeight: CGFloat {
+        if spec.kind == .sparkline { return 56 }
         // Dynamic Type : on laisse plus de place aux légendes et aux axes.
-        typeSize.isAccessibilitySize ? height * 1.4 : height
+        return typeSize.isAccessibilitySize ? height * 1.4 : height
+    }
+
+    /// Points de la première série non vide, indexés par position (axe X numérique pour la sparkline).
+    private var sparklinePoints: [FlatPoint] {
+        let first = self.spec.series.first(where: { series in !series.points.isEmpty })
+        let source: [WidgetChartSpec.Point] = first?.points ?? []
+        var result: [FlatPoint] = []
+        for (index, point) in source.enumerated() {
+            let valueText: String = point.y.formatted()
+            result.append(FlatPoint(
+                id: index,
+                x: point.x,
+                y: point.y,
+                series: first?.name ?? "",
+                accessibilityValue: valueText))
+        }
+        return result
+    }
+
+    /// Texte de la valeur sélectionnée au doigt (graphique en lignes).
+    private var selectionText: String? {
+        guard let selectedX else { return nil }
+        let match = self.flatPoints.first(where: { point in point.x == selectedX })
+        guard let match else { return nil }
+        return match.x + " · " + match.accessibilityValue
     }
 
     private var flatPoints: [FlatPoint] {
@@ -73,12 +100,23 @@ struct WidgetChartView: View {
                 .opacity(appeared || reduceMotion ? 1 : 0)
                 .accessibilityElement(children: .contain)
                 .accessibilityLabel(spec.accessibilitySummary)
+            selectionReadout
         }
         .onAppear {
             guard !appeared else { return }
             if reduceMotion { appeared = true } else {
                 withAnimation(OpenClawMotion.animation(reduceMotion: reduceMotion)) { appeared = true }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var selectionReadout: some View {
+        if spec.kind == .line, let text = selectionText {
+            Text(verbatim: text)
+                .font(OpenClawType.captionSemiBold)
+                .foregroundStyle(.secondary)
+                .transition(.opacity)
         }
     }
 
@@ -91,7 +129,30 @@ struct WidgetChartView: View {
             self.lineChart
         case .pie:
             self.pieChart
+        case .sparkline:
+            self.sparklineChart
         }
+    }
+
+    private var sparklineChart: some View {
+        let data: [FlatPoint] = self.sparklinePoints
+        let xKey: Text = self.xAxisKey
+        let yKey: Text = self.yAxisKey
+        return Chart(data) { (point: FlatPoint) in
+            AreaMark(
+                x: .value(xKey, point.id),
+                y: .value(yKey, point.y))
+                .interpolationMethod(.monotone)
+                .foregroundStyle(Color.accentColor.opacity(0.15))
+            LineMark(
+                x: .value(xKey, point.id),
+                y: .value(yKey, point.y))
+                .interpolationMethod(.monotone)
+                .foregroundStyle(Color.accentColor)
+        }
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .chartLegend(.hidden)
     }
 
     private var barChart: some View {
@@ -130,6 +191,7 @@ struct WidgetChartView: View {
                 .foregroundStyle(by: .value(sKey, point.series))
                 .accessibilityHidden(true)
         }
+        .chartXSelection(value: self.$selectedX)
         .modifier(AxisLabels(x: self.spec.xLabel, y: self.spec.yLabel, legend: self.showsLegend))
     }
 

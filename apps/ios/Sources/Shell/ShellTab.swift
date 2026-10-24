@@ -1,45 +1,38 @@
-import OpenClawKit
 import SwiftUI
 
-// MARK: - Root tabs
+// MARK: - Primary tabs
 
-/// Top-level destinations of the shell.
-///
-/// Five of them live in the compact tab bar. `automations` is a real tab too, but it is
-/// hidden from the iPhone tab bar (a tab bar holds five items before iOS adds "More").
-/// It appears in the iPad sidebar and is reached from Overview on iPhone.
+/// Primary destinations of the native shell. They sit in the floating glass tab bar.
+/// Each one maps onto an existing `RootTabs.SidebarDestination`, so deep links,
+/// launch arguments and `selectSidebarDestination` keep working unchanged.
 enum ShellTab: String, CaseIterable, Hashable, Identifiable {
-    case overview
     case chat
-    case agents
+    case workboard
     case activity
     case automations
-    case settings
+    case usage
 
     var id: String {
         self.rawValue
     }
 
-    /// Keys reuse the existing `SidebarDestination` titles so current translations apply.
     var title: LocalizedStringKey {
         switch self {
-        case .overview: "Overview"
         case .chat: "Chat"
-        case .agents: "Agents"
+        case .workboard: "Workboard"
         case .activity: "Activity"
         case .automations: "Automations"
-        case .settings: "Settings"
+        case .usage: "Usage"
         }
     }
 
     var systemImage: String {
         switch self {
-        case .overview: "chart.bar"
         case .chat: "bubble.left"
-        case .agents: "person.2"
+        case .workboard: "folder"
         case .activity: "waveform.path.ecg"
         case .automations: "timer"
-        case .settings: "gearshape"
+        case .usage: "chart.bar.xaxis"
         }
     }
 
@@ -47,32 +40,34 @@ enum ShellTab: String, CaseIterable, Hashable, Identifiable {
         "Shell.Tab.\(self.rawValue)"
     }
 
-    /// Shown in the compact (iPhone) tab bar.
-    var isInCompactTabBar: Bool {
-        self != .automations
+    var destination: RootTabs.SidebarDestination {
+        switch self {
+        case .chat: .chat
+        case .workboard: .workboard
+        case .activity: .activity
+        case .automations: .cron
+        case .usage: .usage
+        }
     }
 
-    var label: some View {
-        Label {
-            Text(self.title)
-        } icon: {
-            Image(systemName: self.systemImage)
-        }
-        .accessibilityIdentifier(self.accessibilityIdentifier)
+    init?(destination: RootTabs.SidebarDestination) {
+        let match: ShellTab? = ShellTab.allCases.first(where: { (tab: ShellTab) -> Bool in
+            tab.destination == destination
+        })
+        guard let match else { return nil }
+        self = match
     }
 }
 
 // MARK: - Secondary destinations
 
-/// Screens reachable from Overview > "More" that are not worth a tab.
-/// Each one is presented in a sheet because the hosted screens own their NavigationStack.
+/// Reached from the sidebar or from the "More" menu of the tab bar.
+/// All of them resolve to native screens through `NativeDestinationRouter` or the settings hub.
 enum ShellSecondaryDestination: String, CaseIterable, Hashable, Identifiable {
-    case usage
-    case skillWorkshop
     case instances
+    case settings
+    case skillWorkshop
     case dreaming
-    case workboard
-    case docs
 
     var id: String {
         self.rawValue
@@ -80,119 +75,73 @@ enum ShellSecondaryDestination: String, CaseIterable, Hashable, Identifiable {
 
     var title: LocalizedStringKey {
         switch self {
-        case .usage: "Usage"
-        case .skillWorkshop: "Skill Workshop"
         case .instances: "Instances"
+        case .settings: "Settings"
+        case .skillWorkshop: "Skill Workshop"
         case .dreaming: "Dreaming"
-        case .workboard: "Workboard"
-        case .docs: "Docs"
-        }
-    }
-
-    /// Plain string handed to `NativeDestinationRouter`, which expects `String`.
-    var titleString: String {
-        switch self {
-        case .usage: String(localized: "Usage")
-        case .skillWorkshop: String(localized: "Skill Workshop")
-        case .instances: String(localized: "Instances")
-        case .dreaming: String(localized: "Dreaming")
-        case .workboard: String(localized: "Workboard")
-        case .docs: String(localized: "Docs")
         }
     }
 
     var systemImage: String {
         switch self {
-        case .usage: "chart.bar.xaxis"
-        case .skillWorkshop: "hammer"
         case .instances: "dot.radiowaves.left.and.right"
+        case .settings: "gearshape"
+        case .skillWorkshop: "hammer"
         case .dreaming: "moon.stars"
-        case .workboard: "folder"
-        case .docs: "book"
         }
     }
 
-    /// Dashboard path for destinations backed by `NativeDestinationRouter`; nil for Docs.
-    var dashboardPath: String? {
+    var accessibilityIdentifier: String {
+        "Shell.More.\(self.rawValue)"
+    }
+
+    var destination: RootTabs.SidebarDestination {
         switch self {
-        case .usage: DashboardRouteMap.usagePagePath
-        case .skillWorkshop: DashboardRouteMap.skillWorkshopPagePath
-        case .instances: DashboardRouteMap.devicesSettingsPath
-        case .dreaming: DashboardRouteMap.dreamingPagePath
-        case .workboard: DashboardRouteMap.workboardPagePath
-        case .docs: nil
+        case .instances: .instances
+        case .settings: .settings
+        case .skillWorkshop: .skillWorkshop
+        case .dreaming: .dreaming
         }
+    }
+
+    init?(destination: RootTabs.SidebarDestination) {
+        let match: ShellSecondaryDestination? = ShellSecondaryDestination.allCases.first(
+            where: { (item: ShellSecondaryDestination) -> Bool in
+                item.destination == destination
+            })
+        guard let match else { return nil }
+        self = match
     }
 }
 
-/// Pushed on the Overview stack.
-enum ShellHomeRoute: Hashable {
-    case sessions
-}
+// MARK: - Landing resolution
 
-// MARK: - Legacy mapping
+/// Where a legacy `SidebarDestination` lands in the shell.
+enum ShellLanding: Equatable {
+    case primary(ShellTab)
+    case secondary(ShellSecondaryDestination)
+    /// Screens that live outside the tab bar (Overview, Agents, Files, Sessions, Gateway...).
+    case other
 
-/// Resolved landing spot for a legacy `RootTabs.SidebarDestination`
-/// (launch arguments, deep links, `selectSidebarDestination` call sites).
-struct ShellLandingTarget: Equatable {
-    var tab: ShellTab = .chat
-    var homeRoute: ShellHomeRoute?
-    var secondary: ShellSecondaryDestination?
-    var settingsRoute: SettingsRoute?
-    var agentsSection: ShellAgentsSection?
-
-    init(tab: ShellTab) {
-        self.tab = tab
+    init(destination: RootTabs.SidebarDestination) {
+        if let tab = ShellTab(destination: destination) {
+            self = .primary(tab)
+        } else if let secondary = ShellSecondaryDestination(destination: destination) {
+            self = .secondary(secondary)
+        } else if destination == .gateway {
+            self = .secondary(.settings)
+        } else {
+            self = .other
+        }
     }
 
-    init(legacy destination: RootTabs.SidebarDestination) {
-        switch destination {
-        case .chat:
-            self.tab = .chat
-        case .overview:
-            self.tab = .overview
-        case .activity:
-            self.tab = .activity
-        case .agents:
-            self.tab = .agents
-            self.agentsSection = .roster
-        case .agentsHub:
-            self.tab = .agents
-            self.agentsSection = .subagents
-        case .files:
-            self.tab = .agents
-            self.agentsSection = .files
-        case .cron:
-            self.tab = .automations
-        case .sessions:
-            self.tab = .overview
-            self.homeRoute = .sessions
-        case .usage:
-            self.tab = .overview
-            self.secondary = .usage
-        case .workboard:
-            self.tab = .overview
-            self.secondary = .workboard
-        case .skillWorkshop:
-            self.tab = .overview
-            self.secondary = .skillWorkshop
-        case .instances:
-            self.tab = .overview
-            self.secondary = .instances
-        case .dreaming:
-            self.tab = .overview
-            self.secondary = .dreaming
-        case .docs:
-            self.tab = .overview
-            self.secondary = .docs
-        case .desktop, .terminal:
-            // WebView-backed pages are out of the native shell; Settings is the closest owner.
-            self.tab = .settings
-        case .settings:
-            self.tab = .settings
-        case .gateway:
-            self.tab = .settings
-            self.settingsRoute = .gateway
-        }
+    var selectedTab: ShellTab? {
+        if case let .primary(tab) = self { return tab }
+        return nil
+    }
+
+    var isSecondary: Bool {
+        if case .secondary = self { return true }
+        return false
     }
 }

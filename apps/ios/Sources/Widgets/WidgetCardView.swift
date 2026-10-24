@@ -99,9 +99,7 @@ public struct WidgetCardView: View {
     private var content: some View {
         switch payload {
         case let .chart(spec):
-            WidgetChartView(spec: spec)
-                .padding(12)
-                .onAppear { state = .loaded }
+            chartContent(spec)
         default:
             WidgetWebView(
                 payload: payload, network: network, zoomable: false,
@@ -112,6 +110,12 @@ public struct WidgetCardView: View {
                 .animation(OpenClawMotion.animation(reduceMotion: reduceMotion), value: state)
                 .accessibilityLabel(title ?? payload.kindLabel)
         }
+    }
+
+    private func chartContent(_ spec: WidgetChartSpec) -> some View {
+        WidgetChartStateView(state: .ready(spec), height: spec.kind == .sparkline ? 56 : 240)
+            .padding(12)
+            .onAppear { state = .loaded }
     }
 
     @ViewBuilder

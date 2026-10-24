@@ -17,13 +17,14 @@ public enum WidgetPayload: Hashable, Sendable {
 
 public struct WidgetChartSpec: Codable, Hashable, Sendable {
     public enum Kind: String, Codable, Sendable {
-        case bar, line, pie
+        case bar, line, pie, sparkline
 
         var localizedName: String {
             switch self {
             case .bar: String(localized: "Bar chart")
             case .line: String(localized: "Line chart")
             case .pie: String(localized: "Pie chart")
+            case .sparkline: String(localized: "Sparkline")
             }
         }
     }

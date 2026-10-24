@@ -318,17 +318,14 @@ struct SubagentTreeView: View {
 
     private func summary(_ tree: SubagentNode) -> some View {
         let isLive: Bool = tree.status.isActive || tree.activeDescendantCount > 0
-        let counts: String = "\(tree.descendantCount) descendants · \(tree.activeDescendantCount) active · \(tree.failedDescendantCount) failed"
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 12) {
-                AgentsHubStatusBadge(status: tree.status)
-                if isLive { AgentsHubLiveBadge() }
-            }
-            Text(counts)
-                .font(OpenClawType.footnote)
-                .foregroundStyle(.secondary)
+        let total: Int = tree.descendantCount
+        let active: Int = tree.activeDescendantCount
+        let failed: Int = tree.failedDescendantCount
+        return VStack(alignment: .leading, spacing: 8) {
+            AgentsHubStatusBadge(status: tree.status)
+            AgentsHubSummaryBar(total: total, active: active, failed: failed, isLive: isLive)
         }
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -356,6 +353,8 @@ private struct SubagentRowView: View {
         .padding(.leading, indent)
         .frame(minHeight: 44)
         .contentShape(Rectangle())
+        .onTapGesture(perform: onResult)
+        .accessibilityAddTraits(.isButton)
         .contextMenu { menuItems }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) { stopSwipe }
         .swipeActions(edge: .leading, allowsFullSwipe: true) { resultSwipe }
