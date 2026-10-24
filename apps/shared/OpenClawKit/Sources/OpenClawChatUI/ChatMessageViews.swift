@@ -822,7 +822,7 @@ private struct AttachmentRow: View {
             Spacer()
         }
         .padding(10)
-        .background(self.attachmentFill)
+        .background(OpenClawChatTheme.subtleCard)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
