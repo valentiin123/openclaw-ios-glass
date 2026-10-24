@@ -718,7 +718,7 @@ struct RootSidebar: View {
 
     private func togglePin(key: String, currentlyPinned: Bool) {
         self.performSessionMutation(resetActiveSessionKey: nil) { transport in
-            try await transport.patchSession(key: key, pinned: !currentlyPinned)
+            _ = try await transport.patchSession(key: key, pinned: !currentlyPinned)
         }
     }
 
@@ -754,7 +754,7 @@ struct RootSidebar: View {
                 tint: .orange)
             {
                 self.performSessionMutation(resetActiveSessionKey: nil) { transport in
-                    try await transport.patchSession(
+                    _ = try await transport.patchSession(
                         key: session.key,
                         expectedSessionID: session.sessionId,
                         snoozedUntil: .until(preset.wakeAt))
@@ -769,7 +769,7 @@ struct RootSidebar: View {
                 tint: .gray)
             {
                 self.performSessionMutation(resetActiveSessionKey: session.key) { transport in
-                    try await transport.patchSession(
+                    _ = try await transport.patchSession(
                         key: session.key,
                         expectedSessionID: session.sessionId,
                         archived: true)
