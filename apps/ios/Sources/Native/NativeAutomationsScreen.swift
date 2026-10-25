@@ -1,3 +1,4 @@
+import Charts
 import Foundation
 import Observation
 import OpenClawKit
@@ -374,6 +375,8 @@ enum NativeAutomationFilter: String, Hashable {
 
 struct NativeAutomationsScreen: View {
     @Environment(NodeAppModel.self) private var appModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var showCopied = false
     @State private var model = NativeAutomationsModel()
     @State private var search = ""
     @State private var filterID: String = NGFilterID.all
@@ -397,6 +400,7 @@ struct NativeAutomationsScreen: View {
                     NativeAutomationDetailView(jobId: job.id, model: self.model)
                 }
                 .nativeErrorAlert(self.$model.actionError)
+                .overlay(alignment: .bottom) { self.copiedToast }
                 .confirmationDialog(
                     Text("Delete this automation?"),
                     isPresented: self.deleteBinding,
@@ -590,6 +594,32 @@ struct NativeAutomationsScreen: View {
         }
     }
 
+    // MARK: Copy feedback
+
+    private func copy(_ value: String) {
+        UIPasteboard.general.string = value
+        self.copiedTick += 1
+        OpenClawMotion.perform(reduceMotion: self.reduceMotion) { self.showCopied = true }
+        Task {
+            try? await Task.sleep(for: .seconds(1.4))
+            OpenClawMotion.perform(reduceMotion: self.reduceMotion) { self.showCopied = false }
+        }
+    }
+
+    @ViewBuilder
+    private var copiedToast: some View {
+        if self.showCopied {
+            Label("Copied", systemImage: "checkmark")
+                .font(OpenClawType.subheadSemiBold)
+                .padding(.horizontal, 16)
+                .frame(minHeight: 44)
+                .openClawGlassCapsule(tint: OpenClawBrand.ok.opacity(0.18))
+                .padding(.bottom, 24)
+                .transition(OpenClawMotion.edge(.bottom, reduceMotion: self.reduceMotion))
+                .accessibilityAddTraits(.updatesFrequently)
+        }
+    }
+
     // MARK: Actions
 
     @ViewBuilder
@@ -648,8 +678,7 @@ struct NativeAutomationsScreen: View {
             }
         }
         Button {
-            UIPasteboard.general.string = job.id
-            self.copiedTick += 1
+            self.copy(job.id)
         } label: {
             Label("Copy ID", systemImage: "doc.on.doc")
         }
@@ -685,6 +714,12 @@ private struct NativeAutomationCard: View {
                     Text(verbatim: next)
                         .font(OpenClawType.caption)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                if self.job.phase == .failing, let error = self.job.lastError, !error.isEmpty {
+                    Text(verbatim: error)
+                        .font(OpenClawType.caption)
+                        .foregroundStyle(OpenClawBrand.danger)
                         .lineLimit(1)
                 }
             }
@@ -958,6 +993,7 @@ struct NativeAutomationDetailView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .ngCardSurface()
             } else {
+                NativeCronRunsChart(runs: runs)
                 VStack(spacing: 0) {
                     ForEach(runs) { run in
                         NativeCronRunRow(run: run)
@@ -970,6 +1006,46 @@ struct NativeAutomationDetailView: View {
                 .ngCardSurface()
             }
         }
+    }
+}
+
+/// Run durations, oldest to newest. Bars carry the run status color; hidden when fewer than two runs have a duration.
+private struct NativeCronRunsChart: View {
+    let runs: [NativeCronRun]
+
+    private var timed: [NativeCronRun] {
+        Array(self.runs.filter { ($0.durationMs ?? 0) > 0 }.prefix(20).reversed())
+    }
+
+    var body: some View {
+        let points: [NativeCronRun] = self.timed
+        if points.count >= 2 {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Run duration")
+                    .font(OpenClawType.subheadSemiBold)
+                    .accessibilityAddTraits(.isHeader)
+                Chart(points) { run in
+                    BarMark(
+                        x: .value("Run", run.id),
+                        y: .value("Seconds", Double(run.durationMs ?? 0) / 1000))
+                        .foregroundStyle(run.tint)
+                        .cornerRadius(3)
+                }
+                .chartXAxis(.hidden)
+                .frame(height: 110)
+                .openClawChartReveal()
+            }
+            .padding(12)
+            .ngCardSurface()
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(Text("Run duration"))
+            .accessibilityValue(Text(self.summary(points)))
+        }
+    }
+
+    private func summary(_ points: [NativeCronRun]) -> String {
+        let failed: Int = points.filter { $0.isFailure }.count
+        return String(localized: "\(points.count) runs, \(failed) failed")
     }
 }
 
@@ -999,6 +1075,16 @@ private struct NativeCronRunRow: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, 10)
+        .contentShape(Rectangle())
+        .contextMenu {
+            if let text = self.run.error ?? self.run.summary, !text.isEmpty {
+                Button {
+                    UIPasteboard.general.string = text
+                } label: {
+                    Label("Copy", systemImage: "doc.on.doc")
+                }
+            }
+        }
         .accessibilityElement(children: .combine)
     }
 

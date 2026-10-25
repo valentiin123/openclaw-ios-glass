@@ -16,6 +16,7 @@ struct NativeUsageScreen: View {
     @State private var grouping: NativeUsageGrouping = .days
     @State private var metric: NativeUsageMetric = .cost
     @State private var copiedTick = 0
+    @State private var showCopied = false
     let title: String
     var headerSidebarAction: OpenClawSidebarHeaderAction?
 
@@ -33,6 +34,7 @@ struct NativeUsageScreen: View {
             .background { OpenClawProBackground() }
             .nativeChrome(title: self.title, sidebar: self.headerSidebarAction)
             .nativeErrorAlert(self.$model.refreshError)
+            .overlay(alignment: .bottom) { self.copiedToast }
         }
         .task { await self.model.load(appModel: self.appModel, showSpinner: true) }
         .onChange(of: self.range) { _, _ in self.selectedDate = nil }
@@ -310,10 +312,33 @@ struct NativeUsageScreen: View {
         }
     }
 
+    private func copy(_ text: String) {
+        UIPasteboard.general.string = text
+        self.copiedTick += 1
+        OpenClawMotion.perform(reduceMotion: self.reduceMotion) { self.showCopied = true }
+        Task {
+            try? await Task.sleep(for: .seconds(1.4))
+            OpenClawMotion.perform(reduceMotion: self.reduceMotion) { self.showCopied = false }
+        }
+    }
+
+    @ViewBuilder
+    private var copiedToast: some View {
+        if self.showCopied {
+            Label("Copied", systemImage: "checkmark")
+                .font(OpenClawType.subheadSemiBold)
+                .padding(.horizontal, 16)
+                .frame(minHeight: 44)
+                .openClawGlassCapsule(tint: OpenClawBrand.ok.opacity(0.18))
+                .padding(.bottom, 24)
+                .transition(OpenClawMotion.edge(.bottom, reduceMotion: self.reduceMotion))
+                .accessibilityAddTraits(.updatesFrequently)
+        }
+    }
+
     private func copyAction(_ text: String) -> some View {
         Button {
-            UIPasteboard.general.string = text
-            self.copiedTick += 1
+            self.copy(text)
         } label: {
             Label("Copy", systemImage: "doc.on.doc")
         }
@@ -322,8 +347,7 @@ struct NativeUsageScreen: View {
 
     private func copyMenu(_ text: String) -> some View {
         Button {
-            UIPasteboard.general.string = text
-            self.copiedTick += 1
+            self.copy(text)
         } label: {
             Label {
                 Text(verbatim: text)

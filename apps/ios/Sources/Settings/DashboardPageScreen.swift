@@ -43,17 +43,23 @@ struct DashboardPageScreen: View {
     @ViewBuilder private var root: some View {
         let config = self.appModel.activeGatewayConnectConfig
         if config?.ingressAuthorization != nil {
-            VStack(spacing: 12) {
-                Text("This Dashboard needs a browser session. Native chat and Gateway settings remain available.")
-                    .font(OpenClawType.body)
-                Button {
+            OpenClawEmptyState(
+                systemImage: "safari",
+                title: "Browser session needed",
+                message: "This Dashboard needs a browser session. Native chat and Gateway settings remain available.")
+            {
+                OpenClawGlassButton(
+                    title: "Open Gateway settings",
+                    systemImage: "network",
+                    kind: .prominent)
+                {
                     self.navigationPath.append(.gateway)
-                } label: {
-                    Text("Open Gateway settings").font(OpenClawType.subheadSemiBold)
                 }
             }
-            .padding()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background { OpenClawProBackground() }
             .navigationTitle(self.title)
+            .navigationBarTitleDisplayMode(.inline)
         } else if SettingsHubScreen.usesDashboard(
             isOperatorConnected: self.appModel.isOperatorGatewayConnected,
             hasOperatorAdminScope: self.appModel.hasOperatorAdminScope,

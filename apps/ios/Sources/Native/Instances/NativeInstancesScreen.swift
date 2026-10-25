@@ -208,6 +208,7 @@ struct NativeInstancesScreen: View {
             self.scopeBar
         }
         .openClawAnimation(value: self.scope)
+        .openClawHaptic(.selection, trigger: self.scope)
     }
 
     private func overviewSection(_ snapshot: InstancesSnapshot?) -> some View {
@@ -261,6 +262,10 @@ struct NativeInstancesScreen: View {
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             self.rejectSwipe(request)
                         }
+                        .contextMenu {
+                            self.approveSwipe(request)
+                            self.rejectSwipe(request)
+                        }
                 }
             } header: {
                 Text("Pairing requests")
@@ -290,13 +295,19 @@ struct NativeInstancesScreen: View {
                         .swipeActions(edge: .leading, allowsFullSwipe: false) {
                             self.renameSwipe(device)
                         }
+                        .contextMenu {
+                            self.renameSwipe(device)
+                            self.removeSwipe(device)
+                        }
                 }
             }
         } else if snapshot.pending.isEmpty {
             Section {
-                Text("No devices")
-                    .font(OpenClawType.subhead)
-                    .foregroundStyle(.secondary)
+                OpenClawEmptyState(
+                    systemImage: "iphone.slash",
+                    title: "No devices",
+                    message: "Paired devices appear here once they connect to this Gateway.")
+                    .instancesCardRow()
             }
         }
     }
@@ -323,9 +334,11 @@ struct NativeInstancesScreen: View {
             }
         } else {
             Section {
-                Text("No devices")
-                    .font(OpenClawType.subhead)
-                    .foregroundStyle(.secondary)
+                OpenClawEmptyState(
+                    systemImage: "antenna.radiowaves.left.and.right.slash",
+                    title: "No devices",
+                    message: "Nothing is connected to this Gateway right now.")
+                    .instancesCardRow()
             }
         }
     }
@@ -338,9 +351,11 @@ struct NativeInstancesScreen: View {
                 NativeInlineNotice(message: error)
             }
             if self.gateways.entries.isEmpty {
-                Text("No saved Gateways")
-                    .font(OpenClawType.subhead)
-                    .foregroundStyle(.secondary)
+                OpenClawEmptyState(
+                    systemImage: "server.rack",
+                    title: "No saved Gateways",
+                    message: "Add a Gateway with a setup code or QR code above.")
+                    .instancesCardRow()
             }
             ForEach(self.gateways.entries) { entry in
                 self.gatewayRow(entry)

@@ -172,6 +172,8 @@ struct OnboardingWizardView: View {
                     .scrollDismissesKeyboard(.interactively)
                 }
             }
+            .openClawAnimation(value: self.step)
+            .openClawHaptic(.selection, trigger: self.step)
             .navigationTitle(self.isFullScreenStep || self.dynamicTypeSize.isAccessibilitySize ? "" : self.step.title)
             .navigationBarTitleDisplayMode(.inline)
             .tint(OpenClawBrand.activationPrimaryAction)
@@ -404,17 +406,12 @@ struct OnboardingWizardView: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(OpenClawBrand.activationPrimaryAction)
-            .background(.ultraThinMaterial, in: Capsule(style: .continuous))
-            .overlay {
-                Capsule(style: .continuous)
-                    .stroke(OpenClawBrand.activationNeutralStroke, lineWidth: 0.6)
-            }
-            .shadow(color: Color.black.opacity(0.08), radius: 14, x: 0, y: 4)
+            .openClawGlassCapsule(interactive: true)
             .accessibilityLabel("Dismiss Keyboard")
             .padding(.trailing, 20)
             .padding(.bottom, 10)
-            .transition(.opacity.combined(with: .scale(scale: 0.96)))
-            .animation(OpenClawMotion.animation(reduceMotion: self.reduceMotion), value: self.focusedField)
+            .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
+            .openClawAnimation(value: self.focusedField)
         }
     }
 

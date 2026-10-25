@@ -340,10 +340,12 @@ struct NativeActivityScreen: View {
             if !visible.isEmpty {
                 Section {
                     NGSummaryHeader(items: self.metrics(visible))
+                        .openClawEntrance(index: 0)
                         .ngCardRow()
                     NativeActivityChart(days: days)
                         .padding(12)
                         .ngCardSurface()
+                        .openClawEntrance(index: 1)
                         .ngCardRow()
                 }
             }
@@ -386,6 +388,19 @@ struct NativeActivityScreen: View {
     private var emptyState: some View {
         if !self.search.isEmpty {
             ContentUnavailableView.search(text: self.search)
+        } else if self.model.failedOnly || self.kindSelection != NGFilterID.all {
+            OpenClawEmptyState(
+                systemImage: "line.3.horizontal.decrease.circle",
+                title: "Nothing matches these filters",
+                message: "Try another kind or include successful events.")
+            {
+                Button {
+                    self.resetFilters()
+                } label: {
+                    Label("Clear filters", systemImage: "xmark.circle")
+                }
+                .nativeGlassButtonStyle()
+            }
         } else {
             OpenClawEmptyState(
                 systemImage: "waveform.path.ecg",
@@ -461,10 +476,31 @@ struct NativeActivityScreen: View {
                 Label("Copy session key", systemImage: "key")
             }
         }
+        if let agentId = event.agentId {
+            Button {
+                self.search = agentId
+            } label: {
+                Label("Filter by agent", systemImage: "person.crop.circle")
+            }
+        }
+        if let channel = event.channel {
+            Button {
+                self.search = channel
+            } label: {
+                Label("Filter by channel", systemImage: "bubble.left.and.bubble.right")
+            }
+        }
         Button {
             self.selected = event
         } label: {
             Label("Details", systemImage: "info.circle")
+        }
+    }
+
+    private func resetFilters() {
+        OpenClawMotion.perform(reduceMotion: self.reduceMotion) {
+            self.kindSelection = NGFilterID.all
+            self.model.failedOnly = false
         }
     }
 

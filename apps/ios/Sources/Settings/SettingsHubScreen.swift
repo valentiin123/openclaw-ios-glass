@@ -40,6 +40,8 @@ struct SettingsHubScreen: View {
             await self.appModel.refreshPendingApprovalInbox()
         }
         .accessibilityIdentifier("SettingsHub.Fallback")
+        .openClawAnimation(value: self.appModel.pendingExecApprovalCount)
+        .openClawHaptic(.selection, trigger: self.navigationPath.count)
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -280,15 +282,17 @@ struct EmbeddedDashboardContent: View {
                 Text("This Gateway's Dashboard is older than the app; update the Gateway to manage app settings here")
                     .font(OpenClawType.footnote)
                     .accessibilityIdentifier("SettingsHub.GatewayUpgradeWarning")
-                Button(action: openGateway) {
-                    Text("Open Gateway")
-                        .font(OpenClawType.subheadSemiBold)
-                }
-                .accessibilityIdentifier("SettingsHub.UpgradeGateway")
+                OpenClawGlassButton(
+                    title: "Open Gateway",
+                    systemImage: "network",
+                    kind: .prominent,
+                    action: openGateway)
+                    .accessibilityIdentifier("SettingsHub.UpgradeGateway")
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
             .background(OpenClawBrand.warn.opacity(0.12))
+            .accessibilityElement(children: .contain)
         }
     }
 }

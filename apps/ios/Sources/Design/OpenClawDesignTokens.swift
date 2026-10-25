@@ -91,7 +91,7 @@ extension View {
 /// Floating glass bar pinned to the bottom safe area (primary actions, composer-like controls).
 /// Content scrolls underneath, the bar itself is the only glass surface.
 private struct OpenClawBottomBarModifier<Bar: View>: ViewModifier {
-    @ViewBuilder let bar: Bar
+    let bar: Bar
 
     func body(content: Content) -> some View {
         content.safeAreaInset(edge: .bottom, spacing: 0) {
