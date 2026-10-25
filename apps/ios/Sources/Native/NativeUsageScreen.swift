@@ -165,6 +165,20 @@ struct NativeUsageScreen: View {
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
                         .foregroundStyle(.secondary)
                 }
+                if let selected = self.selectedDay(in: days) {
+                    RuleMark(x: .value("Day", selected.date, unit: .day))
+                        .foregroundStyle(Color.secondary.opacity(0.35))
+                        .lineStyle(StrokeStyle(lineWidth: 1))
+                        .annotation(
+                            position: .top,
+                            spacing: 4,
+                            overflowResolution: AnnotationOverflowResolution(x: .fit(to: .chart), y: .disabled))
+                        {
+                            ChartSelectionTooltip(
+                                title: selected.date.formatted(.dateTime.weekday(.abbreviated).month().day()),
+                                value: selected.cost.formatted(.currency(code: "USD")))
+                        }
+                }
             }
             .chartXSelection(value: self.$selectedDate)
             .chartXAxis {
@@ -189,6 +203,8 @@ struct NativeUsageScreen: View {
                 }
             }
             .frame(minHeight: 200)
+            .openClawChartReveal()
+            .openClawAnimation(value: self.selectedDate)
             .accessibilityLabel(Text("Daily cost chart"))
             .accessibilityValue(Text(Self.summary(days)))
         }
@@ -205,6 +221,7 @@ struct NativeUsageScreen: View {
                 Text(selected.cost, format: .currency(code: "USD"))
                     .font(OpenClawType.subheadSemiBold)
                     .monospacedDigit()
+                    .contentTransition(.numericText())
             }
         } else {
             Text("Touch and hold the chart to inspect a day.")

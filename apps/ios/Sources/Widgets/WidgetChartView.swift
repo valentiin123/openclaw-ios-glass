@@ -8,7 +8,6 @@ struct WidgetChartView: View {
     let spec: WidgetChartSpec
     var height: CGFloat = 240
 
-    @State private var appeared = false
     @State private var selectedX: String?
 
     /// Point aplati avec tous ses textes précalculés : le compilateur n'a plus rien à inférer dans le builder.
@@ -43,12 +42,10 @@ struct WidgetChartView: View {
         return result
     }
 
-    /// Texte de la valeur sélectionnée au doigt (graphique en lignes).
-    private var selectionText: String? {
+    /// Point sélectionné au doigt (barres et lignes).
+    private var selectedPoint: FlatPoint? {
         guard let selectedX else { return nil }
-        let match = self.flatPoints.first(where: { point in point.x == selectedX })
-        guard let match else { return nil }
-        return match.x + " · " + match.accessibilityValue
+        return self.flatPoints.first(where: { point in point.x == selectedX })
     }
 
     private var flatPoints: [FlatPoint] {
@@ -97,26 +94,26 @@ struct WidgetChartView: View {
             }
             chart
                 .frame(height: chartHeight)
-                .opacity(appeared || reduceMotion ? 1 : 0)
+                .openClawChartReveal()
                 .accessibilityElement(children: .contain)
                 .accessibilityLabel(spec.accessibilitySummary)
-            selectionReadout
-        }
-        .onAppear {
-            guard !appeared else { return }
-            if reduceMotion { appeared = true } else {
-                withAnimation(OpenClawMotion.animation(reduceMotion: reduceMotion)) { appeared = true }
-            }
         }
     }
 
-    @ViewBuilder
-    private var selectionReadout: some View {
-        if spec.kind == .line, let text = selectionText {
-            Text(verbatim: text)
-                .font(OpenClawType.captionSemiBold)
-                .foregroundStyle(.secondary)
-                .transition(.opacity)
+    /// Trait vertical et infobulle verre sur le point touché.
+    @ChartContentBuilder
+    private func selectionRule(xKey: Text) -> some ChartContent {
+        if let point = self.selectedPoint {
+            RuleMark(x: .value(xKey, point.x))
+                .foregroundStyle(Color.secondary.opacity(0.35))
+                .lineStyle(StrokeStyle(lineWidth: 1))
+                .annotation(
+                    position: .top,
+                    spacing: 4,
+                    overflowResolution: AnnotationOverflowResolution(x: .fit(to: .chart), y: .disabled))
+                {
+                    ChartSelectionTooltip(title: point.x, value: point.accessibilityValue)
+                }
         }
     }
 
@@ -162,15 +159,19 @@ struct WidgetChartView: View {
         let xKey: Text = self.xAxisKey
         let yKey: Text = self.yAxisKey
         let sKey: Text = self.seriesKey
-        return Chart(data) { (point: FlatPoint) in
-            BarMark(
-                x: .value(xKey, point.x),
-                y: .value(yKey, point.y))
-                .foregroundStyle(by: .value(sKey, point.series))
-                .position(by: .value(sKey, point.series))
-                .accessibilityLabel(point.x)
-                .accessibilityValue(point.accessibilityValue)
+        return Chart {
+            ForEach(data) { (point: FlatPoint) in
+                BarMark(
+                    x: .value(xKey, point.x),
+                    y: .value(yKey, point.y))
+                    .foregroundStyle(by: .value(sKey, point.series))
+                    .position(by: .value(sKey, point.series))
+                    .accessibilityLabel(point.x)
+                    .accessibilityValue(point.accessibilityValue)
+            }
+            self.selectionRule(xKey: xKey)
         }
+        .chartXSelection(value: self.$selectedX)
         .modifier(AxisLabels(x: self.spec.xLabel, y: self.spec.yLabel, legend: self.showsLegend))
     }
 
@@ -179,19 +180,22 @@ struct WidgetChartView: View {
         let xKey: Text = self.xAxisKey
         let yKey: Text = self.yAxisKey
         let sKey: Text = self.seriesKey
-        return Chart(data) { (point: FlatPoint) in
-            LineMark(
-                x: .value(xKey, point.x),
-                y: .value(yKey, point.y))
-                .foregroundStyle(by: .value(sKey, point.series))
-                .interpolationMethod(.monotone)
-                .accessibilityLabel(point.x)
-                .accessibilityValue(point.accessibilityValue)
-            PointMark(
-                x: .value(xKey, point.x),
-                y: .value(yKey, point.y))
-                .foregroundStyle(by: .value(sKey, point.series))
-                .accessibilityHidden(true)
+        return Chart {
+            ForEach(data) { (point: FlatPoint) in
+                LineMark(
+                    x: .value(xKey, point.x),
+                    y: .value(yKey, point.y))
+                    .foregroundStyle(by: .value(sKey, point.series))
+                    .interpolationMethod(.monotone)
+                    .accessibilityLabel(point.x)
+                    .accessibilityValue(point.accessibilityValue)
+                PointMark(
+                    x: .value(xKey, point.x),
+                    y: .value(yKey, point.y))
+                    .foregroundStyle(by: .value(sKey, point.series))
+                    .accessibilityHidden(true)
+            }
+            self.selectionRule(xKey: xKey)
         }
         .chartXSelection(value: self.$selectedX)
         .modifier(AxisLabels(x: self.spec.xLabel, y: self.spec.yLabel, legend: self.showsLegend))
@@ -249,6 +253,69 @@ struct WidgetChartView: View {
                 .accessibilityValue(slice.accessibilityValue)
         }
         .chartLegend(position: .bottom, alignment: .center)
+    }
+}
+
+/// Tailles de graphique prédéfinies (petit / moyen / grand) pour les cartes et les widgets.
+enum WidgetChartSize {
+    case small
+    case medium
+    case large
+
+    var height: CGFloat {
+        switch self {
+        case .small: 96
+        case .medium: 160
+        case .large: 240
+        }
+    }
+}
+
+/// Infobulle de sélection : Liquid Glass (iOS 26) avec repli material, jamais derrière du texte long.
+struct ChartSelectionTooltip: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(verbatim: self.title)
+                .font(OpenClawType.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Text(verbatim: self.value)
+                .font(OpenClawType.captionSemiBold)
+                .monospacedDigit()
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .openClawGlass(in: RoundedRectangle(cornerRadius: OpenClawRadius.md, style: .continuous))
+        .accessibilityHidden(true)
+    }
+}
+
+/// Apparition progressive d'un graphique : fondu et légère montée, fondu seul sous Réduire les animations.
+private struct ChartRevealModifier: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var revealed = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(self.revealed ? 1 : 0)
+            .scaleEffect(x: 1, y: (self.revealed || self.reduceMotion) ? 1 : 0.9, anchor: .bottom)
+            .onAppear {
+                guard !self.revealed else { return }
+                withAnimation(OpenClawMotion.animation(reduceMotion: self.reduceMotion)) {
+                    self.revealed = true
+                }
+            }
+    }
+}
+
+extension View {
+    /// Fondu + montée au premier affichage d'un graphique.
+    func openClawChartReveal() -> some View {
+        modifier(ChartRevealModifier())
     }
 }
 

@@ -186,6 +186,11 @@ enum AgentTileFactory {
         return result
     }
 
+    /// One item for any session (used by the subagent chat header). Same wording as the board tile.
+    static func item(for session: OpenClawChatSessionEntry, isMain: Bool, now: Date) -> AgentTileItem {
+        makeItem(session, isMain: isMain, now: now)
+    }
+
     /// Detail / stop reuse the existing AgentsHub types.
     static func node(for item: AgentTileItem) -> SubagentNode {
         SubagentNode(session: item.session, status: item.runStatus, children: [])

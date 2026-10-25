@@ -1199,8 +1199,15 @@ private struct ChatStreamingAssistantTextBody: View {
         // when applying the delta instead of parsing the same Markdown again.
         self.inputSnapshot = snapshot
         let location = snapshot.lastProseLocation
-        let revealState = location.map {
-            step(state: ChatStreamingRevealState(), newText: snapshot.prose(at: $0).plainText, now: now)
+        // A row recreated mid-stream (scrolled away and back) must not replay the fade for words
+        // already on screen: adopt the current text as already revealed. Only a brand-new stream
+        // (short text) animates its first words.
+        let revealState = location.map { location -> ChatStreamingRevealState in
+            let plainText = snapshot.prose(at: location).plainText
+            if plainText.count > 60 {
+                return ChatStreamingRevealState(text: plainText)
+            }
+            return step(state: ChatStreamingRevealState(), newText: plainText, now: now)
         } ?? ChatStreamingRevealState()
         self._snapshot = State(initialValue: snapshot)
         self._revealState = State(initialValue: revealState)

@@ -11,6 +11,9 @@ import SwiftUI
 struct AppShellChatView: View {
     @Bindable var navigation: AppShellNavigation
 
+    /// Opens a subagent chat (wait-list rows) full screen over this chat, with no tab bar underneath.
+    @State private var subagentPresenter: SubagentChatPresenter = SubagentChatPresenter()
+
     private var closeAction: OpenClawSidebarHeaderAction {
         OpenClawSidebarHeaderAction(
             systemName: "xmark",
@@ -25,6 +28,7 @@ struct AppShellChatView: View {
                 headerSidebarAction: self.closeAction,
                 openSettings: self.openGateway)
         }
+        .subagentChatPresentation(presenter: self.subagentPresenter)
         .accessibilityIdentifier("AppShell.Chat")
     }
 

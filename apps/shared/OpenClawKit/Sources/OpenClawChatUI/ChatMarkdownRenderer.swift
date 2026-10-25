@@ -130,6 +130,7 @@ struct ChatMarkdownRenderer: View {
                 .textSelection(.enabled)
                 .lineSpacing(self.variant == .compact ? 2 : 4)
                 .modifier(ChatInlineMathAccessibilityModifier(label: prose.inlineAccessibilityText))
+                .chatRevealRenderer(active: self.reveal?.blockIndex == index)
         case let .heading(level, prose):
             self.proseText(prose, index: index)
                 .font(self.typography.headingFont(level: level))
@@ -139,6 +140,7 @@ struct ChatMarkdownRenderer: View {
                 .lineSpacing(self.variant == .compact ? 2 : 4)
                 .modifier(ChatInlineMathAccessibilityModifier(label: prose.inlineAccessibilityText))
                 .accessibilityAddTraits(.isHeader)
+                .chatRevealRenderer(active: self.reveal?.blockIndex == index)
         case let .code(code):
             ChatCodeBlockView(block: code)
         case let .math(math):
@@ -183,6 +185,49 @@ struct ChatMarkdownRenderer: View {
 
     private var linkColor: Color {
         self.context == .user ? self.textColor : OpenClawChatTheme.accent
+    }
+}
+
+/// Reveal progress (0...1) of one streamed word, read by `ChatRevealTextRenderer`.
+struct ChatRevealWordAttribute: TextAttribute {
+    var progress: Double
+}
+
+/// Draws words tagged with `ChatRevealWordAttribute` with a short fade, a light blur and a small
+/// upward offset. Untagged runs are drawn normally. Only attached while a reveal is running,
+/// and never under Reduce Motion (the reveal path is skipped entirely there).
+struct ChatRevealTextRenderer: TextRenderer {
+    func draw(layout: SwiftUI.Text.Layout, in context: inout GraphicsContext) {
+        for line in layout {
+            for run in line {
+                guard let word = run[ChatRevealWordAttribute.self] else {
+                    context.draw(run)
+                    continue
+                }
+                let progress = min(1, max(0, word.progress))
+                if progress >= 1 {
+                    context.draw(run)
+                    continue
+                }
+                let eased = 1 - (1 - progress) * (1 - progress)
+                var copy = context
+                copy.opacity = eased
+                copy.translateBy(x: 0, y: (1 - eased) * 3)
+                copy.addFilter(.blur(radius: (1 - eased) * 2.5))
+                copy.draw(run)
+            }
+        }
+    }
+}
+
+extension View {
+    @ViewBuilder
+    func chatRevealRenderer(active: Bool) -> some View {
+        if active {
+            self.textRenderer(ChatRevealTextRenderer())
+        } else {
+            self
+        }
     }
 }
 
@@ -442,11 +487,13 @@ struct ChatMarkdownProse {
 
     func revealedText(frame: ChatStreamingRevealFrame, textColor: Color) -> SwiftUI.Text {
         self.tail.reduce(SwiftUI.Text(self.prefix)) { text, piece in
-            var attributed = piece.attributed
+            let attributed = piece.attributed
             if let wordRange = piece.wordRange,
                let fading = frame.fading.first(where: { $0.characterRange == wordRange })
             {
-                attributed.foregroundColor = textColor.opacity(fading.opacity)
+                // Opacity, blur and offset are applied by `ChatRevealTextRenderer`, which reads this attribute.
+                return text + SwiftUI.Text(attributed)
+                    .customAttribute(ChatRevealWordAttribute(progress: fading.opacity))
             }
             return text + SwiftUI.Text(attributed)
         }

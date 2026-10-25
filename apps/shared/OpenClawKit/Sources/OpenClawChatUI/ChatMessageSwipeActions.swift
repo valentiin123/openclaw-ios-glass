@@ -36,6 +36,9 @@ private struct ChatMessageSwipeActions: ViewModifier {
 
     private static let activationDistance: CGFloat = 56
     private static let maximumTravel: CGFloat = 64
+    /// Rightward drags that start this close to the screen's leading edge belong to the system
+    /// interactive back gesture, so the reply swipe ignores them.
+    private static let systemBackEdgeWidth: CGFloat = 28
 
     private var progress: Double {
         min(1, Double(abs(self.offset) / Self.activationDistance))
@@ -73,6 +76,10 @@ private struct ChatMessageSwipeActions: ViewModifier {
                     if self.offset != 0 { self.reset() }
                     return
                 }
+                if dx > 0, value.startLocation.x < Self.systemBackEdgeWidth {
+                    if self.offset != 0 { self.reset() }
+                    return
+                }
                 guard let direction = self.allowedDirection(for: dx) else { return }
                 let travel = min(Self.maximumTravel, abs(dx) * 0.6)
                 let newOffset = direction * travel
@@ -88,7 +95,8 @@ private struct ChatMessageSwipeActions: ViewModifier {
             .onEnded { value in
                 let dx = value.translation.width
                 let dy = value.translation.height
-                let fire = self.armed && abs(dx) > abs(dy) * 1.5
+                let fromBackEdge = dx > 0 && value.startLocation.x < Self.systemBackEdgeWidth
+                let fire = self.armed && !fromBackEdge && abs(dx) > abs(dy) * 1.5
                 let action = fire ? self.action(for: dx) : nil
                 self.reset()
                 action?()

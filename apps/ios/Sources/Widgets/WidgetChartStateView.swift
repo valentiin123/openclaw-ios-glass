@@ -71,8 +71,11 @@ struct WidgetChartStateView: View {
             Text("No data to display")
                 .font(OpenClawType.subhead)
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
         }
+        .padding(OpenClawSpace.lg)
         .frame(maxWidth: .infinity, minHeight: height)
+        .transition(.opacity)
         .accessibilityElement(children: .combine)
     }
 

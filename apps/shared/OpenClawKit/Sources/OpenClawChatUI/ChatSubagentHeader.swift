@@ -53,11 +53,36 @@ struct ChatSubagentHeaderModel: Equatable {
     }
 }
 
+// Explicit key: some SwiftPM toolchains lack the SwiftUI macro plugins that `@Entry` needs.
+// swiftformat:disable environmentEntry
+private struct OpenClawChatSubagentHeaderHiddenKey: EnvironmentKey {
+    static let defaultValue: Bool = false
+}
+
+extension EnvironmentValues {
+    /// A host that draws its own subagent header (name, sprite, state, Stop) sets this to `true`
+    /// so the built-in strip does not render twice. Defaults to `false`.
+    public var openClawChatSubagentHeaderHidden: Bool {
+        get { self[OpenClawChatSubagentHeaderHiddenKey.self] }
+        set { self[OpenClawChatSubagentHeaderHiddenKey.self] = newValue }
+    }
+}
+// swiftformat:enable environmentEntry
+
 /// Name and a single status line on a flat strip: no glass, no icon row, no extra controls.
 struct ChatSubagentHeader: View {
+    @Environment(\.openClawChatSubagentHeaderHidden) private var isHidden
+
     let model: ChatSubagentHeaderModel
 
+    @ViewBuilder
     var body: some View {
+        if !self.isHidden {
+            self.strip
+        }
+    }
+
+    private var strip: some View {
         HStack(spacing: 8) {
             Circle()
                 .fill(self.dotColor)

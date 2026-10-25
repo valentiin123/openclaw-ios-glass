@@ -52,8 +52,11 @@ private struct AgentTileClock: View {
 struct AgentTileView: View {
     let item: AgentTileItem
     let canStop: Bool
+    /// Tap: opens the subagent chat.
     let onOpen: (AgentTileItem) -> Void
     let onStop: (AgentTileItem) -> Void
+    /// Context menu "View details" (run facts sheet). Falls back to `onOpen` when nil.
+    var onDetails: ((AgentTileItem) -> Void)?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -73,7 +76,7 @@ struct AgentTileView: View {
         .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(verbatim: self.item.accessibilityText))
-        .accessibilityHint(Text("Opens run details"))
+        .accessibilityHint(Text("Opens the subagent chat"))
         .accessibilityAddTraits(.isButton)
         .accessibilityAction(named: Text("Stop"), self.stopIfAllowed)
     }
@@ -169,7 +172,8 @@ struct AgentTileView: View {
 
     @ViewBuilder
     private var menuItems: some View {
-        Button("View details", systemImage: "doc.text", action: self.open)
+        Button("Open chat", systemImage: "bubble.left.and.text.bubble.right", action: self.open)
+        Button("View details", systemImage: "doc.text", action: self.showDetails)
         if self.canStopNow {
             Button("Stop", systemImage: "stop.circle", role: .destructive, action: self.requestStop)
         }
@@ -179,6 +183,14 @@ struct AgentTileView: View {
 
     private func open() {
         self.onOpen(self.item)
+    }
+
+    private func showDetails() {
+        if let onDetails = self.onDetails {
+            onDetails(self.item)
+        } else {
+            self.onOpen(self.item)
+        }
     }
 
     private func requestStop() {

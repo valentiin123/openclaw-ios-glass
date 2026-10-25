@@ -5,59 +5,113 @@ import SwiftUI
 struct CommandSessionRow: View {
     let item: CommandCenterTab.WorkItem
 
+    @ScaledMetric(relativeTo: .body) private var spriteSize: CGFloat = 36
+
+    private var spriteKind: AgentTileSpriteKind {
+        guard let key = self.item.spriteKey else { return .robot }
+        return AgentTileNaming.sprite(for: key)
+    }
+
+    /// Playful label while a run is going on (or went wrong); otherwise the calm open/default/recent word.
+    private var showsRunState: Bool {
+        guard let run = self.item.runState else { return false }
+        return run.isActive || run == .failed
+    }
+
+    private var isAsleep: Bool {
+        guard let run = self.item.runState else { return true }
+        return !run.isActive && run != .failed
+    }
+
+    private var stateTint: Color {
+        guard self.showsRunState, let run = self.item.runState else { return self.item.color }
+        return run.tint
+    }
+
+    private var stateText: String {
+        guard self.showsRunState, let run = self.item.runState else { return self.stateLabel }
+        return run.label
+    }
+
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            Image(systemName: self.item.icon)
-                .font(OpenClawType.captionSemiBold)
-                .foregroundStyle(self.item.color)
-                .frame(width: 30, height: 30)
-                .background {
-                    RoundedRectangle(cornerRadius: OpenClawRadius.sm, style: .continuous)
-                        .fill(self.item.color.opacity(0.12))
-                }
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    if self.item.isUnread {
-                        Circle()
-                            .fill(OpenClawBrand.accent)
-                            .frame(width: 7, height: 7)
-                            .accessibilityHidden(true)
-                    }
-                    Text(verbatim: self.item.title)
-                        .font(OpenClawType.subheadSemiBold)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.82)
-                    Spacer(minLength: 6)
-                    if self.item.isPinned {
-                        Image(systemName: "pin.fill")
-                            .font(OpenClawType.caption2Medium)
-                            .foregroundStyle(OpenClawBrand.accent)
-                            .accessibilityHidden(true)
-                    }
-                    Text(verbatim: "chat")
-                        .font(OpenClawType.caption2Medium)
-                        .foregroundStyle(.secondary)
-                }
-                HStack(spacing: 8) {
-                    Text(verbatim: self.item.detail)
-                        .font(OpenClawType.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    Spacer(minLength: 6)
-                    Text(self.stateLabel)
-                        .font(OpenClawType.captionSemiBold)
-                        .foregroundStyle(self.item.color)
-                        .lineLimit(1)
-                        .frame(width: 48, alignment: .trailing)
-                }
-            }
+            self.sprite
+            self.texts
+            Spacer(minLength: 4)
+            self.trailing
         }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
         .overlay(alignment: .leading) {
             OpenClawSessionColorStripe(color: self.item.sessionColor)
         }
         .contentShape(Rectangle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(verbatim: self.spokenSummary))
+    }
+
+    private var sprite: some View {
+        let saturation: Double = self.isAsleep ? 0 : 1
+        let opacity: Double = self.isAsleep ? 0.6 : 1
+        return AgentTileSpriteView(kind: self.spriteKind)
+            .frame(width: self.spriteSize, height: self.spriteSize)
+            .saturation(saturation)
+            .opacity(opacity)
+    }
+
+    private var texts: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                self.unreadDot
+                Text(verbatim: self.item.title)
+                    .font(OpenClawType.subheadSemiBold)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+            }
+            Text(verbatim: self.item.detail)
+                .font(OpenClawType.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+    }
+
+    @ViewBuilder
+    private var unreadDot: some View {
+        if self.item.isUnread {
+            Rectangle()
+                .fill(OpenClawBrand.accent)
+                .frame(width: 7, height: 7)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private var trailing: some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            self.pin
+            Text(verbatim: self.stateText)
+                .font(OpenClawType.captionSemiBold)
+                .foregroundStyle(self.stateTint)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+    }
+
+    @ViewBuilder
+    private var pin: some View {
+        if self.item.isPinned {
+            Image(systemName: "pin.fill")
+                .font(OpenClawType.caption2Medium)
+                .foregroundStyle(OpenClawBrand.accent)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private var spokenSummary: String {
+        var parts: [String] = [self.item.title, self.stateText, self.item.detail]
+        if self.item.isUnread { parts.append(String(localized: "Unread")) }
+        if self.item.isPinned { parts.append(String(localized: "Pinned")) }
+        return parts.joined(separator: ", ")
     }
 
     private var stateLabel: String {

@@ -332,6 +332,7 @@ struct NativeActivityScreen: View {
 /// Stacked daily bars: succeeded vs failed vs other. Pure content, no glass.
 private struct NativeActivityChart: View {
     let days: [NativeActivityDay]
+    @State private var selectedDate: Date?
 
     private struct Bucket: Identifiable {
         let id: String
@@ -358,13 +359,42 @@ private struct NativeActivityChart: View {
         return result
     }
 
+    private var selectedDay: NativeActivityDay? {
+        guard let selected = self.selectedDate else { return nil }
+        return self.days.first { Calendar.current.isDate($0.date, inSameDayAs: selected) }
+    }
+
+    private func tooltipValue(for day: NativeActivityDay) -> String {
+        let failed: Int = day.events.filter { $0.isFailure }.count
+        return String(localized: "\(day.events.count) events, \(failed) failed")
+    }
+
     var body: some View {
-        Chart(self.buckets) { bucket in
-            BarMark(
-                x: .value("Day", bucket.date, unit: .day),
-                y: .value("Events", bucket.count))
-                .foregroundStyle(by: .value("Status", bucket.series))
+        let bucketList: [Bucket] = self.buckets
+        let selected: NativeActivityDay? = self.selectedDay
+        return Chart {
+            ForEach(bucketList) { bucket in
+                BarMark(
+                    x: .value("Day", bucket.date, unit: .day),
+                    y: .value("Events", bucket.count))
+                    .foregroundStyle(by: .value("Status", bucket.series))
+            }
+            if let selected {
+                RuleMark(x: .value("Day", selected.date, unit: .day))
+                    .foregroundStyle(Color.secondary.opacity(0.35))
+                    .lineStyle(StrokeStyle(lineWidth: 1))
+                    .annotation(
+                        position: .top,
+                        spacing: 4,
+                        overflowResolution: AnnotationOverflowResolution(x: .fit(to: .chart), y: .disabled))
+                    {
+                        ChartSelectionTooltip(
+                            title: selected.date.formatted(.dateTime.weekday(.abbreviated).month().day()),
+                            value: self.tooltipValue(for: selected))
+                    }
+            }
         }
+        .chartXSelection(value: self.$selectedDate)
         .chartForegroundStyleScale([
             self.okName: OpenClawBrand.ok,
             self.failedName: OpenClawBrand.danger,
@@ -373,6 +403,8 @@ private struct NativeActivityChart: View {
         .chartLegend(position: .bottom, alignment: .leading)
         .frame(minHeight: 160)
         .padding(.vertical, 6)
+        .openClawChartReveal()
+        .openClawAnimation(value: self.selectedDate)
         .accessibilityLabel(Text("Activity per day"))
         .accessibilityValue(Text(self.summary))
     }
