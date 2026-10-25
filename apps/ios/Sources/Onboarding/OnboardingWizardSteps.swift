@@ -70,7 +70,7 @@ private enum OnboardingIntroPanelStyle {
     static let iconSize: CGFloat = 34
     static let contentSpacing: CGFloat = 12
     static let panelPadding: CGFloat = 16
-    static let panelCornerRadius: CGFloat = 22
+    static let panelCornerRadius: CGFloat = OpenClawRadius.panel
 
     static let panelFill = OpenClawBrand.activationNeutralSurface
     static let iconFill = OpenClawBrand.activationNeutralInsetSurface
@@ -87,11 +87,6 @@ struct OnboardingIntroPanel<Content: View>: View {
             .background {
                 RoundedRectangle(cornerRadius: OnboardingIntroPanelStyle.panelCornerRadius, style: .continuous)
                     .fill(OnboardingIntroPanelStyle.panelFill)
-            }
-            .overlay(alignment: .top) {
-                RoundedRectangle(cornerRadius: OnboardingIntroPanelStyle.panelCornerRadius, style: .continuous)
-                    .stroke(Color.white.opacity(0.42), lineWidth: 0.5)
-                    .blendMode(.plusLighter)
             }
             .overlay {
                 RoundedRectangle(cornerRadius: OnboardingIntroPanelStyle.panelCornerRadius, style: .continuous)
@@ -189,24 +184,25 @@ private struct OnboardingCommandChip: View {
                     .font(OpenClawType.subheadSemiBold)
                     .foregroundStyle(
                         self.didCopy ? OpenClawBrand.activationPrimaryAction : Color.secondary.opacity(0.56))
-                    .frame(width: 38, height: 38)
+                    .frame(minWidth: OpenClawHitTarget.minimum, minHeight: OpenClawHitTarget.minimum)
                     .contentTransition(.symbolEffect(.replace))
             }
             .buttonStyle(.plain)
             .contentShape(Rectangle())
             .accessibilityLabel("Copy setup code command")
             .accessibilityValue(self.didCopy ? "Copied" : self.command)
+            .sensoryFeedback(.success, trigger: self.didCopy) { _, new in new }
         }
         .foregroundStyle(OpenClawBrand.activationPrimaryAction)
         .padding(.horizontal, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: 54)
+        .frame(minHeight: 54)
         .background {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: OpenClawRadius.panel, style: .continuous)
                 .fill(OpenClawBrand.activationNeutralSurface)
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: OpenClawRadius.panel, style: .continuous)
                 .stroke(OpenClawBrand.activationNeutralStroke, lineWidth: 0.5)
         }
     }
@@ -371,6 +367,7 @@ struct OnboardingSuccessStep: View {
                         }
                 }
                 .padding(.bottom, 22)
+                .openClawEntrance(index: 0)
 
                 Text("You're connected")
                     .font(OpenClawType.title1)
@@ -410,21 +407,17 @@ struct OnboardingModeIcon: View {
 
     var body: some View {
         Image(systemName: self.symbol)
-            .font(.system(size: 15, weight: .semibold))
+            .font(OpenClawType.subheadSemiBold)
             .foregroundStyle(self.selected ? OpenClawBrand.activationPrimaryActionText : .secondary)
-            .frame(width: 34, height: 34)
+            .frame(minWidth: 34, minHeight: 34)
             .background {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: OpenClawRadius.lg, style: .continuous)
                     .fill(self.selected ? OpenClawBrand.activationPrimaryGradient : OpenClawBrand
                         .activationNeutralGradient)
-                    .shadow(
-                        color: self.selected ? OpenClawBrand.activationGlow.opacity(0.18) : .clear,
-                        radius: 5,
-                        x: 0,
-                        y: 2)
             }
+            .openClawAnimation(value: self.selected)
             .overlay {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: OpenClawRadius.lg, style: .continuous)
                     .stroke(
                         self.selected ? Color.white.opacity(0.30) : OpenClawBrand.activationNeutralStroke,
                         lineWidth: 0.5)

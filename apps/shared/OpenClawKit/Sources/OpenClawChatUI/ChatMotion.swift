@@ -20,6 +20,35 @@ enum OpenClawChatMotion {
     }
 }
 
+/// Tinted Liquid Glass shape for the primary composer action (send/stop), drawn as a background.
+/// Solid tint fill before iOS 26 and on macOS. Chrome only, never behind reading content.
+struct OpenClawChatGlassFill: View {
+    let tint: Color
+    let size: CGFloat
+    let cornerRadius: CGFloat
+
+    @ViewBuilder
+    var body: some View {
+        #if os(iOS)
+        if #available(iOS 26.0, *) {
+            Color.clear
+                .frame(width: self.size, height: self.size)
+                .glassEffect(Glass.regular.tint(self.tint), in: .rect(cornerRadius: self.cornerRadius))
+        } else {
+            self.solid
+        }
+        #else
+        self.solid
+        #endif
+    }
+
+    private var solid: some View {
+        RoundedRectangle(cornerRadius: self.cornerRadius, style: .continuous)
+            .fill(self.tint)
+            .frame(width: self.size, height: self.size)
+    }
+}
+
 private struct OpenClawChatAnimationModifier<Value: Equatable>: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let value: Value

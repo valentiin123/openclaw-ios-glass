@@ -1252,9 +1252,10 @@ extension OpenClawChatComposer {
             .foregroundStyle(.white)
             .frame(width: self.sendButtonSize, height: self.sendButtonSize)
             .background(
-                RoundedRectangle(cornerRadius: self.sendButtonCornerRadius, style: .continuous)
-                    .fill(OpenClawChatTheme.danger)
-                    .frame(width: self.sendButtonVisualSize, height: self.sendButtonVisualSize))
+                OpenClawChatGlassFill(
+                    tint: OpenClawChatTheme.danger,
+                    size: self.sendButtonVisualSize,
+                    cornerRadius: self.sendButtonCornerRadius))
             .contentShape(Rectangle())
             .accessibilityLabel("Stop response")
             .disabled(self.viewModel.isAborting)
@@ -1272,10 +1273,18 @@ extension OpenClawChatComposer {
             .buttonStyle(.plain)
             .foregroundStyle(self.sendButtonForeground)
             .frame(width: self.sendButtonSize, height: self.sendButtonSize)
-            .background(
-                RoundedRectangle(cornerRadius: self.sendButtonCornerRadius, style: .continuous)
-                    .fill(self.canSendMessage ? self.sendButtonFill : self.disabledSendButtonFill)
-                    .frame(width: self.sendButtonVisualSize, height: self.sendButtonVisualSize))
+            .background {
+                if self.canSendMessage {
+                    OpenClawChatGlassFill(
+                        tint: self.sendButtonFill,
+                        size: self.sendButtonVisualSize,
+                        cornerRadius: self.sendButtonCornerRadius)
+                } else {
+                    RoundedRectangle(cornerRadius: self.sendButtonCornerRadius, style: .continuous)
+                        .fill(self.disabledSendButtonFill)
+                        .frame(width: self.sendButtonVisualSize, height: self.sendButtonVisualSize)
+                }
+            }
             .overlay(
                 RoundedRectangle(cornerRadius: self.sendButtonCornerRadius, style: .continuous)
                     .strokeBorder(Color.white.opacity(self.sendButtonBorderOpacity), lineWidth: 1)

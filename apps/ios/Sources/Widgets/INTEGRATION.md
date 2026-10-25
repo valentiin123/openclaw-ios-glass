@@ -28,7 +28,7 @@ Module : `apps/ios/Sources/Widgets/` (cible app iOS, iOS 26.2). Rien n'a été c
 
 ## Limites non vérifiées
 - Aucune compilation ni exécution : erreurs de syntaxe/concurrence Swift 6 possibles (Bindings mutés depuis le Coordinator, `@Entry`, etc.).
-- `ForEach(id: \.x)` plante/duplique si deux points d'une série ont le même libellé ; à remplacer par des identifiants uniques.
+- Graphiques : chaque point est aplati en `FlatPoint: Identifiable` (id unique), donc des libellés X identiques dans une série ne dupliquent plus les marques. La sélection au doigt (`chartXSelection`) retient le premier point portant ce libellé.
 - La logique `decidePolicyFor` de la WebView (autoriser `about:blank`, annuler le reste) doit être testée sur appareil ; l'export snapshot et la hauteur auto aussi.
 - CSP via balise meta : n'applique pas `sandbox` ; l'isolation repose sur origine opaque + JS désactivé par défaut.
 - Zoom du plein écran, VoiceOver, Dynamic Type, Reduce Motion : implémentés mais non testés.

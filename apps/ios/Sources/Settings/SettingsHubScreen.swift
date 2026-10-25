@@ -3,7 +3,7 @@ import SwiftUI
 import UIKit
 
 /// Native Settings hub. No web content: every row pushes a SwiftUI screen.
-/// Five groups: Connection (live status header), Agents, Notifications, Appearance, Advanced.
+/// Five groups: Connection (live status header), Appearance, Notifications, Agents, About.
 /// Pull to refresh re-reads the Gateway overview and the approval inbox.
 /// `SettingsRoute` rows go through the typed `navigationPath`; native Dashboard replacements
 /// (`NativeSettingsDestination`) use destination links so the typed path stays `[SettingsRoute]`.
@@ -27,9 +27,9 @@ struct SettingsHubScreen: View {
     private var root: some View {
         List {
             self.connectionSection
-            self.agentVoiceSection
-            self.notificationsSection
             self.appearanceSection
+            self.notificationsSection
+            self.agentVoiceSection
             self.advancedSection
         }
         .font(OpenClawType.body)
@@ -137,7 +137,7 @@ struct SettingsHubScreen: View {
                 title: String(localized: "About"),
                 systemImage: "info.circle")
         } header: {
-            NativeSettingsHeader("Advanced")
+            NativeSettingsHeader("About")
         }
     }
 

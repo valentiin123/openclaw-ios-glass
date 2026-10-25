@@ -15,6 +15,7 @@ struct NativeUsageScreen: View {
     @State private var range: NativeUsageRange = .month
     @State private var grouping: NativeUsageGrouping = .days
     @State private var metric: NativeUsageMetric = .cost
+    @State private var copiedTick = 0
     let title: String
     var headerSidebarAction: OpenClawSidebarHeaderAction?
 
@@ -43,6 +44,7 @@ struct NativeUsageScreen: View {
         .sensoryFeedback(.selection, trigger: self.grouping)
         .sensoryFeedback(.selection, trigger: self.metric)
         .sensoryFeedback(.selection, trigger: self.range)
+        .sensoryFeedback(.success, trigger: self.copiedTick)
     }
 
     // MARK: - Derived data
@@ -311,6 +313,7 @@ struct NativeUsageScreen: View {
     private func copyAction(_ text: String) -> some View {
         Button {
             UIPasteboard.general.string = text
+            self.copiedTick += 1
         } label: {
             Label("Copy", systemImage: "doc.on.doc")
         }
@@ -320,6 +323,7 @@ struct NativeUsageScreen: View {
     private func copyMenu(_ text: String) -> some View {
         Button {
             UIPasteboard.general.string = text
+            self.copiedTick += 1
         } label: {
             Label {
                 Text(verbatim: text)

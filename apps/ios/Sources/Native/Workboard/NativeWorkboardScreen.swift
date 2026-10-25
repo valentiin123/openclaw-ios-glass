@@ -268,9 +268,27 @@ struct WorkboardListContent: View {
                     self.row(card)
                 }
             } header: {
-                WorkboardSectionHeader(status: group.status, count: group.cards.count)
+                WorkboardSectionHeader(
+                    status: group.status,
+                    count: group.cards.count,
+                    acceptsDrop: self.canMove,
+                    onDropCardIds: { (ids: [String]) -> Bool in
+                        self.drop(ids: ids, to: group.status)
+                    })
             }
         }
+    }
+
+    /// Moves the first dropped card that exists on this board and is not already in `status`.
+    private func drop(ids: [String], to status: String) -> Bool {
+        guard self.canMove else { return false }
+        for id in ids {
+            guard let card = self.content.cards.first(where: { $0.id == id }) else { continue }
+            guard card.status != status, !self.busyCardIds.contains(card.id) else { continue }
+            self.onMove(card, status)
+            return true
+        }
+        return false
     }
 
     private func row(_ card: WorkboardCardItem) -> some View {
@@ -283,6 +301,7 @@ struct WorkboardListContent: View {
             onMove: self.onMove)
             .ngCardRow()
             .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
+            .workboardDraggable(card.id, enabled: self.canMove && !busy)
             .swipeActions(edge: .trailing, allowsFullSwipe: true) { self.trailingSwipe(card) }
             .swipeActions(edge: .leading, allowsFullSwipe: false) { self.leadingSwipe(card) }
             .contextMenu { self.menu(card) }
@@ -352,11 +371,47 @@ struct WorkboardListContent: View {
     }
 }
 
+private extension View {
+    /// Long-press drag of a card id, only when moving is allowed.
+    @ViewBuilder
+    func workboardDraggable(_ id: String, enabled: Bool) -> some View {
+        if enabled {
+            self.draggable(id)
+        } else {
+            self
+        }
+    }
+}
+
 private struct WorkboardSectionHeader: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isTargeted: Bool = false
     let status: String
     let count: Int
+    let acceptsDrop: Bool
+    let onDropCardIds: ([String]) -> Bool
 
     var body: some View {
+        self.header
+            .background {
+                if self.isTargeted {
+                    Capsule()
+                        .fill(WorkboardStatusTint.color(self.status).opacity(0.18))
+                        .padding(.horizontal, 6)
+                        .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
+                }
+            }
+            .openClawAnimation(value: self.isTargeted)
+            .dropDestination(for: String.self) { (ids: [String], _: CGPoint) -> Bool in
+                guard self.acceptsDrop else { return false }
+                return self.onDropCardIds(ids)
+            } isTargeted: { (targeted: Bool) -> Void in
+                self.isTargeted = targeted && self.acceptsDrop
+            }
+            .sensoryFeedback(.selection, trigger: self.isTargeted)
+    }
+
+    private var header: some View {
         let label: String = WorkboardStatusInfo.label(self.status)
         let icon: String = WorkboardStatusInfo.systemImage(self.status)
         return HStack(spacing: 8) {

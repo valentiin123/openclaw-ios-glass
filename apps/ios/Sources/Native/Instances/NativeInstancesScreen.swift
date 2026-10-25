@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Views of the Instances page: paired devices (pending requests on top), live presence, saved Gateways.
 enum InstancesScope: Hashable {
@@ -371,6 +372,25 @@ struct NativeInstancesScreen: View {
                 .tint(toggleTint)
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                Button(role: .destructive) {
+                    self.forgetTarget = entry
+                } label: {
+                    Label("Forget", systemImage: "trash")
+                }
+            }
+            .contextMenu {
+                Button {
+                    self.gateways.setLive(entry, enabled: !live, controller: self.gatewayController)
+                } label: {
+                    Label(toggleTitle, systemImage: toggleImage)
+                }
+                if let host = entry.host, !host.isEmpty {
+                    Button {
+                        UIPasteboard.general.string = host
+                    } label: {
+                        Label(String(localized: "Copy address"), systemImage: "doc.on.doc")
+                    }
+                }
                 Button(role: .destructive) {
                     self.forgetTarget = entry
                 } label: {

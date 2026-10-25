@@ -378,6 +378,7 @@ struct NativeAutomationsScreen: View {
     @State private var search = ""
     @State private var filterID: String = NGFilterID.all
     @State private var pendingDelete: NativeCronJob?
+    @State private var copiedTick = 0
     let title: String
     var headerSidebarAction: OpenClawSidebarHeaderAction?
 
@@ -389,7 +390,7 @@ struct NativeAutomationsScreen: View {
         NavigationStack {
             self.content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(OpenClawBrand.void)
+                .background { OpenClawProBackground() }
                 .nativeChrome(title: self.title, sidebar: self.headerSidebarAction)
                 .searchable(text: self.$search, prompt: Text("Search automations"))
                 .navigationDestination(for: NativeCronJob.self) { job in
@@ -412,6 +413,7 @@ struct NativeAutomationsScreen: View {
         .task { await self.reload(showSpinner: true) }
         .sensoryFeedback(.success, trigger: self.model.successTick)
         .sensoryFeedback(.error, trigger: self.model.errorTick)
+        .sensoryFeedback(.success, trigger: self.copiedTick)
     }
 
     private func reload(showSpinner: Bool) async {
@@ -647,6 +649,7 @@ struct NativeAutomationsScreen: View {
         }
         Button {
             UIPasteboard.general.string = job.id
+            self.copiedTick += 1
         } label: {
             Label("Copy ID", systemImage: "doc.on.doc")
         }
@@ -718,6 +721,7 @@ struct NativeAutomationDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var confirmDelete = false
+    @State private var copiedTick = 0
     let jobId: String
     let model: NativeAutomationsModel
 
@@ -733,7 +737,8 @@ struct NativeAutomationDetailView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(OpenClawBrand.void)
+        .background { OpenClawProBackground() }
+        .sensoryFeedback(.success, trigger: self.copiedTick)
         .navigationTitle(self.model.job(id: self.jobId)?.name ?? "")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { self.toolbarContent }
@@ -757,6 +762,7 @@ struct NativeAutomationDetailView: View {
             Menu {
                 Button {
                     UIPasteboard.general.string = self.jobId
+                    self.copiedTick += 1
                 } label: {
                     Label("Copy ID", systemImage: "doc.on.doc")
                 }

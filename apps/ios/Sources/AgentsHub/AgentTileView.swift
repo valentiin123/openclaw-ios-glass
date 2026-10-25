@@ -78,6 +78,7 @@ struct AgentTileView: View {
         .accessibilityLabel(Text(verbatim: self.item.accessibilityText))
         .accessibilityHint(Text("Opens the subagent chat"))
         .accessibilityAddTraits(.isButton)
+        .accessibilityAction(named: Text("View details"), self.showDetails)
         .accessibilityAction(named: Text("Stop"), self.stopIfAllowed)
     }
 

@@ -511,7 +511,7 @@ struct NativeActivityScreen: View {
                 .frame(minHeight: 44)
                 .openClawGlassCapsule(tint: OpenClawBrand.ok.opacity(0.18))
                 .padding(.bottom, 24)
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                .transition(OpenClawMotion.edge(.bottom, reduceMotion: self.reduceMotion))
                 .accessibilityAddTraits(.updatesFrequently)
         }
     }
