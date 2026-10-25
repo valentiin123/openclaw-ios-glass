@@ -261,9 +261,9 @@ struct NativeInstancesScreen: View {
     private func pendingSection(_ snapshot: InstancesSnapshot) -> some View {
         if !snapshot.pending.isEmpty {
             Section {
-                ForEach(snapshot.pending) { request in
+                ForEach(Array(snapshot.pending.enumerated()), id: \.element.id) { index, request in
                     InstancePendingRow(model: self.model, request: request, appModel: self.appModel)
-                        .openClawEntrance(index: 0)
+                        .openClawEntrance(index: index)
                         .swipeActions(edge: .leading, allowsFullSwipe: false) {
                             self.approveSwipe(request)
                         }
@@ -295,8 +295,9 @@ struct NativeInstancesScreen: View {
             }
         } else if !snapshot.paired.isEmpty {
             Section(String(localized: "Paired devices")) {
-                ForEach(snapshot.paired) { device in
+                ForEach(Array(snapshot.paired.enumerated()), id: \.element.id) { index, device in
                     InstancePairedRow(model: self.model, device: device)
+                        .openClawEntrance(index: index)
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             self.removeSwipe(device)
                         }
@@ -330,8 +331,11 @@ struct NativeInstancesScreen: View {
             }
         } else if !snapshot.presence.isEmpty {
             Section {
-                ForEach(snapshot.presence) { device in
+                ForEach(Array(snapshot.presence.enumerated()), id: \.element.id) { index, device in
                     InstancePresenceRow(device: device)
+                        .openClawEntrance(index: index)
+                        .glassCopyMenu(device.name)
+                        .glassCopySwipe(device.name)
                 }
             } header: {
                 Text("Connected now")
@@ -365,8 +369,9 @@ struct NativeInstancesScreen: View {
                     message: "Add a Gateway with a setup code or QR code above.")
                     .instancesCardRow()
             }
-            ForEach(self.gateways.entries) { entry in
+            ForEach(Array(self.gateways.entries.enumerated()), id: \.element.id) { index, entry in
                 self.gatewayRow(entry)
+                    .openClawEntrance(index: index)
             }
         } header: {
             Text("Gateways")

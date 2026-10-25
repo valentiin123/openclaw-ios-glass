@@ -348,6 +348,7 @@ struct OnboardingWelcomeStep: View {
 }
 
 struct OnboardingSuccessStep: View {
+    @State private var arrived = false
     let gatewayName: String
     let gatewayAddress: String?
     let onGetStarted: () -> Void
@@ -365,10 +366,7 @@ struct OnboardingSuccessStep: View {
                         .font(OpenClawType.headlineBold)
                         .foregroundStyle(.white)
                         .frame(width: 30, height: 30)
-                        .background {
-                            Circle()
-                                .fill(OpenClawBrand.ok)
-                        }
+                        .glassEffect(.regular.tint(OpenClawBrand.ok), in: Circle())
                         .overlay {
                             Circle()
                                 .stroke(OpenClawBrand.activationCanvas, lineWidth: 3)
@@ -407,6 +405,8 @@ struct OnboardingSuccessStep: View {
                 .openClawEntrance(index: 2)
             }
         }
+        .openClawHaptic(.success, trigger: self.arrived)
+        .onAppear { self.arrived = true }
     }
 }
 
@@ -468,5 +468,6 @@ struct OnboardingModeRow: View {
         .buttonStyle(.plain)
         .accessibilityAddTraits(self.selected ? .isSelected : [])
         .openClawAnimation(value: self.selected)
+        .openClawHaptic(.selection, trigger: self.selected)
     }
 }

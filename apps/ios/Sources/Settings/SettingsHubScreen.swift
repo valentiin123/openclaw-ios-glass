@@ -126,15 +126,18 @@ struct SettingsHubScreen: View {
                 .diagnostics,
                 title: String(localized: "Diagnostics"),
                 systemImage: "stethoscope")
+                .openClawEntrance(index: 0)
             self.routeLink(
                 .licenses,
                 title: String(localized: "Licenses"),
                 systemImage: "doc.text")
+                .openClawEntrance(index: 1)
                 .accessibilityIdentifier("settings-licenses-row")
             self.routeLink(
                 .about,
                 title: String(localized: "About"),
                 systemImage: "info.circle")
+                .openClawEntrance(index: 2)
         } header: {
             NativeSettingsHeader("About")
         }
