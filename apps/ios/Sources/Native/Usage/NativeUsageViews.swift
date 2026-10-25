@@ -12,6 +12,45 @@ struct NativeUsageTileData: Identifiable {
     let value: String
     let systemImage: String
     var tint: Color = .secondary
+    /// Optional trend values (oldest to newest) drawn as a sparkline under the figure.
+    var spark: [Double] = []
+}
+
+/// Minimal trend line without axes. Decorative: the figure next to it carries the information.
+struct NativeSparkline: View {
+    struct Sample: Identifiable {
+        let id: Int
+        let value: Double
+    }
+
+    let values: [Double]
+    var tint: Color = OpenClawBrand.accent
+    var height: CGFloat = 22
+
+    private var samples: [Sample] {
+        var result: [Sample] = []
+        for (index, value) in self.values.enumerated() {
+            result.append(Sample(id: index, value: value.isFinite ? value : 0))
+        }
+        return result
+    }
+
+    var body: some View {
+        let list: [Sample] = self.samples
+        let color: Color = self.tint
+        return Chart(list) { (sample: Sample) in
+            LineMark(
+                x: .value("Index", sample.id),
+                y: .value("Value", sample.value))
+                .interpolationMethod(.monotone)
+                .foregroundStyle(color)
+        }
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .chartLegend(.hidden)
+        .frame(height: self.height)
+        .accessibilityHidden(true)
+    }
 }
 
 /// Row of glass headline tiles (total, average, peak, ...).
@@ -47,6 +86,9 @@ struct NativeUsageTileGrid: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
                 .contentTransition(.numericText())
+            if tile.spark.count > 1 {
+                NativeSparkline(values: tile.spark, tint: tile.tint)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)

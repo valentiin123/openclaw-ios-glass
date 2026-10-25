@@ -993,6 +993,7 @@ struct NativeAutomationDetailView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .ngCardSurface()
             } else {
+                NativeCronReliabilityCard(runs: runs)
                 NativeCronRunsChart(runs: runs)
                 VStack(spacing: 0) {
                     ForEach(runs) { run in
@@ -1046,6 +1047,79 @@ private struct NativeCronRunsChart: View {
     private func summary(_ points: [NativeCronRun]) -> String {
         let failed: Int = points.filter { $0.isFailure }.count
         return String(localized: "\(points.count) runs, \(failed) failed")
+    }
+}
+
+/// Success rate over the recent runs: circular gauge plus a strip of the last outcomes (oldest to newest).
+/// Status never relies on color alone: the percentage and the counts are spelled out.
+private struct NativeCronReliabilityCard: View {
+    let runs: [NativeCronRun]
+
+    private var recent: [NativeCronRun] {
+        Array(self.runs.prefix(20).reversed())
+    }
+
+    private var failedCount: Int {
+        self.recent.filter { $0.isFailure }.count
+    }
+
+    private var rate: Double {
+        let total: Int = self.recent.count
+        guard total > 0 else { return 0 }
+        return Double(total - self.failedCount) / Double(total)
+    }
+
+    private var gaugeTint: Color {
+        if self.rate >= 0.9 { return OpenClawBrand.ok }
+        if self.rate >= 0.6 { return OpenClawBrand.warn }
+        return OpenClawBrand.danger
+    }
+
+    private var summary: String {
+        let total: Int = self.recent.count
+        let failed: Int = self.failedCount
+        let percent: String = self.rate.formatted(.percent.precision(.fractionLength(0)))
+        return String(localized: "\(percent) success, \(total) runs, \(failed) failed")
+    }
+
+    var body: some View {
+        let items: [NativeCronRun] = self.recent
+        return HStack(spacing: 14) {
+            Gauge(value: self.rate) {
+                Text("Success rate")
+            } currentValueLabel: {
+                Text(self.rate, format: .percent.precision(.fractionLength(0)))
+                    .font(OpenClawType.captionSemiBold)
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+            }
+            .gaugeStyle(.accessoryCircularCapacity)
+            .tint(self.gaugeTint)
+            .openClawAnimation(value: self.rate)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Reliability")
+                    .font(OpenClawType.subheadSemiBold)
+                    .accessibilityAddTraits(.isHeader)
+                HStack(spacing: 3) {
+                    ForEach(items) { run in
+                        Capsule()
+                            .fill(run.tint)
+                            .frame(height: 14)
+                    }
+                }
+                Text(verbatim: self.summary)
+                    .font(OpenClawType.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .ngCardSurface()
+        .openClawChartReveal()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text("Reliability"))
+        .accessibilityValue(Text(verbatim: self.summary))
     }
 }
 

@@ -116,7 +116,8 @@ struct NativeUsageScreen: View {
                 title: String(localized: "Total cost"),
                 value: NativeUsageMetric.cost.full(totalCost),
                 systemImage: "dollarsign.circle",
-                tint: OpenClawBrand.accent),
+                tint: OpenClawBrand.accent,
+                spark: days.map(\.cost)),
         ]
         if !activeCost.isEmpty {
             let average: Double = activeCost.reduce(0, +) / Double(activeCost.count)
@@ -141,7 +142,8 @@ struct NativeUsageScreen: View {
                 title: String(localized: "Tokens"),
                 value: NativeUsageMetric.tokens.compact(totalTokens),
                 systemImage: "text.alignleft",
-                tint: OpenClawBrand.ok))
+                tint: OpenClawBrand.ok,
+                spark: days.map(\.tokens)))
         }
         return NativeUsageTileGrid(tiles: data)
     }

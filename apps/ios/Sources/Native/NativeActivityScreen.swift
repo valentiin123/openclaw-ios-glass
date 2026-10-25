@@ -347,6 +347,11 @@ struct NativeActivityScreen: View {
                         .ngCardSurface()
                         .openClawEntrance(index: 1)
                         .ngCardRow()
+                    if NativeActivityAgentChart.hasData(visible) {
+                        NativeActivityAgentChart(events: visible)
+                            .openClawEntrance(index: 2)
+                            .ngCardRow()
+                    }
                 }
             }
             ForEach(days) { day in
@@ -712,6 +717,93 @@ private struct NativeActivityChart: View {
         let total: Int = self.days.reduce(0) { $0 + $1.events.count }
         let failed: Int = self.days.reduce(0) { $0 + $1.events.filter { $0.isFailure }.count }
         return String(localized: "\(total) events, \(failed) failed")
+    }
+}
+
+/// Events per agent (top 5), horizontal bars split into succeeded / failed / other. Pure content, no glass.
+private struct NativeActivityAgentChart: View {
+    let events: [NativeActivityEvent]
+
+    private struct Entry: Identifiable {
+        let id: String
+        let agent: String
+        let series: String
+        let count: Int
+    }
+
+    private var okName: String { String(localized: "Succeeded") }
+    private var failedName: String { String(localized: "Failed") }
+    private var otherName: String { String(localized: "Other") }
+
+    static func hasData(_ events: [NativeActivityEvent]) -> Bool {
+        var seen: Set<String> = []
+        for event in events {
+            if let agent = event.agentId, !agent.isEmpty { seen.insert(agent) }
+        }
+        return seen.count >= 2
+    }
+
+    private var topAgents: [String] {
+        var totals: [String: Int] = [:]
+        for event in self.events {
+            guard let agent = event.agentId, !agent.isEmpty else { continue }
+            totals[agent, default: 0] += 1
+        }
+        let ranked: [(key: String, value: Int)] = totals.sorted { lhs, rhs in
+            lhs.value != rhs.value ? lhs.value > rhs.value : lhs.key < rhs.key
+        }
+        return ranked.prefix(5).map { $0.key }
+    }
+
+    private var entries: [Entry] {
+        let agents: [String] = self.topAgents
+        var result: [Entry] = []
+        for agent in agents {
+            let mine: [NativeActivityEvent] = self.events.filter { $0.agentId == agent }
+            let failed: Int = mine.filter { $0.isFailure }.count
+            let ok: Int = mine.filter { $0.status == "succeeded" }.count
+            let other: Int = mine.count - failed - ok
+            let parts: [(String, Int)] = [(self.okName, ok), (self.failedName, failed), (self.otherName, other)]
+            for (name, count) in parts where count > 0 {
+                result.append(Entry(id: "\(agent)-\(name)", agent: agent, series: name, count: count))
+            }
+        }
+        return result
+    }
+
+    var body: some View {
+        let list: [Entry] = self.entries
+        let rows: Int = self.topAgents.count
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("Activity per agent")
+                .font(OpenClawType.subheadSemiBold)
+                .accessibilityAddTraits(.isHeader)
+            Chart(list) { (entry: Entry) in
+                BarMark(
+                    x: .value("Events", entry.count),
+                    y: .value("Agent", entry.agent))
+                    .foregroundStyle(by: .value("Status", entry.series))
+                    .cornerRadius(3)
+            }
+            .chartForegroundStyleScale([
+                self.okName: OpenClawBrand.ok,
+                self.failedName: OpenClawBrand.danger,
+                self.otherName: Color.secondary.opacity(0.5),
+            ])
+            .chartLegend(.hidden)
+            .frame(height: CGFloat(max(rows, 1)) * 30 + 24)
+            .openClawChartReveal()
+        }
+        .padding(12)
+        .ngCardSurface()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text("Activity per agent"))
+        .accessibilityValue(Text(verbatim: self.summary))
+    }
+
+    private var summary: String {
+        let agents: [String] = self.topAgents
+        return agents.joined(separator: ", ")
     }
 }
 
