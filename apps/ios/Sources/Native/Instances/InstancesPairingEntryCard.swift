@@ -25,6 +25,7 @@ struct InstancesPairingEntryCard: View {
         OpenClawGlassCard {
             VStack(alignment: .leading, spacing: OpenClawSpace.md) {
                 self.titleRow
+                self.stepsList
                 self.field
                 self.actions
                 self.feedbackView
@@ -52,6 +53,32 @@ struct InstancesPairingEntryCard: View {
             }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    /// The pairing flow in three short steps, so the person always knows what comes next.
+    private var stepsList: some View {
+        VStack(alignment: .leading, spacing: OpenClawSpace.sm) {
+            self.stepRow(number: 1, text: Text("On your Gateway host, run `openclaw qr`."))
+            self.stepRow(number: 2, text: Text("Scan the QR code or paste the setup code below."))
+            self.stepRow(number: 3, text: Text("Approve this device from the pairing requests list."))
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func stepRow(number: Int, text: Text) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: OpenClawSpace.sm) {
+            Text(verbatim: String(number))
+                .font(OpenClawType.caption2SemiBold)
+                .monospacedDigit()
+                .foregroundStyle(OpenClawBrand.accent)
+                .frame(width: 20, height: 20)
+                .background(OpenClawBrand.accent.opacity(0.14), in: Circle())
+                .accessibilityHidden(true)
+            text
+                .font(OpenClawType.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private var field: some View {
@@ -87,6 +114,14 @@ struct InstancesPairingEntryCard: View {
                     accessibilityLabel: "Paste")
                 {
                     self.paste()
+                }
+                .contextMenu {
+                    Button {
+                        self.paste()
+                        self.submit()
+                    } label: {
+                        Label("Paste and connect", systemImage: "link")
+                    }
                 }
 
                 OpenClawGlassIconButton(

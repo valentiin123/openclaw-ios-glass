@@ -9,6 +9,7 @@ import UIKit
 /// (`NativeSettingsDestination`) use destination links so the typed path stays `[SettingsRoute]`.
 struct SettingsHubScreen: View {
     @Environment(NodeAppModel.self) private var appModel
+    @State private var toast = GlassToastModel()
     @Binding var navigationPath: [SettingsRoute]
     var headerSidebarAction: OpenClawSidebarHeaderAction?
     var onRouteChange: ((SettingsRoute?) -> Void)?
@@ -39,6 +40,8 @@ struct SettingsHubScreen: View {
             await self.appModel.refreshGatewayOverviewIfConnected()
             await self.appModel.refreshPendingApprovalInbox()
         }
+        .environment(self.toast)
+        .glassToastHost(self.toast)
         .accessibilityIdentifier("SettingsHub.Fallback")
         .openClawAnimation(value: self.appModel.pendingExecApprovalCount)
         .openClawHaptic(.selection, trigger: self.navigationPath.count)
@@ -70,17 +73,8 @@ struct SettingsHubScreen: View {
                     tint: OpenClawBrand.accent,
                     pill: self.gatewayPill)
             }
-            .nativeSettingsCopyMenu(self.gatewayDetail)
-            .swipeActions(edge: .trailing) {
-                if let detail = self.gatewayDetail {
-                    Button {
-                        UIPasteboard.general.string = detail
-                    } label: {
-                        Label("Copy", systemImage: "doc.on.doc")
-                    }
-                    .tint(OpenClawBrand.info)
-                }
-            }
+            .glassCopyMenu(self.gatewayDetail)
+            .glassCopySwipe(self.gatewayDetail)
             .accessibilityIdentifier("SettingsHub.Gateway")
             NavigationLink(value: SettingsRoute.approvals) {
                 NativeSettingsRow(

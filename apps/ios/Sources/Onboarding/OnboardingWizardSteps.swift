@@ -175,7 +175,6 @@ private struct OnboardingCommandChip: View {
         HStack(spacing: 8) {
             Text(self.command)
                 .font(OpenClawType.mono)
-                .textSelection(.enabled)
             Spacer(minLength: 0)
             Button {
                 self.copyCommand()
@@ -197,13 +196,16 @@ private struct OnboardingCommandChip: View {
         .padding(.horizontal, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .frame(minHeight: 54)
-        .background {
-            RoundedRectangle(cornerRadius: OpenClawRadius.panel, style: .continuous)
-                .fill(OpenClawBrand.activationNeutralSurface)
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: OpenClawRadius.panel, style: .continuous)
-                .stroke(OpenClawBrand.activationNeutralStroke, lineWidth: 0.5)
+        .glassEffect(
+            .regular,
+            in: RoundedRectangle(cornerRadius: OpenClawRadius.panel, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: OpenClawRadius.panel, style: .continuous))
+        .contextMenu {
+            Button {
+                self.copyCommand()
+            } label: {
+                Label("Copy", systemImage: "doc.on.doc")
+            }
         }
     }
 

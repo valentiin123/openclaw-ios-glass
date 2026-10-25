@@ -174,6 +174,7 @@ struct OnboardingWizardView: View {
             }
             .openClawAnimation(value: self.step)
             .openClawHaptic(.selection, trigger: self.step)
+            .simultaneousGesture(self.backSwipeGesture)
             .navigationTitle(self.isFullScreenStep || self.dynamicTypeSize.isAccessibilitySize ? "" : self.step.title)
             .navigationBarTitleDisplayMode(.inline)
             .tint(OpenClawBrand.activationPrimaryAction)
@@ -298,6 +299,19 @@ struct OnboardingWizardView: View {
                 self.navigate(to: .success)
             }
         }
+    }
+
+    /// Swipe right from the left edge goes back one step. The visible Back button stays the primary path.
+    private var backSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 24)
+            .onEnded { (value: DragGesture.Value) -> Void in
+                guard self.step.canGoBack, self.connectingGateway == nil else { return }
+                let fromEdge: Bool = value.startLocation.x <= 28
+                let horizontal: Bool = value.translation.width > 80
+                    && abs(value.translation.height) < value.translation.width * 0.6
+                guard fromEdge, horizontal else { return }
+                self.navigateBack()
+            }
     }
 
     private var qrScannerSheet: some View {
