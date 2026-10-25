@@ -136,7 +136,7 @@ private struct SubagentZoomRectLayer: View {
 // MARK: - Modifier
 
 /// `progress` is animatable: SwiftUI calls `body` with the eased value on every frame.
-private struct SubagentZoomModifier: ViewModifier, Animatable {
+private struct SubagentZoomModifier: ViewModifier, @preconcurrency Animatable {
     var progress: CGFloat
     let mode: SubagentZoomMode
 
