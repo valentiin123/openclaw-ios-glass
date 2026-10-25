@@ -3,6 +3,7 @@ import CoreLocation
 import OpenClawKit
 import Photos
 import SwiftUI
+import UIKit
 import UserNotifications
 
 /// Presentation helpers for permission rows.
@@ -81,6 +82,8 @@ struct NativePermissionItem: Identifiable, Equatable {
 final class NativePermissionsModel {
     var items: [NativePermissionItem] = []
     var requestingID: String?
+    /// False until the first `reload()` finished, so the list shows a spinner instead of a blank screen.
+    var hasLoaded: Bool = false
     private let requester = IOSDeviceSettingsPermissions()
 
     func reload() async {
@@ -99,6 +102,7 @@ final class NativePermissionsModel {
             next.append(item)
         }
         self.items = next
+        self.hasLoaded = true
     }
 
     func request(_ permission: DeviceSettingsPermission) async {
@@ -147,16 +151,25 @@ struct NativePermissionsScreen: View {
 
     private var list: some View {
         List {
-            Section {
-                ForEach(Array(self.model.items.enumerated()), id: \.element.id) { (index: Int, item: NativePermissionItem) in
-                    self.row(item)
-                        .openClawEntrance(index: index)
+            if !self.model.hasLoaded {
+                Section {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, minHeight: OpenClawHitTarget.minimum)
+                        .accessibilityLabel(Text("Loading"))
                 }
-            } footer: {
-                NativeSettingsFooter("Denied permissions can only be changed in iOS Settings.")
-            }
-            Section {
-                NativeSettingsSystemSettingsButton()
+            } else {
+                Section {
+                    ForEach(Array(self.model.items.enumerated()), id: \.element.id) { (index: Int, item: NativePermissionItem) in
+                        self.row(item)
+                            .openClawEntrance(index: index)
+                    }
+                } footer: {
+                    NativeSettingsFooter("Denied permissions can only be changed in iOS Settings.")
+                }
+                Section {
+                    NativeSettingsSystemSettingsButton()
+                        .openClawEntrance(index: self.model.items.count)
+                }
             }
         }
         .refreshable { await self.model.reload() }
@@ -187,9 +200,15 @@ struct NativePermissionsScreen: View {
                 Button {
                     Task { await self.model.request(item.permission) }
                 } label: {
-                    Text("Allow")
-                        .font(OpenClawType.subheadSemiBold)
-                        .frame(minWidth: OpenClawHitTarget.minimum, minHeight: OpenClawHitTarget.minimum)
+                    Group {
+                        if self.model.requestingID == item.id {
+                            ProgressView()
+                        } else {
+                            Text("Allow")
+                                .font(OpenClawType.subheadSemiBold)
+                        }
+                    }
+                    .frame(minWidth: OpenClawHitTarget.minimum, minHeight: OpenClawHitTarget.minimum)
                 }
                 .buttonStyle(.openClawGlassAction(.regular, tint: OpenClawBrand.accent))
                 .disabled(busy)

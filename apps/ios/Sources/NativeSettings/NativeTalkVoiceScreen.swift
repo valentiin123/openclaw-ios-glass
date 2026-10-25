@@ -88,8 +88,9 @@ struct NativeTalkVoiceScreen: View {
             self.gatewaySection
         }
         .refreshable { await self.loader.refresh(appModel: self.appModel, showSpinner: false) }
-        .sensoryFeedback(.selection, trigger: self.appModel.talkMode.isEnabled)
-        .sensoryFeedback(.selection, trigger: self.voiceWakeEnabled)
+        .openClawHaptic(.selection, trigger: self.appModel.talkMode.isEnabled)
+        .openClawHaptic(.selection, trigger: self.voiceWakeEnabled)
+        .openClawAnimation(value: self.loader.state.summary)
     }
 
     private var talkBinding: Binding<Bool> {
@@ -119,6 +120,7 @@ struct NativeTalkVoiceScreen: View {
             }
             .frame(minHeight: OpenClawHitTarget.minimum)
             .openClawEntrance(index: 0)
+            .accessibilityIdentifier("NativeSettings.TalkVoice.Talk")
             Toggle(isOn: self.voiceWakeBinding) {
                 Label {
                     Text("Voice Wake")
@@ -129,6 +131,7 @@ struct NativeTalkVoiceScreen: View {
             }
             .frame(minHeight: OpenClawHitTarget.minimum)
             .openClawEntrance(index: 1)
+            .accessibilityIdentifier("NativeSettings.TalkVoice.VoiceWake")
         } header: {
             NativeSettingsHeader("This device")
         } footer: {
@@ -167,31 +170,42 @@ struct NativeTalkVoiceScreen: View {
             title: String(localized: "Provider"),
             value: providerValue,
             systemImage: "speaker.wave.2",
-            index: 0)
+            index: 2)
         self.valueRow(
             title: String(localized: "Speech language"),
             value: localeValue,
             systemImage: "globe",
-            index: 1)
+            index: 3)
         self.valueRow(
             title: String(localized: "Silence timeout"),
             value: silenceValue,
             systemImage: "timer",
-            index: 2)
+            index: 4)
         self.valueRow(
             title: String(localized: "Interrupt on speech"),
             value: interruptValue,
             systemImage: "hand.raised",
-            index: 3)
+            index: 5)
         self.valueRow(
             title: String(localized: "Wake words"),
             value: triggersValue,
             systemImage: "text.bubble",
-            index: 4)
+            index: 6,
+            lineLimit: nil)
     }
 
-    private func valueRow(title: String, value: String, systemImage: String, index: Int) -> some View {
-        NativeSettingsRow(title: title, detail: value, systemImage: systemImage)
+    private func valueRow(
+        title: String,
+        value: String,
+        systemImage: String,
+        index: Int,
+        lineLimit: Int? = 2) -> some View
+    {
+        NativeSettingsRow(
+            title: title,
+            detail: value,
+            systemImage: systemImage,
+            detailLineLimit: lineLimit)
             .nativeSettingsCopyMenu(value)
             .nativeSettingsCopySwipe(value)
             .openClawEntrance(index: index)
