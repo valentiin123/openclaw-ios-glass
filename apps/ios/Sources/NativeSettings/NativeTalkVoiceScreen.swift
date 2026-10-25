@@ -88,6 +88,8 @@ struct NativeTalkVoiceScreen: View {
             self.gatewaySection
         }
         .refreshable { await self.loader.refresh(appModel: self.appModel, showSpinner: false) }
+        .sensoryFeedback(.selection, trigger: self.appModel.talkMode.isEnabled)
+        .sensoryFeedback(.selection, trigger: self.voiceWakeEnabled)
     }
 
     private var talkBinding: Binding<Bool> {
@@ -172,6 +174,7 @@ struct NativeTalkVoiceScreen: View {
     private func valueRow(title: String, value: String, systemImage: String) -> some View {
         NativeSettingsRow(title: title, detail: value, systemImage: systemImage)
             .nativeSettingsCopyMenu(value)
+            .nativeSettingsCopySwipe(value)
     }
 
     private static func silenceText(_ milliseconds: Int?, fallback: String) -> String {

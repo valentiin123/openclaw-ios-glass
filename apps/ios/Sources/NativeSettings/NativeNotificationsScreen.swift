@@ -106,6 +106,14 @@ struct NativeNotificationsScreen: View {
         }
         .refreshable { await self.model.refresh() }
         .openClawAnimation(value: self.model.current)
+        .sensoryFeedback(trigger: self.model.current?.status) { (old: UNAuthorizationStatus?, new: UNAuthorizationStatus?) -> SensoryFeedback? in
+            guard old == .notDetermined else { return nil }
+            switch new {
+            case .some(.authorized), .some(.provisional), .some(.ephemeral): return .success
+            case .some(.denied): return .warning
+            default: return nil
+            }
+        }
     }
 
     @ViewBuilder

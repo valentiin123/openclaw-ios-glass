@@ -216,6 +216,10 @@ struct NativeSkillsScreen: View {
         .searchable(text: self.$searchText)
         .refreshable { await self.model.refresh(appModel: self.appModel, showSpinner: false) }
         .openClawAnimation(value: visible.map { (item: NativeSkillItem) -> Bool in item.isDisabled })
+        .sensoryFeedback(.selection, trigger: items.map { (item: NativeSkillItem) -> Bool in item.isDisabled })
+        .sensoryFeedback(trigger: self.model.actionError) { (_: String?, new: String?) -> SensoryFeedback? in
+            new != nil ? .error : nil
+        }
     }
 
     private func binding(for item: NativeSkillItem) -> Binding<Bool> {

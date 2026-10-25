@@ -50,7 +50,18 @@ public struct WidgetCardView: View {
             .onTapGesture { showFullScreen = true }
             .accessibilityAddTraits(.isButton)
             .accessibilityHint(String(localized: "Opens full screen"))
+            .contextMenu {
+                Button { Task { await export(copy: true) } } label: {
+                    Label { Text(String(localized: "Copy image")).font(OpenClawType.body) }
+                        icon: { Image(systemName: "doc.on.doc") }
+                }
+                Button { Task { await export(copy: false) } } label: {
+                    Label { Text(String(localized: "Share")).font(OpenClawType.body) }
+                        icon: { Image(systemName: "square.and.arrow.up") }
+                }
+            }
         }
+        .sensoryFeedback(.impact(weight: .light), trigger: showFullScreen)
         .fullScreenCover(isPresented: $showFullScreen) {
             WidgetFullScreenView(payload: payload, title: title, network: network)
         }

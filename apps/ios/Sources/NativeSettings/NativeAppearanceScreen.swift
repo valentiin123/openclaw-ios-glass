@@ -69,5 +69,6 @@ struct NativeAppearanceScreen: View {
                 NativeSettingsFooter("System follows the appearance chosen in iOS Settings.")
             }
         }
+        .sensoryFeedback(.selection, trigger: self.appearanceModel.preference)
     }
 }

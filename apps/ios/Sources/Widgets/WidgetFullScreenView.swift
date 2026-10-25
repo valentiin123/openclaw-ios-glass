@@ -27,6 +27,8 @@ struct WidgetFullScreenView: View {
                 .padding(.top, 64)
             controls
         }
+        .sensoryFeedback(.impact(weight: .light), trigger: scale)
+        .sensoryFeedback(.error, trigger: exportFailed) { _, new in new }
         .sheet(item: $shareItem) { WidgetShareSheet(image: $0.image) }
         .alert(String(localized: "Could not export"), isPresented: $exportFailed) {
             Button { exportFailed = false } label: { Text(String(localized: "OK")).font(OpenClawType.body) }

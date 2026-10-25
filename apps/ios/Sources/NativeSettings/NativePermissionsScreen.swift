@@ -159,6 +159,9 @@ struct NativePermissionsScreen: View {
         }
         .refreshable { await self.model.reload() }
         .openClawAnimation(value: self.model.items)
+        .sensoryFeedback(trigger: self.model.requestingID) { (old: String?, new: String?) -> SensoryFeedback? in
+            (old != nil && new == nil) ? .success : nil
+        }
     }
 
     private func canAsk(_ item: NativePermissionItem) -> Bool {

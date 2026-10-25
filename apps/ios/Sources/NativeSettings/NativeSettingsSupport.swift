@@ -151,6 +151,9 @@ struct NativeSettingsPage<Content: View>: View {
 
     private var page: some View {
         self.content
+            .font(OpenClawType.body)
+            .scrollContentBackground(.hidden)
+            .background { OpenClawProBackground() }
             .navigationTitle(self.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -332,6 +335,20 @@ struct NativeSettingsSystemSettingsButton: View {
 }
 
 extension View {
+    /// Trailing swipe action offering to copy `value`. Shows nothing when the value is empty.
+    func nativeSettingsCopySwipe(_ value: String?) -> some View {
+        self.swipeActions(edge: .trailing) {
+            if let value, !value.isEmpty {
+                Button {
+                    UIPasteboard.general.string = value
+                } label: {
+                    Label("Copy", systemImage: "doc.on.doc")
+                }
+                .tint(OpenClawBrand.info)
+            }
+        }
+    }
+
     /// Long-press menu offering to copy `value`. Shows nothing when the value is empty.
     func nativeSettingsCopyMenu(_ value: String?) -> some View {
         self.contextMenu {

@@ -209,5 +209,6 @@ struct NativeChannelsScreen: View {
             tint: pill.tone.color,
             pill: pill)
             .nativeSettingsCopyMenu(copyValue)
+            .nativeSettingsCopySwipe(copyValue)
     }
 }
