@@ -339,6 +339,8 @@ Sources/AgentsHub/AgentTileDecor.swift
 Sources/AgentsHub/AgentTileModel.swift
 Sources/AgentsHub/AgentTileSprites.swift
 Sources/AgentsHub/AgentTileView.swift
+Sources/AgentsHub/SubagentChatCover.swift
+Sources/AgentsHub/SubagentChatScreen.swift
 Sources/Calendar/CalendarService.swift
 Sources/Camera/CameraController.swift
 Sources/Chat/AppleReviewDemoChatTransport.swift
@@ -455,6 +457,8 @@ Sources/Onboarding/OnboardingWizardTypes.swift
 Sources/Onboarding/OnboardingWizardView.swift
 Sources/Onboarding/QRScannerView.swift
 Sources/OpenClawApp.swift
+Sources/Overview/OverviewComponents.swift
+Sources/Overview/OverviewTile.swift
 Sources/Permissions/DevicePermissions.swift
 Sources/Permissions/EventKitPermissionRequester.swift
 Sources/Permissions/PermissionRequestBridge.swift
