@@ -426,7 +426,10 @@ Sources/Model/NodeAppModel+WatchNotifyNormalization.swift
 Sources/Model/WatchReplyCoordinator.swift
 Sources/Motion/MotionService.swift
 Sources/Motion/OpenClawMotionModifiers.swift
+Sources/Native/Instances/InstancesConnectionHeader.swift
+Sources/Native/Instances/InstancesGatewayList.swift
 Sources/Native/Instances/InstancesModels.swift
+Sources/Native/Instances/InstancesPairingEntryCard.swift
 Sources/Native/Instances/InstancesViewModel.swift
 Sources/Native/Instances/NativeControls.swift
 Sources/Native/Instances/NativeInstancesScreen.swift
@@ -434,6 +437,7 @@ Sources/Native/Instances/NativeOperatorAccess.swift
 Sources/Native/NativeActivityScreen.swift
 Sources/Native/NativeAutomationsScreen.swift
 Sources/Native/NativeDestinations.swift
+Sources/Native/NativeGlassComponents.swift
 Sources/Native/NativeListScreen.swift
 Sources/Native/NativeSupport.swift
 Sources/Native/NativeUsageScreen.swift

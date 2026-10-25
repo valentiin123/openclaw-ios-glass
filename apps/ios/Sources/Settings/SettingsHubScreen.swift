@@ -135,10 +135,10 @@ struct SettingsHubScreen: View {
     // MARK: - Gateway summary
 
     private var gatewayPill: NativeSettingsPill {
-        if self.appModel.isOperatorGatewayConnected {
-            return NativeSettingsPill(label: String(localized: "Connected"), tone: .ok)
-        }
-        return NativeSettingsPill(label: String(localized: "Offline"), tone: .muted)
+        // Shared with the Instances header so both screens say the same thing,
+        // including "Waiting for approval" while a pairing request is pending.
+        let status: InstancesConnectionStatus = InstancesConnectionStatus(appModel: self.appModel)
+        return NativeSettingsPill(label: status.label, tone: status.tone)
     }
 
     private var gatewayDetail: String? {

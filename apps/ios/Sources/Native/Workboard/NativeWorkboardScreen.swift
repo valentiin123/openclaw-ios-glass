@@ -1,7 +1,9 @@
 import SwiftUI
+import UIKit
 
-/// Native Workboard: board picker + cards grouped by status, move-to-status through a menu.
-/// Content sits on opaque list surfaces; glass only comes from system bars and controls.
+/// Native Workboard: summary tiles, glass status filter, cards grouped by status.
+/// Chrome and controls use Liquid Glass; card content sits on quiet opaque surfaces.
+/// Moving a card is gated by the advertised `workboard.cards.move` method and the write scope.
 struct NativeWorkboardScreen: View {
     @Environment(NodeAppModel.self) private var appModel
     @State private var model = WorkboardViewModel()
@@ -11,16 +13,14 @@ struct NativeWorkboardScreen: View {
     var body: some View {
         NavigationStack {
             self.stateView
+                .background { OpenClawProBackground() }
                 .navigationTitle(self.navTitle)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { self.toolbarContent }
         }
         .task { await self.model.load(appModel: self.appModel, showSpinner: true) }
-        .alert(
-            String(localized: "Action failed"),
-            isPresented: self.errorBinding,
-            actions: { Button(String(localized: "OK"), role: .cancel) {} },
-            message: { Text(verbatim: self.model.actionError ?? "") })
+        .nativeErrorAlert(self.$model.actionError)
+        .sensoryFeedback(.impact(weight: .light), trigger: self.model.busyCardIds)
     }
 
     /// The board name replaces the generic title once a board is loaded.
@@ -31,32 +31,59 @@ struct NativeWorkboardScreen: View {
         return self.title
     }
 
+    private func reload(spinner: Bool) async {
+        await self.model.load(appModel: self.appModel, showSpinner: spinner)
+    }
+
     // MARK: - State
 
     @ViewBuilder
     private var stateView: some View {
         if let reason = self.model.unavailable {
-            WorkboardUnavailableView(
-                reason: reason,
-                retry: { await self.model.load(appModel: self.appModel, showSpinner: true) })
+            NGUnavailableState(
+                systemImage: "rectangle.3.group",
+                title: String(localized: "Workboard unavailable on this Gateway"),
+                message: self.unavailableMessage(reason),
+                retry: { await self.reload(spinner: true) })
         } else {
-            self.loadedStateView
+            switch self.model.state {
+            case .idle, .loading:
+                NGSkeletonList()
+            case let .failed(message):
+                NGErrorState(message: message, retry: { await self.reload(spinner: true) })
+            case let .loaded(content):
+                if content.boards.isEmpty {
+                    self.emptyBoards
+                } else {
+                    self.list(content)
+                }
+            }
         }
     }
 
-    private var loadedStateView: some View {
-        NativeStateView(
-            state: self.model.state,
-            isEmpty: { (content: WorkboardContent) -> Bool in content.boards.isEmpty },
-            emptyTitle: "No Workboard boards yet",
-            emptyIcon: "rectangle.3.group",
-            retry: { await self.model.load(appModel: self.appModel, showSpinner: true) },
-            content: { (content: WorkboardContent) -> WorkboardListContent in
-                self.makeList(content)
-            })
+    private func unavailableMessage(_ reason: WorkboardUnavailableReason) -> String {
+        let base: String = String(localized: "The Workboard plugin is not enabled on the connected Gateway.")
+        let hint: String = String(localized: "Enable the workboard plugin on the Gateway, then check again.")
+        return base + " " + hint
     }
 
-    private func makeList(_ content: WorkboardContent) -> WorkboardListContent {
+    private var emptyBoards: some View {
+        OpenClawEmptyState(
+            systemImage: "rectangle.3.group",
+            title: "No Workboard boards yet",
+            message: "Boards created on the Gateway show up here.")
+        {
+            Button {
+                Task { await self.reload(spinner: true) }
+            } label: {
+                Label("Retry", systemImage: "arrow.clockwise")
+            }
+            .nativeGlassButtonStyle()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func list(_ content: WorkboardContent) -> some View {
         WorkboardListContent(
             content: content,
             canMove: self.model.canMove,
@@ -64,7 +91,7 @@ struct NativeWorkboardScreen: View {
             onMove: { (card: WorkboardCardItem, status: String) in
                 Task { await self.model.move(card: card, to: status, appModel: self.appModel) }
             },
-            onRefresh: { await self.model.load(appModel: self.appModel, showSpinner: false) })
+            onRefresh: { await self.reload(spinner: false) })
     }
 
     // MARK: - Toolbar
@@ -103,51 +130,35 @@ struct NativeWorkboardScreen: View {
             Label(board.name, systemImage: icon)
         }
     }
-
-    private var errorBinding: Binding<Bool> {
-        Binding<Bool>(
-            get: { self.model.actionError != nil },
-            set: { newValue in
-                if !newValue { self.model.actionError = nil }
-            })
-    }
 }
 
-// MARK: - Unavailable
+// MARK: - Status tint
 
-/// Shown when the Workboard plugin is not active on the Gateway. No raw error text.
-private struct WorkboardUnavailableView: View {
-    let reason: WorkboardUnavailableReason
-    let retry: () async -> Void
-
-    var body: some View {
-        ContentUnavailableView {
-            Label(String(localized: "Workboard unavailable on this Gateway"), systemImage: "rectangle.3.group")
-        } description: {
-            Text(verbatim: self.detail)
-        } actions: {
-            Button(String(localized: "Check again")) { Task { await self.retry() } }
-                .nativeGlassButton()
+enum WorkboardStatusTint {
+    static func color(_ status: String) -> Color {
+        switch status {
+        case "done": OpenClawBrand.ok
+        case "running": OpenClawBrand.info
+        case "blocked": OpenClawBrand.danger
+        case "review": OpenClawBrand.warn
+        default: Color.secondary
         }
     }
 
-    private var detail: String {
-        let base: String = String(localized: "The Workboard plugin is not enabled on the connected Gateway.")
-        let hint: String = String(localized: "Enable the workboard plugin on the Gateway, then check again.")
-        return base + " " + hint
+    static func priorityColor(_ priority: String) -> Color {
+        switch priority {
+        case "urgent": OpenClawBrand.danger
+        case "high": OpenClawBrand.warn
+        default: Color.secondary
+        }
     }
 }
 
 // MARK: - List
 
-enum WorkboardFilter: Hashable {
-    case all
-    case active
-    case done
-}
-
 struct WorkboardListContent: View {
-    @State private var filter: WorkboardFilter = .all
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var filter: String = NGFilterID.all
     let content: WorkboardContent
     let canMove: Bool
     let busyCardIds: Set<String>
@@ -157,102 +168,187 @@ struct WorkboardListContent: View {
     var body: some View {
         List {
             if let cardsError = self.content.cardsError {
-                Section {
-                    NativeInlineNotice(message: cardsError)
-                }
+                NativeInlineNotice(message: cardsError)
+                    .padding(14)
+                    .ngCardSurface()
+                    .ngCardRow()
+            }
+            if !self.content.cards.isEmpty {
+                NGSummaryHeader(items: self.metrics)
+                    .ngCardRow()
             }
             self.groupSections
             if self.content.hasMoreCards {
-                Section {
-                    NativeInlineNotice(
-                        message: String(localized: "Only the first cards are shown. Open the Dashboard for the full board."),
-                        systemImage: "ellipsis.circle")
-                }
+                NativeInlineNotice(
+                    message: String(localized: "Only the first cards are shown. Open the Dashboard for the full board."),
+                    systemImage: "ellipsis.circle")
+                    .padding(14)
+                    .ngCardRow()
             }
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
         .refreshable { await self.onRefresh() }
         .safeAreaInset(edge: .top, spacing: 0) {
-            NativeSegmentedBar(segments: Self.segments, selection: self.$filter)
+            NGFilterBar(items: self.filterItems, selection: self.$filter)
         }
         .openClawAnimation(value: self.filter)
-    }
-
-    private static let segments: [NativeSegment<WorkboardFilter>] = [
-        NativeSegment(id: .all, title: String(localized: "All")),
-        NativeSegment(id: .active, title: String(localized: "Active")),
-        NativeSegment(id: .done, title: String(localized: "Done")),
-    ]
-
-    private var visibleGroups: [(status: String, cards: [WorkboardCardItem])] {
-        switch self.filter {
-        case .all: self.content.groups
-        case .active: self.content.groups.filter { $0.status != "done" }
-        case .done: self.content.groups.filter { $0.status == "done" }
+        .openClawAnimation(value: self.content.cards)
+        .onChange(of: self.content.statusOrder) { _, _ in
+            self.filter = NGFilterID.all
         }
     }
 
-    /// Next status in board order, if any. Drives the primary swipe action.
+    // MARK: Derived
+
+    private var metrics: [NGMetricItem] {
+        let total: Int = self.content.cards.count
+        let done: Int = self.content.cards.filter { $0.status == "done" }.count
+        let blocked: Int = self.content.cards.filter { $0.status == "blocked" }.count
+        let running: Int = self.content.cards.filter { $0.status == "running" }.count
+        return [
+            NGMetricItem(
+                id: "total", value: total, label: String(localized: "Cards"),
+                systemImage: "rectangle.stack"),
+            NGMetricItem(
+                id: "running", value: running, label: String(localized: "Running"),
+                systemImage: "play.circle", tint: OpenClawBrand.info),
+            NGMetricItem(
+                id: "blocked", value: blocked, label: String(localized: "Blocked"),
+                systemImage: "exclamationmark.octagon", tint: OpenClawBrand.danger),
+            NGMetricItem(
+                id: "done", value: done, label: String(localized: "Done"),
+                systemImage: "checkmark.circle.fill", tint: OpenClawBrand.ok),
+        ]
+    }
+
+    private var filterItems: [NGFilterBar.Item] {
+        var items: [NGFilterBar.Item] = [
+            NGFilterBar.Item(
+                id: NGFilterID.all,
+                title: String(localized: "All"),
+                count: self.content.cards.count),
+        ]
+        for group in self.content.groups {
+            items.append(NGFilterBar.Item(
+                id: group.status,
+                title: WorkboardStatusInfo.label(group.status),
+                count: group.cards.count,
+                systemImage: WorkboardStatusInfo.systemImage(group.status)))
+        }
+        return items
+    }
+
+    private var visibleGroups: [(status: String, cards: [WorkboardCardItem])] {
+        if self.filter == NGFilterID.all { return self.content.groups }
+        return self.content.groups.filter { $0.status == self.filter }
+    }
+
+    /// Next status in board order, if any. Drives the secondary swipe action.
     private func nextStatus(after card: WorkboardCardItem) -> String? {
         guard let index = self.content.statusOrder.firstIndex(of: card.status) else { return nil }
         let next: Int = index + 1
         return next < self.content.statusOrder.count ? self.content.statusOrder[next] : nil
     }
 
-    @ViewBuilder
-    private func swipeButtons(_ card: WorkboardCardItem) -> some View {
-        if self.canMove, !self.busyCardIds.contains(card.id) {
-            if card.status != "done" {
-                Button {
-                    self.onMove(card, "done")
-                } label: {
-                    Label(String(localized: "Done"), systemImage: "checkmark.circle.fill")
-                }
-                .tint(OpenClawBrand.ok)
-            }
-            if let next = self.nextStatus(after: card), next != "done" {
-                Button {
-                    self.onMove(card, next)
-                } label: {
-                    Label(WorkboardStatusInfo.label(next), systemImage: WorkboardStatusInfo.systemImage(next))
-                }
-                .tint(OpenClawBrand.info)
-            }
-        }
-    }
+    // MARK: Sections
 
     @ViewBuilder
     private var groupSections: some View {
         if self.content.cards.isEmpty, self.content.cardsError == nil {
-            Section {
-                Text("No cards on this board.")
-                    .font(OpenClawType.subhead)
-                    .foregroundStyle(.secondary)
-            }
+            OpenClawEmptyState(
+                systemImage: "tray",
+                title: "No cards on this board.",
+                message: "Cards you add to this board appear here, grouped by status.")
+                .ngCardRow()
         }
         ForEach(self.visibleGroups, id: \.status) { group in
-            self.groupSection(status: group.status, cards: group.cards)
-        }
-    }
-
-    private func groupSection(status: String, cards: [WorkboardCardItem]) -> some View {
-        Section {
-            ForEach(cards) { card in
-                self.row(card)
-                    .swipeActions(edge: .trailing, allowsFullSwipe: true) { self.swipeButtons(card) }
+            Section {
+                ForEach(group.cards) { card in
+                    self.row(card)
+                }
+            } header: {
+                WorkboardSectionHeader(status: group.status, count: group.cards.count)
             }
-        } header: {
-            WorkboardSectionHeader(status: status, count: cards.count)
         }
     }
 
     private func row(_ card: WorkboardCardItem) -> some View {
         let busy: Bool = self.busyCardIds.contains(card.id)
-        return WorkboardCardRow(
+        return WorkboardCardView(
             card: card,
             statuses: self.content.statusOrder,
             canMove: self.canMove,
             isBusy: busy,
             onMove: self.onMove)
+            .ngCardRow()
+            .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
+            .swipeActions(edge: .trailing, allowsFullSwipe: true) { self.trailingSwipe(card) }
+            .swipeActions(edge: .leading, allowsFullSwipe: false) { self.leadingSwipe(card) }
+            .contextMenu { self.menu(card) }
+    }
+
+    // MARK: Gestures
+
+    @ViewBuilder
+    private func trailingSwipe(_ card: WorkboardCardItem) -> some View {
+        if self.canMove, !self.busyCardIds.contains(card.id), card.status != "done" {
+            Button {
+                self.onMove(card, "done")
+            } label: {
+                Label(String(localized: "Done"), systemImage: "checkmark.circle.fill")
+            }
+            .tint(OpenClawBrand.ok)
+        }
+    }
+
+    @ViewBuilder
+    private func leadingSwipe(_ card: WorkboardCardItem) -> some View {
+        if self.canMove, !self.busyCardIds.contains(card.id), let next = self.nextStatus(after: card) {
+            Button {
+                self.onMove(card, next)
+            } label: {
+                Label(WorkboardStatusInfo.label(next), systemImage: WorkboardStatusInfo.systemImage(next))
+            }
+            .tint(OpenClawBrand.info)
+        }
+    }
+
+    @ViewBuilder
+    private func menu(_ card: WorkboardCardItem) -> some View {
+        if self.canMove, !self.busyCardIds.contains(card.id) {
+            Menu {
+                ForEach(self.content.statusOrder, id: \.self) { status in
+                    Button {
+                        self.onMove(card, status)
+                    } label: {
+                        Label(
+                            WorkboardStatusInfo.label(status),
+                            systemImage: WorkboardStatusInfo.systemImage(status))
+                    }
+                    .disabled(status == card.status)
+                }
+            } label: {
+                Label(String(localized: "Move to"), systemImage: "arrow.right.circle")
+            }
+        }
+        Button {
+            UIPasteboard.general.string = card.title
+        } label: {
+            Label(String(localized: "Copy title"), systemImage: "textformat")
+        }
+        Button {
+            UIPasteboard.general.string = card.id
+        } label: {
+            Label(String(localized: "Copy ID"), systemImage: "doc.on.doc")
+        }
+        if let source = card.sourceUrl, !source.isEmpty {
+            Button {
+                UIPasteboard.general.string = source
+            } label: {
+                Label(String(localized: "Copy link"), systemImage: "link")
+            }
+        }
     }
 }
 
@@ -264,21 +360,25 @@ private struct WorkboardSectionHeader: View {
         let label: String = WorkboardStatusInfo.label(self.status)
         let icon: String = WorkboardStatusInfo.systemImage(self.status)
         return HStack(spacing: 8) {
-            Image(systemName: icon).accessibilityHidden(true)
+            Image(systemName: icon)
+                .foregroundStyle(WorkboardStatusTint.color(self.status))
+                .accessibilityHidden(true)
             Text(verbatim: label)
             Spacer(minLength: 8)
             Text(self.count, format: .number).monospacedDigit()
+                .foregroundStyle(.secondary)
         }
         .font(OpenClawType.subheadSemiBold)
+        .textCase(nil)
+        .padding(.horizontal, OpenClawProMetric.pagePadding)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
     }
 }
 
-// MARK: - Row
+// MARK: - Card
 
-private struct WorkboardCardRow: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+private struct WorkboardCardView: View {
     let card: WorkboardCardItem
     let statuses: [String]
     let canMove: Bool
@@ -286,16 +386,37 @@ private struct WorkboardCardRow: View {
     let onMove: (WorkboardCardItem, String) -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: 12) {
+            NGIconBadge(
+                systemImage: WorkboardStatusInfo.systemImage(self.card.status),
+                tint: WorkboardStatusTint.color(self.card.status))
             self.details
-            Spacer(minLength: 4)
-            self.trailing
+            if self.isBusy {
+                ProgressView()
+                    .accessibilityLabel(Text("Moving card"))
+            }
         }
-        .padding(.vertical, 4)
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .ngCardSurface()
+        .opacity(self.isBusy ? 0.6 : 1)
+        .accessibilityElement(children: .combine)
+        .accessibilityValue(Text(verbatim: self.accessibilitySummary))
+        .accessibilityActions {
+            if self.canMove, !self.isBusy {
+                ForEach(self.statuses, id: \.self) { status in
+                    if status != self.card.status {
+                        Button(WorkboardStatusInfo.label(status)) {
+                            self.onMove(self.card, status)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private var details: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(verbatim: self.card.title)
                 .font(OpenClawType.body)
                 .fixedSize(horizontal: false, vertical: true)
@@ -305,29 +426,37 @@ private struct WorkboardCardRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(3)
             }
-            self.metaLine
-            self.labelsLine
+            self.pills
+            self.labelsRow
+            self.footer
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityValue(Text(verbatim: self.accessibilitySummary))
     }
 
-    private var metaLine: some View {
-        let priorityText: String = WorkboardStatusInfo.priorityLabel(self.card.priority)
-        let execution: String? = self.card.executionStatus?.capitalized
-        let updated: String? = NativeFormat.relative(ms: self.card.updatedAtMs)
-        let parts: [String?] = [priorityText, execution, updated]
-        let line: String = NativeFormat.joined(parts) ?? priorityText
-        return Text(verbatim: line)
-            .font(OpenClawType.footnote)
-            .foregroundStyle(.secondary)
-            .lineLimit(2)
+    private var pills: some View {
+        NGFlowLayout(spacing: 6) {
+            NGPill(
+                text: WorkboardStatusInfo.label(self.card.status),
+                systemImage: WorkboardStatusInfo.systemImage(self.card.status),
+                tint: WorkboardStatusTint.color(self.card.status))
+            if self.card.priority != "normal" {
+                NGPill(
+                    text: WorkboardStatusInfo.priorityLabel(self.card.priority),
+                    systemImage: WorkboardStatusInfo.prioritySystemImage(self.card.priority),
+                    tint: WorkboardStatusTint.priorityColor(self.card.priority))
+            }
+            if let execution = self.card.executionStatus, !execution.isEmpty {
+                NGPill(
+                    text: NativeFormat.humanized(execution).capitalized,
+                    systemImage: "bolt.horizontal",
+                    tint: OpenClawBrand.info)
+            }
+        }
     }
 
     @ViewBuilder
-    private var labelsLine: some View {
+    private var labelsRow: some View {
         if !self.card.labels.isEmpty {
-            Text(verbatim: self.card.labels.joined(separator: ", "))
+            Text(verbatim: self.card.labels.map { "#" + $0 }.joined(separator: " "))
                 .font(OpenClawType.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
@@ -335,39 +464,14 @@ private struct WorkboardCardRow: View {
     }
 
     @ViewBuilder
-    private var trailing: some View {
-        if self.isBusy {
-            ProgressView()
-                .frame(minWidth: 44, minHeight: 44)
-                .accessibilityLabel(Text("Moving card"))
-        } else if self.canMove {
-            self.moveMenu
-        }
-    }
-
-    private var moveMenu: some View {
-        Menu {
-            ForEach(self.statuses, id: \.self) { status in
-                self.moveButton(status)
-            }
-        } label: {
-            Image(systemName: "ellipsis")
+    private var footer: some View {
+        let updated: String? = NativeFormat.relative(ms: self.card.updatedAtMs)
+        if let line = NativeFormat.joined([self.card.agentId, updated]) {
+            Text(verbatim: line)
+                .font(OpenClawType.footnote)
                 .foregroundStyle(.secondary)
-                .nativeMinimumTapTarget()
+                .lineLimit(1)
         }
-        .accessibilityLabel(Text("Move card"))
-    }
-
-    private func moveButton(_ status: String) -> some View {
-        let text: String = WorkboardStatusInfo.label(status)
-        let icon: String = WorkboardStatusInfo.systemImage(status)
-        let isCurrent: Bool = status == self.card.status
-        return Button {
-            self.onMove(self.card, status)
-        } label: {
-            Label(text, systemImage: icon)
-        }
-        .disabled(isCurrent)
     }
 
     private var accessibilitySummary: String {
