@@ -1880,7 +1880,18 @@
     "Approve this device from your Gateway to finish pairing.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Approve this device from your Gateway to finish pairing."}},"fr":{"stringUnit":{"state":"translated","value":"Approuvez cet appareil depuis votre Gateway pour terminer l'appairage."}}}},
     "Not connected. Add a Gateway with a setup code or QR code.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Not connected. Add a Gateway with a setup code or QR code."}},"fr":{"stringUnit":{"state":"translated","value":"Non connecté. Ajoutez une Gateway avec un code de configuration ou un QR code."}}}},
     "Add a Gateway": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Add a Gateway"}},"fr":{"stringUnit":{"state":"translated","value":"Ajouter une Gateway"}}}},
-    "These values are read from the Gateway and can be changed in the Dashboard.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"These values are read from the Gateway and can be changed in the Dashboard."}},"fr":{"stringUnit":{"state":"translated","value":"Ces valeurs sont lues depuis la Gateway et peuvent être modifiées dans le tableau de bord."}}}}
+    "These values are read from the Gateway and can be changed in the Dashboard.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"These values are read from the Gateway and can be changed in the Dashboard."}},"fr":{"stringUnit":{"state":"translated","value":"Ces valeurs sont lues depuis la Gateway et peuvent être modifiées dans le tableau de bord."}}}},
+    "Find skills": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Find skills"}},"fr":{"stringUnit":{"state":"translated","value":"Trouver des skills"}}}},
+    "Search ClawHub": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Search ClawHub"}},"fr":{"stringUnit":{"state":"translated","value":"Rechercher sur ClawHub"}}}},
+    "Search ClawHub and install on the Gateway": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Search ClawHub and install on the Gateway"}},"fr":{"stringUnit":{"state":"translated","value":"Rechercher sur ClawHub et installer sur la Gateway"}}}},
+    "No pending requests": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"No pending requests"}},"fr":{"stringUnit":{"state":"translated","value":"Aucune demande en attente"}}}},
+    "No skills found": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"No skills found"}},"fr":{"stringUnit":{"state":"translated","value":"Aucun skill trouvé"}}}},
+    "Working…": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Working…"}},"fr":{"stringUnit":{"state":"translated","value":"En cours…"}}}},
+    "Installing…": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Installing…"}},"fr":{"stringUnit":{"state":"translated","value":"Installation…"}}}},
+    "Not scanned": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Not scanned"}},"fr":{"stringUnit":{"state":"translated","value":"Non analysé"}}}},
+    "Official": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Official"}},"fr":{"stringUnit":{"state":"translated","value":"Officiel"}}}},
+    "Install": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Install"}},"fr":{"stringUnit":{"state":"translated","value":"Installer"}}}},
+    "Swipe a request or press and hold it to approve or dismiss.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Swipe a request or press and hold it to approve or dismiss."}},"fr":{"stringUnit":{"state":"translated","value":"Balayez une demande ou appuyez longuement pour l'approuver ou la refuser."}}}}
   },
   "version": "1.0"
 }

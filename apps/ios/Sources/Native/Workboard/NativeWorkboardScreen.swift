@@ -188,6 +188,7 @@ struct WorkboardListContent: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        .ngTopScrollEdge()
         .refreshable { await self.onRefresh() }
         .safeAreaInset(edge: .top, spacing: 0) {
             NGFilterBar(items: self.filterItems, selection: self.$filter)
@@ -394,6 +395,7 @@ private struct WorkboardSectionHeader: View {
 
     var body: some View {
         self.header
+            .ngStickyHeader()
             .background {
                 if self.isTargeted {
                     Capsule()

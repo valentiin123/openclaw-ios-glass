@@ -212,7 +212,7 @@ struct AppShellMoreListView: View {
     }
 
     private func row(title: LocalizedStringKey, systemImage: String) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OpenClawSpace.md) {
             Image(systemName: systemImage)
                 .font(OpenClawType.subheadSemiBold)
                 .foregroundStyle(OpenClawBrand.accent)
@@ -221,7 +221,7 @@ struct AppShellMoreListView: View {
             Text(title)
                 .font(OpenClawType.body)
                 .foregroundStyle(Color.primary)
-            Spacer(minLength: 8)
+            Spacer(minLength: OpenClawSpace.sm)
             Image(systemName: "chevron.right")
                 .font(OpenClawType.captionSemiBold)
                 .foregroundStyle(Color.secondary)

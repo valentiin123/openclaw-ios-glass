@@ -114,6 +114,7 @@ struct AgentTileView: View {
                 .foregroundStyle(.primary)
                 .lineLimit(1)
             self.stateLine
+            self.parentLine
             self.toolLine
             Spacer(minLength: 0)
         }
@@ -161,6 +162,18 @@ struct AgentTileView: View {
                 .foregroundStyle(self.item.state.tint)
                 .lineLimit(1)
             AgentTileClock(item: self.item)
+        }
+    }
+
+    /// Small parent link for subagents whose parent conversation is known.
+    @ViewBuilder
+    private var parentLine: some View {
+        if let parent = self.item.parentName {
+            let text: String = String(localized: "Subagent of \(parent)")
+            Text(verbatim: text)
+                .font(OpenClawType.caption2)
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
         }
     }
 

@@ -64,7 +64,7 @@ struct OverviewStatStrip: View {
                 self.cell(stat)
             }
         }
-        .padding(12)
+        .padding(OpenClawSpace.md)
         .frame(maxWidth: .infinity, alignment: .leading)
         .overviewTile()
     }
@@ -109,7 +109,7 @@ struct OverviewGatewayTile: View {
             Spacer(minLength: 8)
             self.agentsColumn
         }
-        .padding(12)
+        .padding(OpenClawSpace.md)
         .frame(maxWidth: .infinity, minHeight: OverviewMetric.minTarget, alignment: .leading)
         .overviewTile()
         .accessibilityElement(children: .ignore)
@@ -181,7 +181,7 @@ struct OverviewAttentionTile: View {
                 .foregroundStyle(OpenClawBrand.warn)
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, OpenClawSpace.md)
         .padding(.top, 10)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
@@ -207,7 +207,7 @@ struct OverviewAttentionTile: View {
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, OpenClawSpace.md)
             .frame(minHeight: OverviewMetric.minTarget)
             .contentShape(Rectangle())
         }
@@ -265,7 +265,7 @@ struct OverviewUsageTile: View {
             Spacer(minLength: 8)
             self.bars
         }
-        .padding(12)
+        .padding(OpenClawSpace.md)
         .frame(maxWidth: .infinity, minHeight: OverviewMetric.minTarget, alignment: .leading)
         .overviewTile()
     }
@@ -319,7 +319,7 @@ struct OverviewEmptyTile: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(12)
+        .padding(OpenClawSpace.md)
         .frame(maxWidth: .infinity, minHeight: OverviewMetric.minTarget, alignment: .leading)
         .overviewTile()
         .accessibilityElement(children: .combine)

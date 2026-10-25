@@ -8,7 +8,7 @@ import UIKit
 // The tapped tile's rectangle (measured in global coordinates) grows to the full screen: its four
 // corners travel to the four screen corners at the same time, corner radius going to 0. Plain
 // ease-out, no spring, no bounce. Closing plays exactly the same interpolation backwards, also
-// ease-out. The chat content fades in from 60 % of the animation (and out symmetrically).
+// ease-out. The chat content fades in from 45 % of the progress (and out symmetrically).
 // Reduce Motion (or no measured tile): short cross-fade only.
 //
 // Host: a full-screen cover with a clear background, presented WITHOUT the system animation
@@ -39,15 +39,16 @@ final class AgentTileFrameStore: @unchecked Sendable {
 
 enum SubagentChatZoomMotion {
     /// Zoom duration (open and close).
-    static let duration: TimeInterval = 0.35
+    static let duration: TimeInterval = 0.22
     /// Cross-fade when no tile frame is known.
-    static let fadeDuration: TimeInterval = 0.2
+    static let fadeDuration: TimeInterval = 0.16
     /// Cross-fade under Reduce Motion.
     static let reducedDuration: TimeInterval = 0.12
-    /// Chat content is invisible until this fraction of the animation.
-    static let contentStart: CGFloat = 0.6
+    /// Chat content is invisible until this fraction of the progress (ease-out is already well
+    /// ahead of the clock there, so the content shows up early in the 0.22 s).
+    static let contentStart: CGFloat = 0.45
     /// The growing surface reaches full opacity at this fraction (hides the pop of the tile content).
-    static let surfaceRamp: CGFloat = 0.2
+    static let surfaceRamp: CGFloat = 0.15
     /// Corner radius of the tile (`AgentTileView.radius`).
     static let sourceRadius: CGFloat = OpenClawRadius.md
 

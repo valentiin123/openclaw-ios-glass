@@ -228,6 +228,37 @@ extension View {
     }
 }
 
+// MARK: - Pinned headers and scroll edges
+
+/// Opaque backdrop for section headers pinned by a plain `List`, so rows never show through the title text.
+private struct NGStickyHeader: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 6)
+            .background {
+                OpenClawBrand.void.padding(.horizontal, -OpenClawProMetric.pagePadding)
+            }
+    }
+}
+
+extension View {
+    /// Gives a pinned list section header an opaque background.
+    func ngStickyHeader() -> some View {
+        modifier(NGStickyHeader())
+    }
+
+    /// Soft scroll-edge fade under a top `safeAreaInset` bar, so scrolled rows do not collide with the chips.
+    @ViewBuilder
+    func ngTopScrollEdge() -> some View {
+        if #available(iOS 26.0, *) {
+            self.scrollEdgeEffectStyle(.soft, for: .top)
+        } else {
+            self
+        }
+    }
+}
+
 // MARK: - States
 
 /// Loading placeholder: calm pulsing blocks (static under Reduce Motion).

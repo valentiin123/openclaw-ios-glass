@@ -138,7 +138,7 @@ struct AgentGlassStatusBadge: View {
     private var symbolView: some View {
         let fontSize: CGFloat = self.size * 0.5
         return Image(systemName: self.phase.symbol)
-            .font(.system(size: fontSize, weight: .bold))
+            .font(OpenClawType.avatar(size: fontSize))
             .foregroundStyle(self.phase.tint)
     }
 }

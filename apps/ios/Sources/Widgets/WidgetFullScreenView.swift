@@ -40,16 +40,15 @@ struct WidgetFullScreenView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .top) {
+        ZStack {
             Color(.systemBackground)
                 .opacity(1 - min(dragOffset / 600, 0.5))
                 .ignoresSafeArea()
-            ZStack(alignment: .top) {
-                content
-                    .padding(.top, 64)
-                controls
-            }
-            .offset(y: dragOffset)
+            content
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    controls
+                }
+                .offset(y: dragOffset)
         }
         .sensoryFeedback(.impact(weight: .light), trigger: scale)
         .sensoryFeedback(.error, trigger: exportFailed) { _, new in new }
@@ -146,7 +145,7 @@ struct WidgetFullScreenView: View {
                 .accessibilityLabel(String(localized: "Share"))
             }
             .padding(.horizontal, 16)
-            .padding(.top, 8)
+            .padding(.vertical, 8)
         }
     }
 }

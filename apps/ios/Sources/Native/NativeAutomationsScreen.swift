@@ -540,6 +540,7 @@ struct NativeAutomationsScreen: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        .ngTopScrollEdge()
         .refreshable { await self.reload(showSpinner: false) }
         .safeAreaInset(edge: .top, spacing: 0) {
             NGFilterBar(items: self.filterItems(jobs), selection: self.$filterID)
@@ -573,6 +574,7 @@ struct NativeAutomationsScreen: View {
         .font(OpenClawType.subheadSemiBold)
         .foregroundStyle(.secondary)
         .textCase(nil)
+        .ngStickyHeader()
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
     }

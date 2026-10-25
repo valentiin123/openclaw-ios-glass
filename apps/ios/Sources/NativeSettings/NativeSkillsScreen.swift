@@ -203,6 +203,7 @@ struct NativeSkillsScreen: View {
                     .accessibilityElement(children: .combine)
                 }
             }
+            self.findSkillsSection
             Section {
                 ForEach(Array(visible.enumerated()), id: \.element.id) { (offset: Int, item: NativeSkillItem) in
                     self.row(item)
@@ -220,6 +221,22 @@ struct NativeSkillsScreen: View {
         .sensoryFeedback(.selection, trigger: items.map { (item: NativeSkillItem) -> Bool in item.isDisabled })
         .sensoryFeedback(trigger: self.model.actionError) { (_: String?, new: String?) -> SensoryFeedback? in
             new != nil ? .error : nil
+        }
+    }
+
+    /// ClawHub search + install (`skills.search`, `skills.install`). A real list section, not an overlay.
+    private var findSkillsSection: some View {
+        Section {
+            NavigationLink {
+                NativeSkillsSearchScreen(embedded: true)
+            } label: {
+                NativeSettingsRow(
+                    title: String(localized: "Find skills"),
+                    detail: String(localized: "Search ClawHub and install on the Gateway"),
+                    systemImage: "magnifyingglass",
+                    tint: OpenClawBrand.accent)
+            }
+            .accessibilityIdentifier("NativeSettings.Skills.Find")
         }
     }
 

@@ -3,7 +3,8 @@ import OpenClawKit
 import SwiftUI
 
 // Agents tab content: a glass agent selector (top left) and, below it, a grid of tiles.
-// One tile = one subagent of the selected agent (the agent's main session comes first).
+// "Main" tiles = root conversations of the selected agent (always shown, listed first); then its subagents.
+// The OpenClaw system chat is not a tile: it stays reachable from Home only.
 // Glass only on the selector; tiles are opaque. Detail and stop reuse the existing AgentsHub types.
 // Compiler hygiene: typed constants, small @ViewBuilder properties, no nested trailing closures.
 

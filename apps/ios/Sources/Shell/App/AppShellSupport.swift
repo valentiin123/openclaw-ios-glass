@@ -73,13 +73,13 @@ struct AppShellDoneButton: View {
         Button(action: self.action) {
             Text("Done")
                 .font(OpenClawType.subheadSemiBold)
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OpenClawSpace.xl)
                 .frame(minWidth: 44, minHeight: 44)
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .openClawGlassCapsule(interactive: true)
         .accessibilityIdentifier("AppShell.Done")
-        .padding(.bottom, 8)
+        .padding(.bottom, OpenClawSpace.sm)
     }
 }

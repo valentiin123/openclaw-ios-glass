@@ -63,6 +63,7 @@ struct AppShellAgentsView: View {
 /// Each section keeps its own NavigationStack; the system handles the bottom safe area
 /// (tab bar) for both of them. The Overview lives in the Home tab, not here.
 struct AppShellActivityView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Bindable var navigation: AppShellNavigation
     let context: AppShellContext
 
@@ -88,22 +89,57 @@ struct AppShellActivityView: View {
         return result
     }
 
+    /// The hosted screens own a NavigationStack, and UIKit draws their bar from the top of the
+    /// window, so a `safeAreaInset(.top)` around them never moves that bar and the picker ends
+    /// up on top of it. The picker is therefore a regular row of a `VStack`: the hosted stack is
+    /// laid out in the space left under it and the two can never overlap. The row has no fill,
+    /// only the control itself is glass.
     var body: some View {
-        self.content
-            .safeAreaInset(edge: .top, spacing: 0) {
-                self.sectionPicker
-            }
-            .background(OpenClawProBackground())
-            .accessibilityIdentifier("AppShell.Activity")
+        VStack(spacing: 0) {
+            self.sectionPicker
+            self.content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .background { OpenClawProBackground().ignoresSafeArea() }
+        .accessibilityIdentifier("AppShell.Activity")
     }
 
     private var sectionPicker: some View {
-        OpenClawGlassSegmented(
-            selection: self.sectionBinding,
-            options: self.sectionOptions)
+        self.pickerControl
             .padding(.horizontal, OpenClawProMetric.pagePadding)
-            .padding(.vertical, 8)
+            .padding(.top, OpenClawSpace.sm)
+            .padding(.bottom, OpenClawSpace.sm)
             .accessibilityIdentifier("AppShell.Activity.Sections")
+    }
+
+    /// Two segments with icon and title no longer fit side by side at accessibility text sizes,
+    /// so the same choice is offered as a menu picker there (full-width, 44 pt tall).
+    @ViewBuilder
+    private var pickerControl: some View {
+        if self.dynamicTypeSize.isAccessibilitySize {
+            self.pickerMenu
+        } else {
+            OpenClawGlassSegmented(
+                selection: self.sectionBinding,
+                options: self.sectionOptions)
+        }
+    }
+
+    private var pickerMenu: some View {
+        Picker(selection: self.sectionBinding) {
+            ForEach(AppShellActivitySection.allCases) { (section: AppShellActivitySection) in
+                self.pickerRow(section)
+            }
+        } label: {
+            self.currentSection.title.text
+        }
+        .pickerStyle(.menu)
+        .frame(maxWidth: .infinity, minHeight: OpenClawHitTarget.minimum, alignment: .leading)
+    }
+
+    private func pickerRow(_ section: AppShellActivitySection) -> some View {
+        section.title.text
+            .tag(section)
     }
 
     @ViewBuilder

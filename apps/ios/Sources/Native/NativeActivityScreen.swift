@@ -364,6 +364,7 @@ struct NativeActivityScreen: View {
                         .font(OpenClawType.subheadSemiBold)
                         .foregroundStyle(.secondary)
                         .textCase(nil)
+                        .ngStickyHeader()
                         .accessibilityAddTraits(.isHeader)
                 }
             }
@@ -380,6 +381,7 @@ struct NativeActivityScreen: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        .ngTopScrollEdge()
         .refreshable { await self.model.load(appModel: self.appModel, showSpinner: false) }
         .openClawAnimation(value: visible.count)
         .overlay {

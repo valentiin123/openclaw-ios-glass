@@ -42,7 +42,8 @@ final class AgentsHubViewModel {
     private(set) var isCreatingAgent = false
     private(set) var createAgentError: String?
 
-    /// Agents board (grid of tiles): flat session list of the selected agent plus the direct children of its main session.
+    /// Agents board (grid of tiles): flat session list of the selected agent plus the direct children of its
+    /// root conversations (and of the OpenClaw system chat, whose subagents are still listed as tiles).
     private(set) var boardSessions: [OpenClawChatSessionEntry] = []
     private(set) var boardAgentID: String?
     private(set) var isLoadingBoard = false
@@ -54,6 +55,7 @@ final class AgentsHubViewModel {
     private let gateway: AgentsHubGateway
     private static let maxDepth = 8
     private static let pageLimit = 200
+    private static let maxBoardRoots = 8
 
     init(gateway: AgentsHubGateway) { self.gateway = gateway }
 
@@ -89,7 +91,8 @@ final class AgentsHubViewModel {
     // MARK: Board
 
     /// Loads the sessions shown by the Agents board: `sessions.list` for the agent, merged with
-    /// `sessions.list(spawnedBy: <main session>)` so subagents are found even when the plain list omits them.
+    /// `sessions.list(spawnedBy: <parent>)` for the system chat and each recent root conversation, so
+    /// subagents are found even when the plain list omits them.
     func loadBoard(agentID: String) async {
         if boardAgentID != agentID { boardSessions = [] }
         boardAgentID = agentID
@@ -115,19 +118,26 @@ final class AgentsHubViewModel {
             mainKey = row.key
             break
         }
-        do {
-            let data = try await gateway.request(OpenClawChatGatewayRequests.sessionsList(
-                limit: Self.pageLimit, search: nil, archived: false, agentID: agentID,
-                includeGlobal: false, spawnedBy: mainKey))
-            let page = try JSONDecoder().decode(OpenClawChatSessionsListResponse.self, from: data)
-            for row in page.sessions where !known.contains(row.key) {
-                known.insert(row.key)
-                rows.append(row)
+        var parentKeys: [String] = [mainKey]
+        let rootKeys: [String] = AgentTileFactory.rootKeys(rows: rows, agentID: agentID, limit: Self.maxBoardRoots)
+        for key in rootKeys where !parentKeys.contains(key) {
+            parentKeys.append(key)
+        }
+        for parentKey in parentKeys {
+            do {
+                let data = try await gateway.request(OpenClawChatGatewayRequests.sessionsList(
+                    limit: Self.pageLimit, search: nil, archived: false, agentID: agentID,
+                    includeGlobal: false, spawnedBy: parentKey))
+                let page = try JSONDecoder().decode(OpenClawChatSessionsListResponse.self, from: data)
+                for row in page.sessions where !known.contains(row.key) {
+                    known.insert(row.key)
+                    rows.append(row)
+                }
+            } catch is CancellationError {
+                return
+            } catch {
+                // The base list is still usable; keep it.
             }
-        } catch is CancellationError {
-            return
-        } catch {
-            // The base list is still usable; keep it.
         }
         if boardAgentID == agentID { boardSessions = rows }
     }

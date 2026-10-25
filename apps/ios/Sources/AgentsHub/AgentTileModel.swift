@@ -5,6 +5,9 @@ import SwiftUI
 // Pure derivation of what an Agents board tile shows, from `OpenClawChatSessionEntry`.
 // Reuses `AgentsHubRunStatus` (status / hasActiveRun / subagentRunState / endedAt ...) and adds the
 // playful Claude Code style wording on top. No Gateway access here.
+//
+// "Main" tiles = root conversations of the selected agent: sessions started directly by the user,
+// not spawned by another agent or subagent. The OpenClaw system chat (`agent:<id>:main`) is never a tile.
 
 // MARK: - State
 
@@ -77,8 +80,11 @@ enum AgentTileState: Equatable, Sendable {
 struct AgentTileItem: Identifiable, Equatable, Sendable {
     var id: String { session.key }
     let session: OpenClawChatSessionEntry
+    /// True for a "main" tile: a root conversation of the agent (always visible, listed first).
     let isMain: Bool
     let name: String
+    /// Readable name of the parent conversation when this tile is a subagent whose parent is known.
+    let parentName: String?
     let sprite: AgentTileSpriteKind
     let runStatus: AgentsHubRunStatus
     let state: AgentTileState
@@ -94,6 +100,9 @@ struct AgentTileItem: Identifiable, Equatable, Sendable {
 
     var accessibilityText: String {
         var parts: [String] = [name, state.label]
+        if let parentName {
+            parts.append(String(localized: "Subagent of \(parentName)"))
+        }
         if let elapsed, let spoken = AgentTileFormat.duration(seconds: elapsed, spelledOut: true) {
             parts.append(spoken)
         }
@@ -159,36 +168,56 @@ enum AgentTileFormat {
 // MARK: - Factory
 
 enum AgentTileFactory {
-    /// Finished subagents disappear this long after they ended.
+    /// Finished subagents disappear this long after they ended. Root conversations never do.
     static let retention: TimeInterval = 30 * 60
     private static let doneWindow: TimeInterval = 5 * 60
     private static let hungryWindow: TimeInterval = 10 * 60
+    private static let titleLimit: Int = 28
 
     private static let readWords: [String] = ["read", "lecture", "lire", "open file", "cat "]
     private static let searchWords: [String] = ["search", "grep", "web", "fetch", "recherch", "browse"]
     private static let writeWords: [String] = ["write", "edit", "patch", "writing", "écri", "ecri"]
     private static let thinkWords: [String] = ["think", "reason", "plan"]
 
-    /// Main first, then active tiles, then the most recent. Outdated subagents are dropped.
+    /// Root conversations first (always shown, most recent activity first), then subagents
+    /// (active first, then the most recent). Outdated subagents are dropped.
     static func items(sessions: [OpenClawChatSessionEntry], agentID: String, now: Date) -> [AgentTileItem] {
-        let main: OpenClawChatSessionEntry = findMain(sessions: sessions, agentID: agentID)
+        var byKey: [String: OpenClawChatSessionEntry] = [:]
+        for session in sessions {
+            byKey[session.key] = session
+        }
+        var roots: [AgentTileItem] = []
         var subagents: [AgentTileItem] = []
         for session in sessions {
-            if session.key == main.key { continue }
+            if isRootConversation(session) {
+                let title: String = displayName(for: session)
+                let rootItem: AgentTileItem = makeItem(session, isMain: true, name: title, parentName: nil, now: now)
+                roots.append(rootItem)
+                continue
+            }
             if !isSubagent(session) { continue }
             if isOutdated(session, now: now) { continue }
-            let item: AgentTileItem = makeItem(session, isMain: false, now: now)
-            subagents.append(item)
+            let name: String = AgentTileNaming.name(for: session.key)
+            let parent: String? = parentName(of: session, in: byKey)
+            let subItem: AgentTileItem = makeItem(session, isMain: false, name: name, parentName: parent, now: now)
+            subagents.append(subItem)
         }
+        roots.sort(by: AgentTileFactory.isRootOrderedBefore)
         subagents.sort(by: AgentTileFactory.isOrderedBefore)
-        var result: [AgentTileItem] = [makeItem(main, isMain: true, now: now)]
+        var result: [AgentTileItem] = roots
         result.append(contentsOf: subagents)
         return result
     }
 
-    /// One item for any session (used by the subagent chat header). Same wording as the board tile.
+    /// One item for any session (used by the chat header and the tree screen). Same wording as the board tile.
+    /// Root conversations get their readable title even when `isMain` is false.
     static func item(for session: OpenClawChatSessionEntry, isMain: Bool, now: Date) -> AgentTileItem {
-        makeItem(session, isMain: isMain, now: now)
+        let readable: Bool = isMain || isRootConversation(session)
+        var name: String = AgentTileNaming.name(for: session.key)
+        if readable {
+            name = displayName(for: session)
+        }
+        return makeItem(session, isMain: isMain, name: name, parentName: nil, now: now)
     }
 
     /// Detail / stop reuse the existing AgentsHub types.
@@ -196,22 +225,35 @@ enum AgentTileFactory {
         SubagentNode(session: item.session, status: item.runStatus, children: [])
     }
 
-    // MARK: Selection
-
-    private static func findMain(sessions: [OpenClawChatSessionEntry], agentID: String) -> OpenClawChatSessionEntry {
-        let mainKey: String = "agent:\(agentID):main"
-        for session in sessions where session.key == mainKey {
-            return session
+    /// Keys of the most recent root conversations (the view model loads their subagents too).
+    static func rootKeys(rows: [OpenClawChatSessionEntry], agentID: String, limit: Int) -> [String] {
+        var roots: [OpenClawChatSessionEntry] = []
+        for row in rows where isRootConversation(row) {
+            roots.append(row)
         }
-        for session in sessions where session.isMain == true {
-            return session
+        roots.sort(by: AgentTileFactory.isSessionMoreRecent)
+        var keys: [String] = []
+        for root in roots {
+            if keys.count >= limit { break }
+            keys.append(root.key)
         }
-        return OpenClawChatSessionEntry(key: mainKey, agentId: agentID, isMain: true)
+        return keys
     }
+
+    // MARK: Selection
 
     private static func hasText(_ value: String?) -> Bool {
         guard let value else { return false }
         return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// The OpenClaw system chat of an agent (`agent:<id>:main`). Reachable from Home only, never a tile.
+    static func isSystemMain(_ session: OpenClawChatSessionEntry) -> Bool {
+        if session.isMain == true { return true }
+        if session.key == "main" { return true }
+        let parts: [Substring] = session.key.split(separator: ":", omittingEmptySubsequences: false)
+        if parts.count == 3, parts[0] == "agent", parts[2] == "main" { return true }
+        return false
     }
 
     static func isSubagent(_ session: OpenClawChatSessionEntry) -> Bool {
@@ -220,6 +262,16 @@ enum AgentTileFactory {
         if hasText(session.parentSessionKey) { return true }
         if hasText(session.subagentRole) { return true }
         return session.key.contains(":subagent:")
+    }
+
+    /// A conversation started directly by the user in this agent: not the system chat, not spawned by
+    /// another session, not a background / heartbeat run.
+    static func isRootConversation(_ session: OpenClawChatSessionEntry) -> Bool {
+        if isSystemMain(session) { return false }
+        if isSubagent(session) { return false }
+        if session.isBackground == true { return false }
+        if session.classification == "heartbeat" { return false }
+        return true
     }
 
     private static func date(ms: Double?) -> Date? {
@@ -242,6 +294,31 @@ enum AgentTileFactory {
         return nil
     }
 
+    /// Most recent of all known timestamps (used to order root conversations).
+    private static func latestActivity(_ session: OpenClawChatSessionEntry) -> Date? {
+        let candidates: [Double?] = [
+            session.endedAt,
+            session.lastActivityAt,
+            session.lastInteractionAt,
+            session.updatedAt,
+            session.startedAt,
+            session.createdAt,
+        ]
+        var best: Double = 0
+        for candidate in candidates {
+            if let value = candidate, value > best { best = value }
+        }
+        guard best > 0 else { return nil }
+        return Date(timeIntervalSince1970: best / 1000)
+    }
+
+    private static func isSessionMoreRecent(_ lhs: OpenClawChatSessionEntry, _ rhs: OpenClawChatSessionEntry) -> Bool {
+        let left: Double = latestActivity(lhs)?.timeIntervalSince1970 ?? 0
+        let right: Double = latestActivity(rhs)?.timeIntervalSince1970 ?? 0
+        if left != right { return left > right }
+        return lhs.key < rhs.key
+    }
+
     /// Non-active subagents older than `retention` (or without any timestamp) are hidden.
     private static func isOutdated(_ session: OpenClawChatSessionEntry, now: Date) -> Bool {
         let status: AgentsHubRunStatus = AgentsHubRunStatus(session)
@@ -250,9 +327,75 @@ enum AgentTileFactory {
         return now.timeIntervalSince(reference) > retention
     }
 
+    // MARK: Names
+
+    private static func truncated(_ text: String, limit: Int) -> String {
+        if text.count <= limit { return text }
+        let head: String = String(text.prefix(limit)).trimmingCharacters(in: .whitespaces)
+        return head + "…"
+    }
+
+    /// One usable title line, or nil when the text is empty or only a generic system name.
+    private static func titleCandidate(_ raw: String?, key: String) -> String? {
+        guard let line = firstLine(raw) else { return nil }
+        let lowered: String = line.lowercased()
+        if line == key { return nil }
+        if lowered == "main" || lowered == "openclaw" { return nil }
+        return truncated(line, limit: titleLimit)
+    }
+
+    /// Session label, derived title, display name, then the truncated last message preview.
+    private static func readableTitle(_ session: OpenClawChatSessionEntry) -> String? {
+        let candidates: [String?] = [
+            session.label,
+            session.derivedTitle,
+            session.displayName,
+            session.lastMessagePreview,
+        ]
+        for candidate in candidates {
+            if let title = titleCandidate(candidate, key: session.key) { return title }
+        }
+        return nil
+    }
+
+    /// Name of a root conversation tile. Falls back to the deterministic name.
+    private static func displayName(for session: OpenClawChatSessionEntry) -> String {
+        if isSystemMain(session) { return String(localized: "Main") }
+        if let title = readableTitle(session) { return title }
+        return AgentTileNaming.name(for: session.key)
+    }
+
+    private static func spriteKind(for session: OpenClawChatSessionEntry) -> AgentTileSpriteKind {
+        if isSystemMain(session) { return .robot }
+        return AgentTileNaming.sprite(for: session.key)
+    }
+
+    /// Name of the session that spawned `session`, when it is part of the loaded list.
+    private static func parentName(
+        of session: OpenClawChatSessionEntry,
+        in byKey: [String: OpenClawChatSessionEntry]) -> String?
+    {
+        var parentKey: String?
+        if hasText(session.spawnedBy) {
+            parentKey = session.spawnedBy
+        } else if hasText(session.parentSessionKey) {
+            parentKey = session.parentSessionKey
+        }
+        guard let parentKey, let parent = byKey[parentKey] else { return nil }
+        if isSystemMain(parent) { return nil }
+        if isRootConversation(parent) { return displayName(for: parent) }
+        return AgentTileNaming.name(for: parent.key)
+    }
+
     // MARK: Item
 
-    private static func makeItem(_ session: OpenClawChatSessionEntry, isMain: Bool, now: Date) -> AgentTileItem {
+    private static func makeItem(
+        _ session: OpenClawChatSessionEntry,
+        isMain: Bool,
+        name: String,
+        parentName: String?,
+        now: Date) -> AgentTileItem
+    {
         let status: AgentsHubRunStatus = AgentsHubRunStatus(session)
         let reference: Date? = referenceDate(session)
         var age: TimeInterval?
@@ -267,12 +410,16 @@ enum AgentTileFactory {
             runningStart = start
         }
         let progress: Double? = (status == .done) ? 1 : nil
-        let name: String = isMain ? String(localized: "Main") : AgentTileNaming.name(for: session.key)
-        let sprite: AgentTileSpriteKind = isMain ? .robot : AgentTileNaming.sprite(for: session.key)
+        let sprite: AgentTileSpriteKind = spriteKind(for: session)
+        var recency: Double = (start ?? reference)?.timeIntervalSince1970 ?? 0
+        if isMain, let latest = latestActivity(session) {
+            recency = latest.timeIntervalSince1970
+        }
         return AgentTileItem(
             session: session,
             isMain: isMain,
             name: name,
+            parentName: parentName,
             sprite: sprite,
             runStatus: status,
             state: state,
@@ -280,7 +427,7 @@ enum AgentTileFactory {
             startDate: runningStart,
             elapsed: elapsed(session, status: status, start: start, now: now),
             progress: progress,
-            recency: (start ?? reference)?.timeIntervalSince1970 ?? 0)
+            recency: recency)
     }
 
     private static func startDate(_ session: OpenClawChatSessionEntry) -> Date? {
@@ -392,10 +539,17 @@ enum AgentTileFactory {
         return 1
     }
 
+    /// Subagents: active first, then idle, then asleep; most recent first inside each group.
     static func isOrderedBefore(_ lhs: AgentTileItem, _ rhs: AgentTileItem) -> Bool {
         let left: Int = rank(lhs)
         let right: Int = rank(rhs)
         if left != right { return left < right }
+        if lhs.recency != rhs.recency { return lhs.recency > rhs.recency }
+        return lhs.id < rhs.id
+    }
+
+    /// Root conversations: most recent activity first.
+    static func isRootOrderedBefore(_ lhs: AgentTileItem, _ rhs: AgentTileItem) -> Bool {
         if lhs.recency != rhs.recency { return lhs.recency > rhs.recency }
         return lhs.id < rhs.id
     }

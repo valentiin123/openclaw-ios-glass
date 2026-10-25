@@ -173,6 +173,7 @@ struct NativeChannelsScreen: View {
     private func list(_ items: [NativeChannelItem]) -> some View {
         let groups = NativeChannelsPresentation.grouped(items)
         return List {
+            self.pairingSection
             if !groups.attention.isEmpty {
                 Section {
                     ForEach(Array(groups.attention.enumerated()), id: \.element.id) { (offset: Int, item: NativeChannelItem) in
@@ -196,6 +197,21 @@ struct NativeChannelsScreen: View {
         }
         .openClawAnimation(value: items)
         .refreshable { await self.loader.refresh(appModel: self.appModel, showSpinner: false) }
+    }
+
+    /// Pending DM sender requests (`channels.pairing.list`, operator.pairing). Shown in the list, not as an overlay.
+    private var pairingSection: some View {
+        Section {
+            NavigationLink {
+                NativeChannelPairingScreen(embedded: true)
+            } label: {
+                NativeSettingsRow(
+                    title: String(localized: "Pairing requests"),
+                    systemImage: "person.crop.circle.badge.questionmark",
+                    tint: OpenClawBrand.accent)
+            }
+            .accessibilityIdentifier("NativeSettings.Channels.Pairing")
+        }
     }
 
     private func row(_ item: NativeChannelItem, index: Int) -> some View {

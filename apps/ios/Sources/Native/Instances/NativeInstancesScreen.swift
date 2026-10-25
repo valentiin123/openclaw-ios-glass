@@ -203,6 +203,7 @@ struct NativeInstancesScreen: View {
             }
             self.scopeSections(snapshot)
         }
+        .ngTopScrollEdge()
         .refreshable { await self.refreshAll(showSpinner: false) }
         .safeAreaInset(edge: .top, spacing: 0) {
             self.scopeBar
