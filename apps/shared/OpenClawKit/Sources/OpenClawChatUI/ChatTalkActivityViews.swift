@@ -71,7 +71,9 @@ struct ChatTalkActivityStrip: View {
                         }
                     }
                     .frame(maxHeight: 104)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(self.reduceMotion
+                        ? .opacity
+                        : .opacity.combined(with: .move(edge: .top)))
                 }
             }
             .padding(.horizontal, 10)

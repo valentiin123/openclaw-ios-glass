@@ -116,6 +116,7 @@ public struct OpenClawChatView: View {
     private let viewModel: OpenClawChatViewModel
     private let resolveComposerModel: (@MainActor () -> OpenClawChatViewModel?)?
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.openClawChatDesktopLayout) private var isDesktopLayout
     @State private var contentWidth: CGFloat = 0
     @State private var scrollerBottomID = UUID()
@@ -540,12 +541,19 @@ extension OpenClawChatView {
 
             self.messageListOverlay(hasVisibleContent: hasVisibleContent)
 
-            if self.showsJumpToLatest(hasVisibleContent: hasVisibleContent) {
-                self.jumpToLatestButton
-                    .padding(.bottom, 12)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            Group {
+                if self.showsJumpToLatest(hasVisibleContent: hasVisibleContent) {
+                    self.jumpToLatestButton
+                        .padding(.bottom, 12)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                        .transition(self.reduceMotion
+                            ? .opacity
+                            : .move(edge: .bottom).combined(with: .opacity))
+                }
             }
+            .animation(
+                OpenClawChatMotion.animation(reduceMotion: self.reduceMotion),
+                value: self.showsJumpToLatest(hasVisibleContent: hasVisibleContent))
         }
         .modifier(ChatScrollCommandModifier(command: self.$scrollCommand) { self.viewModel.currentSessionTarget })
         // Ensure the message list claims vertical space on the first layout pass.
@@ -1065,10 +1073,7 @@ extension OpenClawChatView {
             Image(systemName: "arrow.down")
                 .font(.system(size: 15, weight: .semibold))
                 .frame(width: 36, height: 36)
-                .background(
-                    Circle()
-                        .fill(OpenClawChatTheme.subtleCard)
-                        .shadow(color: .black.opacity(0.16), radius: 8, y: 3))
+                .openClawChatGlass(cornerRadius: 18, interactive: true)
                 // Padding keeps a ~44pt tap target around the compact visual circle.
                 .padding(4)
                 .contentShape(Circle())
