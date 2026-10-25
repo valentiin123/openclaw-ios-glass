@@ -34,16 +34,17 @@ struct ChatSubagentWaitList: View {
                     ForEach(self.wait.children) { child in
                         self.row(child)
                         if child.id != self.wait.children.last?.id {
-                            Divider().overlay(OpenClawChatTheme.divider)
+                            Divider().overlay(OpenClawChatTheme.hairline)
                         }
                     }
                 }
                 .background(
-                    OpenClawChatTheme.subtleCard,
+                    OpenClawChatTheme.surfaceCard,
                     in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(OpenClawChatTheme.divider, lineWidth: 0.5))
+                        .strokeBorder(OpenClawChatTheme.hairline, lineWidth: 1))
             }
         }
         .padding(.horizontal, 4)
@@ -57,8 +58,18 @@ struct ChatSubagentWaitList: View {
         HStack(spacing: 7) {
             ChatWorkingClawView(seed: "subagent-wait", parked: true)
             Text(self.headerText)
-                .font(OpenClawChatTypography.caption)
-                .foregroundStyle(.secondary)
+                .font(OpenClawChatTypography.captionSemiBold)
+                .foregroundStyle(OpenClawChatTheme.inkMuted)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func statusColor(_ status: OpenClawChatSwarmDotStatus) -> Color {
+        switch status {
+        case .running: return OpenClawChatTheme.info
+        case .queued: return OpenClawChatTheme.inkMuted
+        case .done: return OpenClawChatTheme.success
+        case .failed: return OpenClawChatTheme.danger
         }
     }
 
@@ -79,18 +90,19 @@ struct ChatSubagentWaitList: View {
             self.open(child.key)
         } label: {
             HStack(spacing: 10) {
+                self.indicator(for: child.status)
+                    .frame(width: 14, height: 14)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(verbatim: child.name)
-                        .font(OpenClawChatTypography.footnote)
-                        .foregroundStyle(OpenClawChatTheme.assistantText)
+                        .font(OpenClawChatTypography.footnoteSemiBold)
+                        .foregroundStyle(OpenClawChatTheme.inkStrong)
                         .lineLimit(1)
                     Text(child.status.label)
                         .font(OpenClawChatTypography.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(self.statusColor(child.status))
                         .lineLimit(1)
                 }
                 Spacer(minLength: 8)
-                self.indicator(for: child.status)
                 Image(systemName: "chevron.right")
                     .imageScale(.small)
                     .foregroundStyle(.tertiary)
@@ -102,6 +114,7 @@ struct ChatSubagentWaitList: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
         .accessibilityIdentifier("chat-subagent-wait-child")
         .accessibilityHint(Text("Opens the subagent chat"))
     }
@@ -112,24 +125,25 @@ struct ChatSubagentWaitList: View {
         case .running:
             if self.reduceMotion {
                 Circle()
-                    .fill(OpenClawChatTheme.accent)
-                    .frame(width: 7, height: 7)
+                    .fill(OpenClawChatTheme.info)
+                    .frame(width: 9, height: 9)
             } else {
                 ProgressView()
                     .controlSize(.mini)
+                    .tint(OpenClawChatTheme.info)
             }
         case .queued:
             Circle()
-                .stroke(OpenClawChatTheme.muted, lineWidth: 1)
-                .frame(width: 7, height: 7)
+                .strokeBorder(OpenClawChatTheme.inkMuted, lineWidth: 1.5)
+                .frame(width: 9, height: 9)
         case .done:
             Circle()
                 .fill(OpenClawChatTheme.success)
-                .frame(width: 7, height: 7)
+                .frame(width: 9, height: 9)
         case .failed:
             Circle()
                 .fill(OpenClawChatTheme.danger)
-                .frame(width: 7, height: 7)
+                .frame(width: 9, height: 9)
         }
     }
 

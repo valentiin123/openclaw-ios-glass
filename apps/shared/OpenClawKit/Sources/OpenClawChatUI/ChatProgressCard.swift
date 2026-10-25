@@ -11,19 +11,19 @@ private struct ChatProgressCardSurface: ViewModifier {
         content
             .background(
                 RoundedRectangle(cornerRadius: self.cornerRadius, style: .continuous)
-                    .fill(OpenClawChatTheme.subtleCard))
+                    .fill(OpenClawChatTheme.surfaceCard))
             .overlay(
                 RoundedRectangle(cornerRadius: self.cornerRadius, style: .continuous)
-                    .strokeBorder(OpenClawChatTheme.composerBorder, lineWidth: 1))
+                    .strokeBorder(OpenClawChatTheme.hairline, lineWidth: 1))
         #else
         // Opaque content surface: glass is reserved for chrome and controls (DESIGN-GLASS.md).
         content
             .background(
                 RoundedRectangle(cornerRadius: self.cornerRadius, style: .continuous)
-                    .fill(OpenClawChatTheme.subtleCard))
+                    .fill(OpenClawChatTheme.surfaceCard))
             .overlay(
                 RoundedRectangle(cornerRadius: self.cornerRadius, style: .continuous)
-                    .strokeBorder(OpenClawChatTheme.composerBorder, lineWidth: 1))
+                    .strokeBorder(OpenClawChatTheme.hairline, lineWidth: 1))
         #endif
     }
 }
@@ -153,7 +153,7 @@ struct ChatProgressCard: View {
                     Button(action: self.toggle) {
                         Image(systemName: "chevron.down")
                             .font(OpenClawChatTypography.caption2)
-                            .foregroundStyle(OpenClawChatTheme.muted)
+                            .foregroundStyle(OpenClawChatTheme.inkMuted)
                             .rotationEffect(.degrees(self.isExpanded ? 180 : 0))
                             .modifier(HeaderHitArea())
                     }
@@ -164,7 +164,7 @@ struct ChatProgressCard: View {
 
             if self.isExpanded {
                 Divider()
-                    .overlay(OpenClawChatTheme.divider)
+                    .overlay(OpenClawChatTheme.hairline)
                     .padding(.horizontal, 12)
                 VStack(alignment: .leading, spacing: 9) {
                     let parsed = self.parsedMarkdown
@@ -247,7 +247,7 @@ struct ChatProgressCard: View {
     {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 14, weight: .medium))
+                .font(OpenClawChatTypography.body(size: 14, weight: .medium, relativeTo: .callout))
                 .foregroundStyle(.secondary)
                 .modifier(HeaderHitArea())
         }
@@ -295,12 +295,12 @@ struct ChatProgressCard: View {
             if !self.steps.isEmpty, !self.isInline || self.completedCount != self.steps.count {
                 Text(verbatim: "\(self.completedCount)/\(self.steps.count)")
                     .font(OpenClawChatTypography.captionSemiBold)
-                    .foregroundStyle(OpenClawChatTheme.muted)
+                    .foregroundStyle(OpenClawChatTheme.inkMuted)
             }
             if self.isInline {
                 Image(systemName: "chevron.right")
                     .font(OpenClawChatTypography.caption2)
-                    .foregroundStyle(OpenClawChatTheme.muted)
+                    .foregroundStyle(OpenClawChatTheme.inkMuted)
                     .rotationEffect(.degrees(self.isExpanded ? 90 : 0))
                 Spacer(minLength: 0)
             }
@@ -317,8 +317,8 @@ struct ChatProgressCard: View {
                 .font(OpenClawChatTypography.footnote)
                 .foregroundStyle(
                     step.status == .pending
-                        ? OpenClawChatTheme.muted
-                        : OpenClawChatTheme.assistantText)
+                        ? OpenClawChatTheme.inkMuted
+                        : OpenClawChatTheme.inkStandard)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .ignore)
@@ -335,8 +335,9 @@ struct ChatProgressCard: View {
 
     private static func markerColor(for status: ProgressCardStepStatus) -> Color {
         switch status {
-        case .completed, .inProgress: OpenClawChatTheme.accent
-        case .pending: OpenClawChatTheme.muted
+        case .completed: OpenClawChatTheme.success
+        case .inProgress: OpenClawChatTheme.brandAccent
+        case .pending: OpenClawChatTheme.inkMuted
         }
     }
 

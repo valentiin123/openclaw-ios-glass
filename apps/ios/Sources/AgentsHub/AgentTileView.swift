@@ -57,6 +57,8 @@ struct AgentTileView: View {
     let onStop: (AgentTileItem) -> Void
     /// Context menu "View details" (run facts sheet). Falls back to `onOpen` when nil.
     var onDetails: ((AgentTileItem) -> Void)?
+    /// Receives this tile's global frame (zoom origin of the chat). Nil -> not measured.
+    var frameStore: AgentTileFrameStore?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -72,6 +74,7 @@ struct AgentTileView: View {
             self.card
         }
         .buttonStyle(AgentTilePressStyle(reduceMotion: self.reduceMotion))
+        .onGeometryChange(for: CGRect.self, of: self.globalFrame, action: self.storeFrame)
         .contextMenu { self.menuItems }
         .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
         .accessibilityElement(children: .ignore)
@@ -178,6 +181,19 @@ struct AgentTileView: View {
         if self.canStopNow {
             Button("Stop", systemImage: "stop.circle", role: .destructive, action: self.requestStop)
         }
+    }
+
+    // MARK: Frame
+
+    private var globalFrame: @Sendable (GeometryProxy) -> CGRect {
+        let reader: @Sendable (GeometryProxy) -> CGRect = { proxy in
+            proxy.frame(in: .global)
+        }
+        return reader
+    }
+
+    private func storeFrame(_ frame: CGRect) {
+        self.frameStore?.set(frame, for: self.item.session.key)
     }
 
     // MARK: Actions

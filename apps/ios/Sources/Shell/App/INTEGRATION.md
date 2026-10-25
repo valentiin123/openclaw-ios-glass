@@ -8,14 +8,20 @@ Statut : syntaxe vérifiée (`swiftc -parse`) uniquement. Rien n'a été compil�
 
 ## Structure
 
+La barre contient exactement 3 onglets, de gauche à droite : Agents, Accueil, Activité.
+
 | Onglet | Écran hébergé | Notes |
 | --- | --- | --- |
-| Overview | `CommandCenterTab` dans une `NavigationStack(path: homePath)` | Sessions poussées (swipe-back). Écrans « Plus » en feuille. |
-| Chat | `ChatProTab` dans une `NavigationStack` | |
-| Agents | `OpenClawGlassSegmented` (Agents / Subagents / Files) au-dessus de `AgentProTab` ou `AgentsHubScreen` | |
-| Activity | `NativeDestinationRouter(path: activityPagePath)` | |
-| Automations | `NativeDestinationRouter(path: cronJobsPagePath)` | Masqué de la barre iPhone, visible dans la sidebar iPad, atteint via Overview > Plus. |
-| Settings | `SettingsHubScreen` (hub) ou `SettingsProTab(directRoute: .gateway)` | |
+| Agents | `AgentsBoardScreen` | Inchangé. |
+| Accueil (`overview`, clé « Home ») | `CommandCenterTab` dans une `NavigationStack(path: homePath)` | Sélectionné au lancement (`AppShellTab.launchTab`). Uniquement la vue d'ensemble. Sessions poussées (swipe-back). Écrans « Plus » en feuille. |
+| Activité (`activity`) | `OpenClawGlassSegmented` (Activité / Automatisations) au-dessus de `NativeDestinationRouter` | Sections : `activity` (`activityPagePath`) et `automations` (`cronJobsPagePath`). La dernière section est restaurée au retour sur l'onglet. |
+
+Hors barre : le chat système (« Talk to OpenClaw » du menu Plus) et les Réglages s'ouvrent dans une
+seule couverture plein écran (`coverKind` : `.chat` ou `.settings`). Les Réglages s'ouvrent depuis
+l'engrenage de l'Accueil : `SettingsHubScreen` complet avec un bouton fermer (`AppShell.Settings.Close`).
+Les anciens landings `settings` / `gateway` (et `desktop` / `terminal`) ouvrent ces Réglages depuis l'Accueil.
+Un landing `gateway` affiche l'écran Gateway direct (`SettingsProTab(directRoute: .gateway)`), seul
+consommateur d'une demande de configuration Gateway, avec un bouton retour vers le hub.
 
 `TabView` + `Tab(value:)`, `.tabViewStyle(.sidebarAdaptable)`, `.tabBarMinimizeBehavior(.onScrollDown)`.
 La barre Liquid Glass est dessinée par le système. Le glass n'est posé que sur les contrôles

@@ -46,11 +46,11 @@ public enum OpenClawChatTheme {
     public static func desktopText(in colorScheme: ColorScheme, contrast: ColorSchemeContrast) -> Color {
         if contrast == .increased {
             return colorScheme == .dark
-                ? Color(.sRGB, red: 238 / 255.0, green: 239 / 255.0, blue: 241 / 255.0)
-                : Color(.sRGB, red: 32 / 255.0, green: 33 / 255.0, blue: 36 / 255.0)
+                ? Color(.sRGB, red: 244 / 255.0, green: 244 / 255.0, blue: 245 / 255.0)
+                : Color(.sRGB, red: 33 / 255.0, green: 30 / 255.0, blue: 26 / 255.0)
         }
         return colorScheme == .dark
-            ? Color(.sRGB, red: 200 / 255.0, green: 200 / 255.0, blue: 204 / 255.0)
+            ? Color(.sRGB, red: 188 / 255.0, green: 188 / 255.0, blue: 192 / 255.0)
             : Color(.sRGB, red: 64 / 255.0, green: 60 / 255.0, blue: 53 / 255.0)
     }
 
@@ -62,17 +62,35 @@ public enum OpenClawChatTheme {
 
     #if !os(macOS)
     private enum IOSPalette {
-        static let lightCanvasTop = UIColor(red: 246 / 255.0, green: 247 / 255.0, blue: 249 / 255.0, alpha: 1)
-        static let lightCanvasMiddle = UIColor(red: 250 / 255.0, green: 251 / 255.0, blue: 252 / 255.0, alpha: 1)
-        static let lightCanvasBottom = UIColor.white
-        static let lightAccent = UIColor(red: 220 / 255.0, green: 38 / 255.0, blue: 38 / 255.0, alpha: 1)
-        static let darkCanvasTop = UIColor(red: 12 / 255.0, green: 13 / 255.0, blue: 15 / 255.0, alpha: 1)
-        static let darkCanvasMiddle = UIColor(red: 7 / 255.0, green: 8 / 255.0, blue: 10 / 255.0, alpha: 1)
-        static let darkCanvasBottom = UIColor(red: 4 / 255.0, green: 5 / 255.0, blue: 6 / 255.0, alpha: 1)
-        static let darkPanel = UIColor(red: 10 / 255.0, green: 12 / 255.0, blue: 14 / 255.0, alpha: 1)
-        static let darkPanelRaised = UIColor(red: 17 / 255.0, green: 18 / 255.0, blue: 21 / 255.0, alpha: 1)
-        static let darkComposer = UIColor(red: 24 / 255.0, green: 25 / 255.0, blue: 28 / 255.0, alpha: 1)
-        static let darkAccent = UIColor(red: 198 / 255.0, green: 49 / 255.0, blue: 42 / 255.0, alpha: 1)
+        // Exact product palette (mirrors OpenClawPalette in the iOS app target, which this
+        // shared package cannot import).
+        static func ui(_ value: UInt32) -> UIColor {
+            let red: CGFloat = CGFloat((value >> 16) & 0xFF) / 255
+            let green: CGFloat = CGFloat((value >> 8) & 0xFF) / 255
+            let blue: CGFloat = CGFloat(value & 0xFF) / 255
+            return UIColor(red: red, green: green, blue: blue, alpha: 1)
+        }
+
+        // Light: fond, fondAlt, carte, survol, accent, texteStandard, texteAtténué, bordure.
+        static let lightCanvas: UIColor = ui(0xFAF9F7)
+        static let lightAlt: UIColor = ui(0xF4F1EC)
+        static let lightCard: UIColor = ui(0xFFFFFF)
+        static let lightHover: UIColor = ui(0xEFEBE4)
+        static let lightAccent: UIColor = ui(0xBD4531)
+        static let lightText: UIColor = ui(0x403C35)
+        static let lightMuted: UIColor = ui(0x6E6960)
+        static let lightBorder: UIColor = ui(0xE8E4DC)
+        // Dark: fond, fondAlt, carte, surélevée, survol, boutonPrimaire, texteStandard,
+        // texteAtténué, bordure.
+        static let darkCanvas: UIColor = ui(0x0E1015)
+        static let darkAlt: UIColor = ui(0x13151B)
+        static let darkCard: UIColor = ui(0x161920)
+        static let darkRaised: UIColor = ui(0x191C24)
+        static let darkHover: UIColor = ui(0x1F2330)
+        static let darkPrimary: UIColor = ui(0xD13C3C)
+        static let darkText: UIColor = ui(0xBCBCC0)
+        static let darkMuted: UIColor = ui(0x8B8B94)
+        static let darkBorder: UIColor = ui(0x1E2028)
     }
 
     private static func adaptiveColor(
@@ -120,15 +138,9 @@ public enum OpenClawChatTheme {
         ZStack {
             LinearGradient(
                 colors: [
-                    self.adaptiveColor(
-                        light: IOSPalette.lightCanvasTop,
-                        dark: IOSPalette.darkCanvasTop),
-                    self.adaptiveColor(
-                        light: IOSPalette.lightCanvasMiddle,
-                        dark: IOSPalette.darkCanvasMiddle),
-                    self.adaptiveColor(
-                        light: IOSPalette.lightCanvasBottom,
-                        dark: IOSPalette.darkCanvasBottom),
+                    self.adaptiveColor(light: IOSPalette.lightCanvas, dark: IOSPalette.darkCanvas),
+                    self.adaptiveColor(light: IOSPalette.lightCanvas, dark: IOSPalette.darkCanvas),
+                    self.adaptiveColor(light: IOSPalette.lightCanvas, dark: IOSPalette.darkCanvas),
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing)
@@ -140,7 +152,7 @@ public enum OpenClawChatTheme {
         #if os(macOS)
         AnyShapeStyle(.ultraThinMaterial)
         #else
-        AnyShapeStyle(self.adaptiveColor(light: .tertiarySystemBackground, dark: IOSPalette.darkPanelRaised))
+        AnyShapeStyle(self.adaptiveColor(light: IOSPalette.lightCard, dark: IOSPalette.darkCard))
         #endif
     }
 
@@ -152,7 +164,7 @@ public enum OpenClawChatTheme {
         #else
         self.adaptiveColor(
             light: IOSPalette.lightAccent,
-            dark: IOSPalette.darkAccent)
+            dark: IOSPalette.darkPrimary)
         #endif
     }
 
@@ -165,7 +177,7 @@ public enum OpenClawChatTheme {
         #if os(macOS)
         Color(nsColor: .quaternarySystemFill)
         #else
-        self.adaptiveColor(light: .secondarySystemBackground, dark: IOSPalette.darkPanelRaised)
+        self.adaptiveColor(light: IOSPalette.lightAlt, dark: IOSPalette.darkRaised)
         #endif
     }
 
@@ -178,7 +190,11 @@ public enum OpenClawChatTheme {
     }
 
     static var muted: Color {
+        #if os(macOS)
         .secondary
+        #else
+        self.adaptiveColor(light: IOSPalette.lightMuted, dark: IOSPalette.darkMuted)
+        #endif
     }
 
     static var warning: Color {
@@ -201,8 +217,8 @@ public enum OpenClawChatTheme {
         #if os(macOS)
         Color(nsColor: self.assistantBubbleDynamicNSColor)
         #else
-        // iMessage-style grey receiver bubble: clearly visible on the white chat surface.
-        self.adaptiveColor(light: .systemGray5, dark: IOSPalette.darkPanelRaised)
+        // Receiver bubble: palette survol in light, surélevée in dark, both distinct from the canvas.
+        self.adaptiveColor(light: IOSPalette.lightHover, dark: IOSPalette.darkRaised)
         #endif
     }
 
@@ -210,12 +226,16 @@ public enum OpenClawChatTheme {
         #if os(macOS)
         Color(nsColor: self.onboardingAssistantBubbleDynamicNSColor)
         #else
-        self.adaptiveColor(light: .secondarySystemBackground, dark: IOSPalette.darkPanelRaised)
+        self.adaptiveColor(light: IOSPalette.lightAlt, dark: IOSPalette.darkRaised)
         #endif
     }
 
     static var onboardingAssistantBorder: Color {
+        #if os(macOS)
         Color.white.opacity(0.12)
+        #else
+        self.adaptiveColor(light: IOSPalette.lightBorder, dark: IOSPalette.darkBorder)
+        #endif
     }
 
     static var userText: Color {
@@ -253,7 +273,7 @@ public enum OpenClawChatTheme {
         #if os(macOS)
         Color(nsColor: .labelColor)
         #else
-        Color(uiColor: .label)
+        self.adaptiveColor(light: IOSPalette.lightText, dark: IOSPalette.darkText)
         #endif
     }
 
@@ -261,7 +281,7 @@ public enum OpenClawChatTheme {
         #if os(macOS)
         AnyShapeStyle(.ultraThinMaterial)
         #else
-        AnyShapeStyle(self.adaptiveColor(light: .secondarySystemGroupedBackground, dark: IOSPalette.darkPanel))
+        AnyShapeStyle(self.adaptiveColor(light: IOSPalette.lightCard, dark: IOSPalette.darkCard))
         #endif
     }
 
@@ -269,7 +289,7 @@ public enum OpenClawChatTheme {
         #if os(macOS)
         AnyShapeStyle(.thinMaterial)
         #else
-        AnyShapeStyle(self.adaptiveColor(light: .secondarySystemBackground, dark: IOSPalette.darkComposer))
+        AnyShapeStyle(self.adaptiveColor(light: IOSPalette.lightAlt, dark: IOSPalette.darkRaised))
         #endif
     }
 
@@ -277,12 +297,123 @@ public enum OpenClawChatTheme {
         #if os(macOS)
         Color(nsColor: .separatorColor).opacity(0.6)
         #else
-        self.adaptiveColor(light: .separator, dark: UIColor.white.withAlphaComponent(0.14))
+        self.adaptiveColor(light: IOSPalette.lightBorder, dark: IOSPalette.darkBorder)
         #endif
     }
 
     static var divider: Color {
+        #if os(macOS)
         Color.secondary.opacity(0.2)
+        #else
+        self.adaptiveColor(light: IOSPalette.lightBorder, dark: IOSPalette.darkBorder)
+        #endif
+    }
+}
+
+fileprivate struct ChatPaletteRGB {
+    let red: Double
+    let green: Double
+    let blue: Double
+
+    init(hex: UInt32) {
+        self.red = Double((hex >> 16) & 0xFF) / 255.0
+        self.green = Double((hex >> 8) & 0xFF) / 255.0
+        self.blue = Double(hex & 0xFF) / 255.0
+    }
+}
+
+// Exact chat palette (light / dark). Content colors for the redesigned transcript:
+// code blocks, quotes, tool cards, reasoning and subagent rows use these, never hard-coded values.
+extension OpenClawChatTheme {
+    private static func paletteColor(light: UInt32, dark: UInt32) -> Color {
+        let lightRGB: ChatPaletteRGB = ChatPaletteRGB(hex: light)
+        let darkRGB: ChatPaletteRGB = ChatPaletteRGB(hex: dark)
+        #if os(macOS)
+        let dynamicColor: NSColor = NSColor(name: nil, dynamicProvider: { appearance in
+            let rgb: ChatPaletteRGB = appearance.isDarkAqua ? darkRGB : lightRGB
+            return NSColor(srgbRed: rgb.red, green: rgb.green, blue: rgb.blue, alpha: 1)
+        })
+        return Color(nsColor: dynamicColor)
+        #else
+        let dynamicColor: UIColor = UIColor { traits in
+            let rgb: ChatPaletteRGB = traits.userInterfaceStyle == .dark ? darkRGB : lightRGB
+            return UIColor(red: rgb.red, green: rgb.green, blue: rgb.blue, alpha: 1)
+        }
+        return Color(uiColor: dynamicColor)
+        #endif
+    }
+
+    /// Primary brand accent: #BD4531 light, #FF5C5C dark.
+    static var brandAccent: Color {
+        self.paletteColor(light: 0xBD4531, dark: 0xFF5C5C)
+    }
+
+    /// Accent hover / pressed: #A83C29 light, #FF7070 dark.
+    static var brandAccentHover: Color {
+        self.paletteColor(light: 0xA83C29, dark: 0xFF7070)
+    }
+
+    /// Secondary accent (teal): #0D9488 light, #14B8A6 dark.
+    static var brandSecondary: Color {
+        self.paletteColor(light: 0x0D9488, dark: 0x14B8A6)
+    }
+
+    /// Strong text: #211E1A light, #F4F4F5 dark.
+    static var inkStrong: Color {
+        self.paletteColor(light: 0x211E1A, dark: 0xF4F4F5)
+    }
+
+    /// Standard text: #403C35 light, #BCBCC0 dark.
+    static var inkStandard: Color {
+        self.paletteColor(light: 0x403C35, dark: 0xBCBCC0)
+    }
+
+    /// Muted text: #6E6960 light, #8B8B94 dark.
+    static var inkMuted: Color {
+        self.paletteColor(light: 0x6E6960, dark: 0x8B8B94)
+    }
+
+    /// Alternate background (code body): #F4F1EC light, #13151B dark.
+    static var surfaceAlt: Color {
+        self.paletteColor(light: 0xF4F1EC, dark: 0x13151B)
+    }
+
+    /// Card surface: #FFFFFF light, #161920 dark.
+    static var surfaceCard: Color {
+        self.paletteColor(light: 0xFFFFFF, dark: 0x161920)
+    }
+
+    /// Raised surface: #FFFFFF light, #191C24 dark.
+    static var surfaceRaised: Color {
+        self.paletteColor(light: 0xFFFFFF, dark: 0x191C24)
+    }
+
+    /// Hover / header strip: #EFEBE4 light, #1F2330 dark.
+    static var surfaceHover: Color {
+        self.paletteColor(light: 0xEFEBE4, dark: 0x1F2330)
+    }
+
+    /// Hairline border: #E8E4DC light, #1E2028 dark.
+    static var hairline: Color {
+        self.paletteColor(light: 0xE8E4DC, dark: 0x1E2028)
+    }
+
+    /// Violet for agent and web tool kinds (system color, adapts by itself).
+    static var violet: Color {
+        #if os(macOS)
+        Color(nsColor: .systemPurple)
+        #else
+        Color(uiColor: .systemPurple)
+        #endif
+    }
+
+    /// Informational blue for running subagents and web tools (system color, adapts by itself).
+    static var info: Color {
+        #if os(macOS)
+        Color(nsColor: .systemBlue)
+        #else
+        Color(uiColor: .systemBlue)
+        #endif
     }
 }
 

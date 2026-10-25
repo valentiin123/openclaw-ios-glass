@@ -1163,17 +1163,83 @@ private struct ChatAssistantTextBody: View {
 
     var body: some View {
         let segments = AssistantTextParser.segments(from: self.text, includeThinking: self.includesThinking)
-        return VStack(alignment: .leading, spacing: 10) {
+        return VStack(alignment: .leading, spacing: 12) {
             ForEach(segments) { segment in
-                ChatMarkdownRenderer(
-                    text: segment.text,
-                    context: .assistant,
-                    variant: self.markdownVariant,
-                    typography: segment.kind.markdownTypography,
-                    textColor: self.textColor,
-                    isComplete: true)
+                self.segmentView(segment)
             }
         }
+    }
+
+    @ViewBuilder
+    private func segmentView(_ segment: AssistantTextSegment) -> some View {
+        let renderer: ChatMarkdownRenderer = ChatMarkdownRenderer(
+            text: segment.text,
+            context: .assistant,
+            variant: self.markdownVariant,
+            typography: segment.kind.markdownTypography,
+            textColor: self.textColor,
+            isComplete: true)
+        if segment.kind == .thinking {
+            ChatReasoningBlock(isExpandedInitially: false) { renderer }
+        } else {
+            renderer
+        }
+    }
+}
+
+/// Discreet, collapsible reasoning block: a muted brain header on a thin accent bar, no surface.
+/// Collapsed by default once the answer is complete; the streaming body keeps it open.
+struct ChatReasoningBlock<Content: View>: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isExpanded: Bool
+    private let content: Content
+
+    init(isExpandedInitially: Bool, @ViewBuilder content: () -> Content) {
+        self._isExpanded = State(initialValue: isExpandedInitially)
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            self.header
+            if self.isExpanded {
+                self.content
+                    .padding(.leading, 12)
+                    .overlay(alignment: .leading) {
+                        Rectangle()
+                            .fill(OpenClawChatTheme.brandSecondary.opacity(0.6))
+                            .frame(width: 2)
+                    }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var header: some View {
+        Button {
+            OpenClawChatMotion.perform(reduceMotion: self.reduceMotion) {
+                self.isExpanded.toggle()
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "brain")
+                    .font(OpenClawChatTypography.caption)
+                    .foregroundStyle(OpenClawChatTheme.brandSecondary)
+                Text("Reasoning")
+                    .font(OpenClawChatTypography.captionSemiBold)
+                    .foregroundStyle(OpenClawChatTheme.inkMuted)
+                Image(systemName: "chevron.right")
+                    .font(OpenClawChatTypography.caption2)
+                    .foregroundStyle(OpenClawChatTheme.inkMuted)
+                    .rotationEffect(.degrees(self.isExpanded ? 90 : 0))
+                Spacer(minLength: 0)
+            }
+            .frame(minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(Text(self.isExpanded ? "Expanded" : "Collapsed"))
+        .accessibilityIdentifier("chat-reasoning-toggle")
     }
 }
 

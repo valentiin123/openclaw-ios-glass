@@ -132,15 +132,7 @@ struct ChatMarkdownRenderer: View {
                 .modifier(ChatInlineMathAccessibilityModifier(label: prose.inlineAccessibilityText))
                 .chatRevealRenderer(active: self.reveal?.blockIndex == index)
         case let .heading(level, prose):
-            self.proseText(prose, index: index)
-                .font(self.typography.headingFont(level: level))
-                .foregroundStyle(self.textColor)
-                .tint(self.linkColor)
-                .textSelection(.enabled)
-                .lineSpacing(self.variant == .compact ? 2 : 4)
-                .modifier(ChatInlineMathAccessibilityModifier(label: prose.inlineAccessibilityText))
-                .accessibilityAddTraits(.isHeader)
-                .chatRevealRenderer(active: self.reveal?.blockIndex == index)
+            self.headingView(level: level, prose: prose, index: index)
         case let .code(code):
             ChatCodeBlockView(block: code)
         case let .math(math):
@@ -158,6 +150,8 @@ struct ChatMarkdownRenderer: View {
                 textColor: self.textColor)
         case .thematicBreak:
             Divider()
+                .overlay(OpenClawChatTheme.hairline)
+                .padding(.vertical, 4)
                 .accessibilityHidden(true)
         }
     }
@@ -169,6 +163,64 @@ struct ChatMarkdownRenderer: View {
             variant: self.variant,
             typography: self.typography,
             textColor: self.textColor)
+    }
+
+    /// Response headings get a stronger ink, extra space above and, for levels 1 and 2, an underline rule.
+    /// Reasoning text and user messages keep the plain prose treatment.
+    private var usesHeadingHierarchy: Bool {
+        self.typography.headingStyle == .hierarchy && self.context == .assistant
+    }
+
+    private func headingColor(level: Int) -> Color {
+        if !self.usesHeadingHierarchy { return self.textColor }
+        if level <= 3 { return OpenClawChatTheme.inkStrong }
+        return self.textColor
+    }
+
+    private func headingTopPadding(level: Int) -> CGFloat {
+        if !self.usesHeadingHierarchy { return 0 }
+        let compact: Bool = self.variant == .compact
+        if level <= 2 { return compact ? 6 : 10 }
+        if level == 3 { return compact ? 4 : 6 }
+        return 2
+    }
+
+    @ViewBuilder
+    private func headingRule(level: Int) -> some View {
+        if self.usesHeadingHierarchy, level == 1 {
+            HStack(spacing: 0) {
+                Rectangle()
+                    .fill(OpenClawChatTheme.brandAccent)
+                    .frame(width: 36, height: 2)
+                Rectangle()
+                    .fill(OpenClawChatTheme.hairline)
+                    .frame(height: 1)
+            }
+            .accessibilityHidden(true)
+        } else if self.usesHeadingHierarchy, level == 2 {
+            Rectangle()
+                .fill(OpenClawChatTheme.hairline)
+                .frame(height: 1)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private func headingView(level: Int, prose: ChatMarkdownProse, index: Int) -> some View {
+        let color: Color = self.headingColor(level: level)
+        let topPadding: CGFloat = self.headingTopPadding(level: level)
+        return VStack(alignment: .leading, spacing: 5) {
+            self.proseText(prose, index: index)
+                .font(self.typography.headingFont(level: level))
+                .foregroundStyle(color)
+                .tint(self.linkColor)
+                .textSelection(.enabled)
+                .lineSpacing(self.variant == .compact ? 2 : 4)
+                .modifier(ChatInlineMathAccessibilityModifier(label: prose.inlineAccessibilityText))
+                .accessibilityAddTraits(.isHeader)
+                .chatRevealRenderer(active: self.reveal?.blockIndex == index)
+            self.headingRule(level: level)
+        }
+        .padding(.top, topPadding)
     }
 
     private func proseText(_ prose: ChatMarkdownProse, index: Int) -> SwiftUI.Text {
@@ -184,7 +236,7 @@ struct ChatMarkdownRenderer: View {
     }
 
     private var linkColor: Color {
-        self.context == .user ? self.textColor : OpenClawChatTheme.accent
+        self.context == .user ? self.textColor : OpenClawChatTheme.brandAccent
     }
 }
 
@@ -612,14 +664,27 @@ struct ChatMarkdownProse {
         // Foundation stores block boundaries as presentation intents, without newline
         // characters. SwiftUI Text needs explicit separators, including on the reveal path.
         var rendered = AttributedString()
-        for (_, range) in parsed.runs[\.presentationIntent] {
+        for (intent, range) in parsed.runs[\.presentationIntent] {
             if !rendered.characters.isEmpty {
                 let trailingNewlines = rendered.characters.suffix(2).reversed().prefix { $0 == "\n" }.count
                 rendered.append(AttributedString(String(repeating: "\n", count: 2 - trailingNewlines)))
             }
-            rendered.append(AttributedString(parsed[range]))
+            var piece: AttributedString = AttributedString(parsed[range])
+            if Self.isBlockQuote(intent) {
+                // Quotes read as secondary text. Only attributes change, never characters.
+                piece.foregroundColor = OpenClawChatTheme.inkMuted
+            }
+            rendered.append(piece)
         }
         return rendered
+    }
+
+    private static func isBlockQuote(_ intent: PresentationIntent?) -> Bool {
+        guard let intent else { return false }
+        for component in intent.components {
+            if component.kind == .blockQuote { return true }
+        }
+        return false
     }
 
     private static func tailPieces(

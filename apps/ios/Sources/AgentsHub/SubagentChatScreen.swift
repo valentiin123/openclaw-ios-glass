@@ -72,6 +72,11 @@ private struct SubagentChatHeaderBar: View {
 
     private let spriteSize: CGFloat = 32
 
+    /// Each agent keeps the main color of its own sprite: accent stripe, sprite halo.
+    private var agentTint: Color {
+        self.item.sprite.palette.body
+    }
+
     private var backSymbol: String {
         self.isRoot ? "xmark" : "chevron.backward"
     }
@@ -96,10 +101,15 @@ private struct SubagentChatHeaderBar: View {
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(OpenClawBrand.void)
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(self.agentTint)
+                .frame(width: 3)
+        }
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(OpenClawBrand.hairlineBorder)
-                .frame(height: 0.5)
+                .frame(height: 1)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("subagent-chat-header")
@@ -123,10 +133,14 @@ private struct SubagentChatHeaderBar: View {
         let asleep: Bool = self.item.state.isAsleep
         let opacity: Double = asleep ? 0.55 : 1
         let saturation: Double = asleep ? 0 : 1
+        let halo: Color = self.agentTint.opacity(0.16)
         return AgentTileSpriteView(kind: self.item.sprite)
             .frame(width: self.spriteSize, height: self.spriteSize)
             .saturation(saturation)
             .opacity(opacity)
+            .padding(4)
+            .background(halo, in: Circle())
+            .accessibilityHidden(true)
     }
 
     private var titleBlock: some View {
@@ -141,12 +155,25 @@ private struct SubagentChatHeaderBar: View {
         .accessibilityLabel(Text(verbatim: self.item.accessibilityText))
     }
 
-    private var stateLine: some View {
-        HStack(spacing: 6) {
+    private var statePill: some View {
+        let tint: Color = self.item.state.tint
+        return HStack(spacing: 4) {
+            Circle()
+                .fill(tint)
+                .frame(width: 6, height: 6)
             Text(verbatim: self.item.state.label)
                 .font(OpenClawType.captionSemiBold)
-                .foregroundStyle(self.item.state.tint)
+                .foregroundStyle(tint)
                 .lineLimit(1)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 2)
+        .background(tint.opacity(0.12), in: Capsule())
+    }
+
+    private var stateLine: some View {
+        HStack(spacing: 6) {
+            self.statePill
             SubagentChatClock(item: self.item)
         }
         .openClawAnimation(value: self.item.state)
@@ -196,10 +223,11 @@ private struct SubagentChatChildrenList: View {
             }
             self.moreRow
         }
+        .background(OpenClawBrand.surfaceCard)
         .clipShape(RoundedRectangle(cornerRadius: OpenClawProMetric.cardRadius, style: .continuous))
-        .openClawGlass(
-            in: RoundedRectangle(cornerRadius: OpenClawProMetric.cardRadius, style: .continuous),
-            interactive: false)
+        .overlay(
+            RoundedRectangle(cornerRadius: OpenClawProMetric.cardRadius, style: .continuous)
+                .strokeBorder(OpenClawBrand.hairlineBorder, lineWidth: 1))
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .accessibilityElement(children: .contain)
@@ -211,8 +239,13 @@ private struct SubagentChatChildrenList: View {
             self.onOpen(child.key)
         } label: {
             HStack(spacing: 10) {
+                Circle()
+                    .fill(OpenClawBrand.info)
+                    .frame(width: 8, height: 8)
+                    .accessibilityHidden(true)
                 AgentTileSpriteView(kind: child.sprite)
                     .frame(width: 24, height: 24)
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(verbatim: child.name)
                         .font(OpenClawType.subheadSemiBold)
@@ -377,7 +410,13 @@ struct SubagentChatScreen: View {
 
     // MARK: Actions
 
+    /// Root: closes through the zoom host (reverse animation) when there is one.
+    /// Pushed child: regular NavigationStack pop.
     private func goBack() {
+        if self.isRoot, let close = self.stack.onCloseRoot {
+            close()
+            return
+        }
         self.dismiss()
     }
 

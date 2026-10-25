@@ -57,12 +57,79 @@ final class AppAppearanceModel {
     }
 }
 
+/// Exact product palette: the single source of truth for the iOS theme.
+/// Every token is adaptive (light/dark) and exposed twice: `uiX` (UIColor) and `x` (Color).
+///
+/// Light: fond #FAF9F7, fondAlt #F4F1EC, carte #FFFFFF, survol #EFEBE4, accent #BD4531,
+/// accentSurvol #A83C29, accentSecondaire #0D9488, texteFort #211E1A, texteStandard #403C35,
+/// texteAtténué #6E6960, bordure #E8E4DC.
+/// Dark: fond #0E1015, fondAlt #13151B, carte #161920, surélevée #191C24, survol #1F2330,
+/// accent #FF5C5C, accentSurvol #FF7070, boutonPrimaire #D13C3C, accentSecondaire #14B8A6,
+/// texteFort #F4F4F5, texteStandard #BCBCC0, texteAtténué #8B8B94, bordure #1E2028.
+///
+/// Light has no dedicated surélevée / boutonPrimaire value: surélevée falls back to carte
+/// (#FFFFFF) and boutonPrimaire to accent (#BD4531).
+enum OpenClawPalette {
+    // MARK: UIColor tokens
+
+    static let uiFond: UIColor = uiAdaptive(light: 0xFAF9F7, dark: 0x0E1015)
+    static let uiFondAlt: UIColor = uiAdaptive(light: 0xF4F1EC, dark: 0x13151B)
+    static let uiCarte: UIColor = uiAdaptive(light: 0xFFFFFF, dark: 0x161920)
+    static let uiSurélevée: UIColor = uiAdaptive(light: 0xFFFFFF, dark: 0x191C24)
+    static let uiSurvol: UIColor = uiAdaptive(light: 0xEFEBE4, dark: 0x1F2330)
+    static let uiAccent: UIColor = uiAdaptive(light: 0xBD4531, dark: 0xFF5C5C)
+    static let uiAccentSurvol: UIColor = uiAdaptive(light: 0xA83C29, dark: 0xFF7070)
+    static let uiAccentSecondaire: UIColor = uiAdaptive(light: 0x0D9488, dark: 0x14B8A6)
+    static let uiBoutonPrimaire: UIColor = uiAdaptive(light: 0xBD4531, dark: 0xD13C3C)
+    static let uiTexteFort: UIColor = uiAdaptive(light: 0x211E1A, dark: 0xF4F4F5)
+    static let uiTexteStandard: UIColor = uiAdaptive(light: 0x403C35, dark: 0xBCBCC0)
+    static let uiTexteAtténué: UIColor = uiAdaptive(light: 0x6E6960, dark: 0x8B8B94)
+    static let uiBordure: UIColor = uiAdaptive(light: 0xE8E4DC, dark: 0x1E2028)
+
+    // Derived roles (palette hexes only).
+    /// Readable accent for small text: light uses accentSurvol (#A83C29) because #BD4531
+    /// drops under 4.5:1 on hover and tinted surfaces; dark uses accent (#FF5C5C).
+    static let uiAccentTexte: UIColor = uiAdaptive(light: 0xA83C29, dark: 0xFF5C5C)
+    /// Inset panel inside a card: fondAlt in light, surélevée in dark.
+    static let uiSurfaceInset: UIColor = uiAdaptive(light: 0xF4F1EC, dark: 0x191C24)
+
+    // MARK: Color tokens
+
+    static let fond: Color = Color(uiColor: uiFond)
+    static let fondAlt: Color = Color(uiColor: uiFondAlt)
+    static let carte: Color = Color(uiColor: uiCarte)
+    static let surélevée: Color = Color(uiColor: uiSurélevée)
+    static let survol: Color = Color(uiColor: uiSurvol)
+    static let accent: Color = Color(uiColor: uiAccent)
+    static let accentSurvol: Color = Color(uiColor: uiAccentSurvol)
+    static let accentSecondaire: Color = Color(uiColor: uiAccentSecondaire)
+    static let boutonPrimaire: Color = Color(uiColor: uiBoutonPrimaire)
+    static let texteFort: Color = Color(uiColor: uiTexteFort)
+    static let texteStandard: Color = Color(uiColor: uiTexteStandard)
+    static let texteAtténué: Color = Color(uiColor: uiTexteAtténué)
+    static let bordure: Color = Color(uiColor: uiBordure)
+    static let accentTexte: Color = Color(uiColor: uiAccentTexte)
+    static let surfaceInset: Color = Color(uiColor: uiSurfaceInset)
+
+    static func uiAdaptive(light: UInt32, dark: UInt32) -> UIColor {
+        UIColor { traits in
+            let value: UInt32 = traits.userInterfaceStyle == .dark ? dark : light
+            let red: CGFloat = CGFloat((value >> 16) & 0xFF) / 255
+            let green: CGFloat = CGFloat((value >> 8) & 0xFF) / 255
+            let blue: CGFloat = CGFloat(value & 0xFF) / 255
+            return UIColor(red: red, green: green, blue: blue, alpha: 1)
+        }
+    }
+}
+
 enum OpenClawBrand {
     // Carapace semantic palette: these tokens are shared by voice surfaces that
     // need the web system's quieter ink/paper hierarchy in native SwiftUI.
-    static let carapaceElevated = Color(red: 32 / 255.0, green: 32 / 255.0, blue: 36 / 255.0)
-    static let carapaceCoral = Color(red: 245 / 255.0, green: 101 / 255.0, blue: 74 / 255.0)
-    static let carapaceSea = Color(red: 79 / 255.0, green: 200 / 255.0, blue: 174 / 255.0)
+    // carapaceElevated backs a white glyph in both appearances, so it stays the dark
+    // palette "surélevée" (#191C24) instead of adapting.
+    static let carapaceElevated = Color(red: 25 / 255.0, green: 28 / 255.0, blue: 36 / 255.0)
+    static let carapaceCoral = OpenClawPalette.accent
+    static let carapaceSea = OpenClawPalette.accentSecondaire
     // Accent fills stay dark enough for white content; foreground accents adapt
     // separately so small labels retain 4.5:1 contrast on dark surfaces and tinted pills.
     // Control UI palette. Sources:
@@ -70,17 +137,17 @@ enum OpenClawBrand {
     //    --text-strong, --muted, --border, --border-strong, --accent, --accent-fill, status colors.
     //  - src/gateway/control-ui-public-session-render.ts (PUBLIC_SESSION_STYLES):
     //    --bg-muted, --hover, --panel, --primary-hover, --link.
-    // Dark page background is pure black (OLED) by product decision; the web --surface/--bg
-    // (#0e1015) is intentionally NOT used for pages. Opaque surfaces sit above it.
-    // Accent: light #bd4531 (fill) / #a83c29 (--primary-hover, used for text because #bd4531
-    // falls under 4.5:1 on tinted panels); dark #ff5c5c (--accent) / #d13c3c (--accent-fill).
-    static let uiAccentFill = adaptiveUIColor(light: (189, 69, 49), dark: (209, 60, 60))
-    static let uiAccent = adaptiveUIColor(light: (168, 60, 41), dark: (255, 92, 92))
-    static let uiAccentHot = adaptiveUIColor(light: (189, 69, 49), dark: (194, 46, 46))
-    static let uiAccentHotForeground = adaptiveUIColor(light: (168, 60, 41), dark: (255, 112, 112))
-    static let uiVoid = adaptiveUIColor(light: (250, 249, 247), dark: (0, 0, 0))
-    static let uiObsidian = adaptiveUIColor(light: (255, 255, 255), dark: (22, 25, 32))
-    static let uiTextSecondary = adaptiveUIColor(light: (110, 105, 96), dark: (139, 139, 148))
+    // Values come from OpenClawPalette (exact product palette). The dark page background is
+    // #0E1015; the former OLED black is gone. Foreground accents use the palette's
+    // accentSurvol in light (#A83C29) because #BD4531 falls under 4.5:1 on hover and tinted
+    // surfaces; fills use boutonPrimaire.
+    static let uiAccentFill = OpenClawPalette.uiBoutonPrimaire
+    static let uiAccent = OpenClawPalette.uiAccentTexte
+    static let uiAccentHot = OpenClawPalette.uiBoutonPrimaire
+    static let uiAccentHotForeground = OpenClawPalette.uiAccentSurvol
+    static let uiVoid = OpenClawPalette.uiFond
+    static let uiObsidian = OpenClawPalette.uiCarte
+    static let uiTextSecondary = OpenClawPalette.uiTexteAtténué
     // Status: dark values follow wrap.ts (--ok #22c55e, --warn #f59e0b). Light values and the
     // dark danger/info stay on the previous app values: the web ones (#15803d, #b45309, #dc2626,
     // #2563eb light; #ef4444, #3b82f6 dark) computed under 4.5:1 on 10-12% tinted pills.
@@ -89,14 +156,15 @@ enum OpenClawBrand {
     static let uiDanger = adaptiveUIColor(light: (185, 28, 28), dark: (252, 165, 165))
     static let uiInfo = adaptiveUIColor(light: (0, 91, 196), dark: (100, 168, 255))
     // Surface and ink tokens (wrap.ts / control-ui-public-session-render.ts).
-    static let uiCard = adaptiveUIColor(light: (255, 255, 255), dark: (22, 25, 32))
-    static let uiElevated = adaptiveUIColor(light: (255, 255, 255), dark: (25, 28, 36))
-    static let uiPanel = adaptiveUIColor(light: (244, 241, 236), dark: (25, 28, 36))
-    static let uiHover = adaptiveUIColor(light: (239, 235, 228), dark: (31, 35, 48))
-    static let uiBorder = adaptiveUIColor(light: (232, 228, 220), dark: (30, 32, 40))
-    static let uiBorderStrong = adaptiveUIColor(light: (214, 208, 197), dark: (46, 48, 64))
-    static let uiTextPrimary = adaptiveUIColor(light: (64, 60, 53), dark: (212, 212, 216))
-    static let uiTextStrong = adaptiveUIColor(light: (33, 30, 26), dark: (244, 244, 245))
+    static let uiCard = OpenClawPalette.uiCarte
+    static let uiElevated = OpenClawPalette.uiSurélevée
+    static let uiPanel = OpenClawPalette.uiFondAlt
+    static let uiHover = OpenClawPalette.uiSurvol
+    static let uiBorder = OpenClawPalette.uiBordure
+    // The palette defines a single border color, so the strong border equals it.
+    static let uiBorderStrong = OpenClawPalette.uiBordure
+    static let uiTextPrimary = OpenClawPalette.uiTexteStandard
+    static let uiTextStrong = OpenClawPalette.uiTexteFort
     // Carapace status foreground tokens. Keep these separate from the broader
     // app feedback palette so compact state indicators match the web system.
     static let uiStatusSuccess = adaptiveUIColor(light: (22, 163, 74), dark: (34, 197, 94))
@@ -129,28 +197,19 @@ enum OpenClawBrand {
     static let providerOpenAI = Color(red: 16 / 255.0, green: 163 / 255.0, blue: 127 / 255.0)
     static let providerAnthropic = Color(red: 217 / 255.0, green: 119 / 255.0, blue: 87 / 255.0)
     static let providerGoogle = Color(red: 66 / 255.0, green: 133 / 255.0, blue: 244 / 255.0)
-    // Activation surfaces follow the same Control UI ink/paper ramp (wrap.ts --surface/--card/--elevated,
-    // control-ui-public-session-render.ts --panel); dark canvas is OLED black.
-    static let activationCanvas = Color(uiColor: adaptiveUIColor(light: (250, 249, 247), dark: (0, 0, 0)))
-    static let activationSurface = Color(uiColor: adaptiveUIColor(light: (255, 255, 255), dark: (22, 25, 32)))
-    static let activationInsetSurface = Color(uiColor: adaptiveUIColor(light: (244, 241, 236), dark: (25, 28, 36)))
-    static let activationNeutralSurface = Color(uiColor: adaptiveUIColor(light: (255, 255, 255), dark: (22, 25, 32)))
-    static let activationNeutralInsetSurface = Color(uiColor: adaptiveUIColor(
-        light: (244, 241, 236),
-        dark: (25, 28, 36)))
-    static let activationNeutralStroke = Color(uiColor: adaptiveUIColor(
-        light: (0, 0, 0),
-        dark: (255, 255, 255)).withAlphaComponent(0.08))
-    static let activationNeutralDivider = Color(uiColor: adaptiveUIColor(
-        light: (0, 0, 0),
-        dark: (255, 255, 255)).withAlphaComponent(0.09))
-    // Same values as uiAccentFill (wrap.ts --accent-fill) so white label text keeps >= 4.5:1.
-    static let activationPrimaryAction = Color(uiColor: adaptiveUIColor(light: (189, 69, 49), dark: (209, 60, 60)))
+    // Activation surfaces follow the exact palette ramp; dark canvas is #0E1015.
+    static let activationCanvas = OpenClawPalette.fond
+    static let activationSurface = OpenClawPalette.carte
+    static let activationInsetSurface = OpenClawPalette.surfaceInset
+    static let activationNeutralSurface = OpenClawPalette.carte
+    static let activationNeutralInsetSurface = OpenClawPalette.surfaceInset
+    static let activationNeutralStroke = OpenClawPalette.bordure
+    static let activationNeutralDivider = OpenClawPalette.bordure
+    // Same value as uiAccentFill (boutonPrimaire) so white label text keeps >= 4.5:1.
+    static let activationPrimaryAction = OpenClawPalette.boutonPrimaire
     static let activationPrimaryActionText = Color.white
-    static let activationHairline = Color(uiColor: adaptiveUIColor(
-        light: (136, 44, 40),
-        dark: (255, 210, 205)).withAlphaComponent(0.13))
-    static let activationGlow = Color(uiColor: adaptiveUIColor(light: (189, 69, 49), dark: (255, 92, 92)))
+    static let activationHairline = Color(uiColor: OpenClawPalette.uiAccent.withAlphaComponent(0.13))
+    static let activationGlow = OpenClawPalette.accent
 
     static var sheetBackground: LinearGradient {
         LinearGradient(

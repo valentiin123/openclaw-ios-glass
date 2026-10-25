@@ -5,24 +5,38 @@ import SwiftUI
 
 /// Root of the native shell: an iOS 26 `TabView` (Liquid Glass tab bar drawn by the system).
 ///
-/// - Three tabs only: Agents, Activity, Settings. There is no Chat tab: the system chat
-///   (main session) opens full screen from the Overview "More" menu (`isChatPresented`).
-/// - Activity hosts Overview, Activity and Automations behind a segmented control; the
-///   Overview "More" list holds Usage, Skill Workshop, Instances, Dreaming, Workboard and Docs.
+/// - Three tabs only, left to right: Agents, Home, Activity. Home hosts only the Overview and
+///   is selected at launch (`AppShellTab.launchTab`). Activity hosts Activity and Automations
+///   behind a segmented control.
+/// - There is no Settings tab: the Settings hub opens full screen from the gear button of Home.
+///   There is no Chat tab either: the system chat (main session) opens full screen from the
+///   Home "More" menu ("Talk to OpenClaw").
+/// - Chat and Settings share one full-screen cover (`AppShellNavigation.coverKind`), so
+///   switching from one to the other swaps the content instead of presenting twice.
 /// - The tab bar is never hidden or inset by hand: every hosted screen lets the system apply
-///   the bottom safe area. The full-screen chat covers the tab bar, so its composer never
+///   the bottom safe area. The full-screen cover hides the tab bar, so the chat composer never
 ///   overlaps it and stays above the keyboard.
-/// - The tab bar stays in place (no minimise-on-scroll). Glass stays on navigation and
-///   controls; hosted screens keep their opaque grouped backgrounds.
+/// - Glass stays on navigation and controls; hosted screens keep their opaque grouped backgrounds.
 struct AppShellRootView: View {
     @Bindable var navigation: AppShellNavigation
     let context: AppShellContext
 
-    /// The bar only knows three tabs; Overview and Automations map to the Activity tab.
+    /// The bar only knows three tabs; Automations maps to the Activity tab.
     private var selectionBinding: Binding<AppShellTab> {
         Binding<AppShellTab>(
             get: { self.navigation.selection.barTab },
             set: { newValue in self.navigation.userSelected(newValue) })
+    }
+
+    /// True while either the chat or the Settings hub is shown over the shell.
+    private var coverBinding: Binding<Bool> {
+        Binding<Bool>(
+            get: { self.navigation.isChatPresented || self.navigation.isSettingsPresented },
+            set: { newValue in
+                if !newValue {
+                    self.navigation.dismissCover()
+                }
+            })
     }
 
     var body: some View {
@@ -36,26 +50,36 @@ struct AppShellRootView: View {
             }
 
             Tab(
+                AppShellTab.overview.title,
+                systemImage: AppShellTab.overview.systemImage,
+                value: AppShellTab.overview)
+            {
+                AppShellOverviewView(navigation: self.navigation, context: self.context)
+            }
+
+            Tab(
                 AppShellTab.activity.title,
                 systemImage: AppShellTab.activity.systemImage,
                 value: AppShellTab.activity)
             {
                 AppShellActivityView(navigation: self.navigation, context: self.context)
             }
-
-            Tab(
-                AppShellTab.settings.title,
-                systemImage: AppShellTab.settings.systemImage,
-                value: AppShellTab.settings)
-            {
-                AppShellSettingsView(navigation: self.navigation, context: self.context)
-            }
         }
         .tabViewStyle(.sidebarAdaptable)
         .sensoryFeedback(.selection, trigger: self.navigation.selection.barTab)
-        .fullScreenCover(isPresented: self.$navigation.isChatPresented) {
-            AppShellChatView(navigation: self.navigation)
+        .fullScreenCover(isPresented: self.coverBinding) {
+            self.cover
         }
         .accessibilityIdentifier("AppShell.Root")
+    }
+
+    @ViewBuilder
+    private var cover: some View {
+        switch self.navigation.coverKind {
+        case .chat:
+            AppShellChatView(navigation: self.navigation)
+        case .settings:
+            AppShellSettingsView(navigation: self.navigation, context: self.context)
+        }
     }
 }

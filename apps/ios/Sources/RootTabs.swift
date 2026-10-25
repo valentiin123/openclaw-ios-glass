@@ -157,8 +157,8 @@ struct RootTabs: View {
     /// Shell destination reported to UI tests. A Gateway landing keeps the legacy "gateway"
     /// value so existing readiness expectations stay valid; other values are `AppShellTab` raw values.
     private var readinessDestination: String {
-        if self.shell.selection == .settings, self.shell.settingsPresentation == .gateway {
-            return "gateway"
+        if self.shell.isSettingsPresented {
+            return self.shell.settingsPresentation == .gateway ? "gateway" : "settings"
         }
         return self.shell.selection.rawValue
     }

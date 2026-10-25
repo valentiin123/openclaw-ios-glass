@@ -43,6 +43,7 @@ struct AgentsBoardView: View {
     @State private var detailItem: AgentTileItem?
     @State private var confirmStop: AgentTileItem?
     @State private var chatPresenter: SubagentChatPresenter = SubagentChatPresenter()
+    @State private var tileFrames: AgentTileFrameStore = AgentTileFrameStore()
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -98,7 +99,7 @@ struct AgentsBoardView: View {
             .sheet(item: self.$detailItem) { item in
                 SubagentResultSheet(model: self.model, node: AgentTileFactory.node(for: item))
             }
-            .subagentChatPresentation(presenter: self.chatPresenter)
+            .subagentChatZoomPresentation(presenter: self.chatPresenter)
             .confirmationDialog(
                 "Stop this subagent and its descendants?",
                 isPresented: self.confirmStopBinding,
@@ -208,7 +209,8 @@ struct AgentsBoardView: View {
             canStop: model.canStop,
             onOpen: { opened in self.openChat(opened) },
             onStop: { stopped in self.requestStop(stopped) },
-            onDetails: { opened in self.openDetail(opened) })
+            onDetails: { opened in self.openDetail(opened) },
+            frameStore: self.tileFrames)
     }
 
     @ViewBuilder
@@ -237,7 +239,8 @@ struct AgentsBoardView: View {
     }
 
     private func openChat(_ item: AgentTileItem) {
-        self.chatPresenter.open(item.session.key)
+        let rect: CGRect? = self.tileFrames.frame(for: item.session.key)
+        self.chatPresenter.open(item.session.key, from: rect)
     }
 
     private func openDetail(_ item: AgentTileItem) {

@@ -56,15 +56,20 @@ struct SettingsHubScreen: View {
 
     // MARK: - Sections
 
+    private var connectionStatus: InstancesConnectionStatus {
+        InstancesConnectionStatus(appModel: self.appModel)
+    }
+
     private var connectionSection: some View {
-        Section {
-            SettingsConnectionHeader(
-                status: InstancesConnectionStatus(appModel: self.appModel),
-                pendingApprovals: self.appModel.pendingExecApprovalCount,
-                openGateway: { self.navigationPath.append(.gateway) },
-                openApprovals: { self.navigationPath.append(.approvals) })
-                .openClawEntrance(index: 0)
-                .ngCardRow()
+        let status: InstancesConnectionStatus = self.connectionStatus
+        let showHint: Bool = SettingsConnectionHeader.isVisible(for: status)
+        return Section {
+            if showHint {
+                SettingsConnectionHeader(
+                    status: status,
+                    openGateway: { self.navigationPath.append(.gateway) })
+                    .openClawEntrance(index: 0)
+            }
             NavigationLink(value: SettingsRoute.gateway) {
                 NativeSettingsRow(
                     title: String(localized: "Gateway"),

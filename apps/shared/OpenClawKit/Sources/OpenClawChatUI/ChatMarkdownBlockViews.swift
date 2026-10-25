@@ -37,35 +37,52 @@ struct ChatCodeBlockView: View {
     }
 
     private var codeBody: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                if let language = self.block.language {
-                    Text(language).font(OpenClawChatTypography.caption2)
-                }
-                Spacer(minLength: 0)
-                // Always visible: with no language the control is the header's only content, so a
-                // hover-only reveal would leave an empty strip. Keep the header caption-height; the
-                // control's larger hit target overflows into the block padding.
-                ChatCopyButton(text: self.block.code, label: "Copy code")
-                    .frame(height: 20)
-            }
-            .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 0) {
+            self.codeHeader
             ScrollView(.horizontal, showsIndicators: false) {
                 Text(self.attributedCode)
                     .font(OpenClawChatTypography.mono(size: 13, relativeTo: .footnote))
-                    .foregroundStyle(OpenClawChatTheme.assistantText)
+                    .foregroundStyle(OpenClawChatTheme.inkStrong)
                     .lineSpacing(2)
                     .textSelection(.enabled)
+                    .padding(10)
             }
+            .background(OpenClawChatTheme.surfaceAlt)
         }
-        .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(OpenClawChatTheme.subtleCard)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)))
+                .strokeBorder(OpenClawChatTheme.hairline, lineWidth: 1))
+    }
+
+    /// Language tag on the left, copy control on the right. The copy control is always visible:
+    /// with no language it would otherwise leave an empty strip. The strip stays caption-height;
+    /// the control's larger hit target overflows into the strip padding.
+    private var codeHeader: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "chevron.left.forwardslash.chevron.right")
+                .font(OpenClawChatTypography.caption2)
+                .foregroundStyle(OpenClawChatTheme.brandSecondary)
+                .accessibilityHidden(true)
+            Text(verbatim: self.languageLabel)
+                .font(OpenClawChatTypography.mono(size: 11, weight: .semibold, relativeTo: .caption2))
+                .foregroundStyle(OpenClawChatTheme.inkMuted)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            ChatCopyButton(text: self.block.code, label: "Copy code")
+                .frame(height: 20)
+        }
+        .foregroundStyle(OpenClawChatTheme.inkMuted)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(OpenClawChatTheme.surfaceHover)
+    }
+
+    private var languageLabel: String {
+        let trimmed: String = self.block.language?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if trimmed.isEmpty { return String(localized: "Code") }
+        return trimmed.lowercased()
     }
 
     private var attributedCode: AttributedString {
@@ -171,7 +188,7 @@ struct ChatMarkdownTableView: View {
                             .gridColumnAlignment(self.columnAlignment(column))
                     }
                 }
-                Divider()
+                Divider().overlay(OpenClawChatTheme.brandAccent.opacity(0.5))
                 ForEach(self.table.rows.indices, id: \.self) { rowIndex in
                     GridRow {
                         ForEach(self.table.rows[rowIndex].indices, id: \.self) { column in
@@ -185,16 +202,16 @@ struct ChatMarkdownTableView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(OpenClawChatTheme.subtleCard)
+                .fill(OpenClawChatTheme.surfaceCard)
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)))
+                        .strokeBorder(OpenClawChatTheme.hairline, lineWidth: 1)))
     }
 
     private func cell(_ text: String, isHeader: Bool) -> some View {
         Text(self.inlineMarkdown(text))
             .font(isHeader ? OpenClawChatTypography.footnoteSemiBold : OpenClawChatTypography.footnote)
-            .foregroundStyle(OpenClawChatTheme.assistantText)
+            .foregroundStyle(isHeader ? OpenClawChatTheme.inkStrong : OpenClawChatTheme.inkStandard)
             .textSelection(.enabled)
     }
 
@@ -258,18 +275,30 @@ struct ChatMarkdownListView: View {
             if let text = marker.text {
                 Text(verbatim: text)
                     .font(self.typography.proseFont)
-                    .foregroundStyle(self.textColor)
+                    .foregroundStyle(self.markerColor)
                     .monospacedDigit()
                     .accessibilityLabel(self.markerAccessibilityLabel(at: index))
             }
             if let checkbox = marker.checkbox {
                 Image(systemName: checkbox == .checked ? "checkmark.square.fill" : "square")
                     .font(self.typography.proseFont)
-                    .foregroundStyle(self.textColor)
+                    .foregroundStyle(self.checkboxColor(checkbox))
                     .accessibilityLabel(Text(self.checkboxAccessibilityLabel(checkbox)))
             }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    /// Bullets and numbers carry the accent in assistant replies; user text keeps its own ink.
+    private var markerColor: Color {
+        if self.context == .user { return self.textColor }
+        return OpenClawChatTheme.brandAccent
+    }
+
+    private func checkboxColor(_ checkbox: ChatMarkdownListItem.Checkbox) -> Color {
+        if self.context == .user { return self.textColor }
+        if checkbox == .checked { return OpenClawChatTheme.brandSecondary }
+        return OpenClawChatTheme.inkMuted
     }
 
     private func checkboxAccessibilityLabel(

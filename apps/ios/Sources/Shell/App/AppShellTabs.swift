@@ -57,11 +57,11 @@ struct AppShellAgentsView: View {
     }
 }
 
-// MARK: - Activity tab (Overview, Activity, Automations)
+// MARK: - Activity tab (Activity, Automations)
 
-/// Activity tab: a glass segmented control chooses between Overview, the activity feed and
-/// Automations. Each section keeps its own NavigationStack; the system handles the bottom
-/// safe area (tab bar) for all of them.
+/// Activity tab: a glass segmented control chooses between the activity feed and Automations.
+/// Each section keeps its own NavigationStack; the system handles the bottom safe area
+/// (tab bar) for both of them. The Overview lives in the Home tab, not here.
 struct AppShellActivityView: View {
     @Bindable var navigation: AppShellNavigation
     let context: AppShellContext
@@ -109,8 +109,6 @@ struct AppShellActivityView: View {
     @ViewBuilder
     private var content: some View {
         switch self.currentSection {
-        case .overview:
-            AppShellOverviewView(navigation: self.navigation, context: self.context)
         case .activity:
             self.nativeList(
                 tab: .activity,
@@ -160,20 +158,36 @@ struct AppShellNativeListView: View {
 
 // MARK: - Settings
 
-/// Settings tab. The hub owns its NavigationStack and reports typed pushes through
-/// `settingsPath`. A gateway deep link lands on the Gateway screen directly, which is the
-/// only place a pending gateway setup request is consumed.
+/// Full-screen Settings, opened from the gear button of Home (there is no Settings tab).
+/// The hub owns its NavigationStack and reports typed pushes through `settingsPath`; a close
+/// button replaces the sidebar action at the top left. A gateway deep link lands on the
+/// Gateway screen directly, which is the only place a pending gateway setup request is
+/// consumed; its back button returns to the hub.
 struct AppShellSettingsView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Bindable var navigation: AppShellNavigation
     let context: AppShellContext
 
+    private var closeAction: OpenClawSidebarHeaderAction {
+        OpenClawSidebarHeaderAction(
+            systemName: "xmark",
+            accessibilityLabel: "Close",
+            accessibilityIdentifier: "AppShell.Settings.Close",
+            action: self.close)
+    }
+
     var body: some View {
+        self.content
+            .accessibilityIdentifier("AppShell.Settings")
+    }
+
+    @ViewBuilder
+    private var content: some View {
         switch self.navigation.settingsPresentation {
         case .hub:
             SettingsHubScreen(
                 navigationPath: self.$navigation.settingsPath,
-                headerSidebarAction: nil,
+                headerSidebarAction: self.closeAction,
                 onRouteChange: self.context.onSettingsRouteChange,
                 onApprovalNotificationsRoute: self.context.onApprovalNotificationsRoute)
         case .gateway:
@@ -202,7 +216,11 @@ struct AppShellSettingsView: View {
 
     private func showHub() {
         OpenClawMotion.perform(reduceMotion: self.reduceMotion) {
-            self.navigation.settingsPresentation = .hub
+            self.navigation.showSettingsHub()
         }
+    }
+
+    private func close() {
+        self.navigation.closeSettings()
     }
 }

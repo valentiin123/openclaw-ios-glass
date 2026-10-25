@@ -239,7 +239,7 @@ struct OpenClawGlassSegmented<Value: Hashable>: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
             }
-            .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+            .foregroundStyle(isSelected ? OpenClawPalette.texteFort : OpenClawPalette.texteAtténué)
             .padding(.horizontal, 14)
             .frame(maxWidth: .infinity, minHeight: 44)
             .contentShape(Capsule())
@@ -436,7 +436,7 @@ struct OpenClawGlassButtonStyle: ButtonStyle {
         if self.kind == .prominent, self.isEnabled {
             return Color.white
         }
-        return Color.primary
+        return OpenClawPalette.texteFort
     }
 
     private static func glass(
@@ -570,7 +570,7 @@ struct OpenClawGlassChip: View {
                 .font(OpenClawType.captionSemiBold)
                 .lineLimit(1)
         }
-        .foregroundStyle(self.isSelected ? Color.primary : Color.secondary)
+        .foregroundStyle(self.isSelected ? OpenClawPalette.texteFort : OpenClawPalette.texteAtténué)
         .padding(.horizontal, OpenClawGlassMetric.chipHorizontalPadding)
         .padding(.vertical, OpenClawGlassMetric.chipVerticalPadding)
     }
@@ -647,7 +647,7 @@ struct OpenClawToolbarButton: View {
     private var icon: some View {
         Image(systemName: self.systemImage)
             .font(OpenClawType.subheadSemiBold)
-            .foregroundStyle(self.tint ?? Color.primary)
+            .foregroundStyle(self.tint ?? OpenClawPalette.texteFort)
             .frame(minWidth: self.side, minHeight: self.side)
             .contentShape(Rectangle())
     }

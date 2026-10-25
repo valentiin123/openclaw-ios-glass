@@ -6,40 +6,46 @@ import SwiftUI
 
 /// Top-level destinations of the app shell.
 ///
-/// Only three of them are in the tab bar: Agents, Activity and Settings (`barTab`).
-/// `overview` and `automations` stay valid destinations (deep links, `RootTabs` reads
-/// `selection`), but they are sections of the Activity tab, chosen with a segmented control.
-/// There is no Chat tab: the system chat (main session) is presented full screen on top of
-/// the shell (`AppShellNavigation.isChatPresented`) and opened from the Overview "More" menu.
+/// The tab bar holds exactly three tabs, left to right: Agents, Home, Activity (`barTabs`).
+/// - `overview` is the Home tab (title "Home"). It hosts only the Overview and is selected at launch.
+/// - `activity` and `automations` are the two sections of the Activity tab, chosen with a
+///   segmented control. Both stay valid destinations (deep links, `RootTabs` reads `selection`).
+/// There is no Settings tab: the Settings hub opens full screen over the shell from the gear
+/// button of Home (`AppShellNavigation.isSettingsPresented`). There is no Chat tab either: the
+/// system chat (main session) is presented full screen (`AppShellNavigation.isChatPresented`)
+/// and opened from the Home "More" menu ("Talk to OpenClaw").
 enum AppShellTab: String, CaseIterable, Hashable, Identifiable {
     case overview
     case agents
     case activity
     case automations
-    case settings
+
+    /// Tab selected when the app launches without a requested destination.
+    static let launchTab: AppShellTab = .overview
+
+    /// The three tabs of the bar, left to right.
+    static let barTabs: [AppShellTab] = [.agents, .overview, .activity]
 
     var id: String {
         self.rawValue
     }
 
-    /// Keys reuse the existing `SidebarDestination` titles so current translations apply.
+    /// Keys reuse existing localized titles ("Home", "Activity", "Automations", "Agents").
     var title: LocalizedStringKey {
         switch self {
-        case .overview: "Overview"
+        case .overview: "Home"
         case .agents: "Agents"
         case .activity: "Activity"
         case .automations: "Automations"
-        case .settings: "Settings"
         }
     }
 
     var systemImage: String {
         switch self {
-        case .overview: "chart.bar"
+        case .overview: "house"
         case .agents: "person.2"
         case .activity: "waveform.path.ecg"
         case .automations: "timer"
-        case .settings: "gearshape"
         }
     }
 
@@ -47,12 +53,12 @@ enum AppShellTab: String, CaseIterable, Hashable, Identifiable {
         "AppShell.Tab.\(self.rawValue)"
     }
 
-    /// Tab shown in the bar for this destination. Overview, Activity and Automations share the
+    /// Tab shown in the bar for this destination. Activity and Automations share the
     /// Activity tab, so the bar stays at three items.
     var barTab: AppShellTab {
         switch self {
-        case .overview, .activity, .automations: .activity
-        case .agents, .settings: self
+        case .activity, .automations: .activity
+        case .overview, .agents: self
         }
     }
 
@@ -93,10 +99,10 @@ enum AppShellAgentsSection: String, CaseIterable, Hashable, Identifiable {
 
 // MARK: - Activity sections
 
-/// Sections of the Activity tab. Each maps to an `AppShellTab` destination, so legacy landings
-/// (`.overview`, `.cron`) keep working and the host can still read `selection`.
+/// Sections of the Activity tab (Activity, Automations). Each maps to an `AppShellTab`
+/// destination, so legacy landings (`.activity`, `.cron`) keep working and the host can
+/// still read `selection`.
 enum AppShellActivitySection: String, CaseIterable, Hashable, Identifiable {
-    case overview
     case activity
     case automations
 
@@ -106,15 +112,13 @@ enum AppShellActivitySection: String, CaseIterable, Hashable, Identifiable {
 
     init(tab: AppShellTab) {
         switch tab {
-        case .overview: self = .overview
         case .automations: self = .automations
-        case .agents, .activity, .settings: self = .activity
+        case .overview, .agents, .activity: self = .activity
         }
     }
 
     var tab: AppShellTab {
         switch self {
-        case .overview: .overview
         case .activity: .activity
         case .automations: .automations
         }
@@ -122,7 +126,6 @@ enum AppShellActivitySection: String, CaseIterable, Hashable, Identifiable {
 
     var title: OpenClawTextValue {
         switch self {
-        case .overview: "Overview"
         case .activity: "Activity"
         case .automations: "Automations"
         }
@@ -130,7 +133,6 @@ enum AppShellActivitySection: String, CaseIterable, Hashable, Identifiable {
 
     var systemImage: String {
         switch self {
-        case .overview: "chart.bar"
         case .activity: "waveform.path.ecg"
         case .automations: "timer"
         }
@@ -139,7 +141,7 @@ enum AppShellActivitySection: String, CaseIterable, Hashable, Identifiable {
 
 // MARK: - Secondary destinations
 
-/// Screens reached from the Overview menu. Each hosted screen owns its NavigationStack,
+/// Screens reached from the Home menu. Each hosted screen owns its NavigationStack,
 /// so they are presented in a sheet rather than pushed (no nested stacks).
 enum AppShellMoreItem: String, CaseIterable, Hashable, Identifiable {
     case usage
@@ -204,18 +206,26 @@ enum AppShellMoreItem: String, CaseIterable, Hashable, Identifiable {
     }
 }
 
-/// Landing representation for the Overview tab. `.sessions` is pushed on the Overview stack;
+/// Landing representation for the Home tab. `.sessions` is pushed on the Home stack;
 /// `.more` is converted by `AppShellNavigation` into a sheet (`presentedMore`).
 enum AppShellHomeRoute: Hashable {
     case sessions
     case more(AppShellMoreItem)
 }
 
-/// The Settings tab shows the hub. A gateway deep link lands on the Gateway screen directly,
-/// which is also where a pending gateway setup request is delivered.
+/// What the Settings full-screen cover shows. The hub is the normal presentation. A Gateway
+/// landing shows the direct Gateway screen (the only place a pending gateway setup request is
+/// consumed) with a back button that returns to the hub.
 enum AppShellSettingsPresentation: Equatable {
     case hub
     case gateway
+}
+
+/// Content of the single full-screen cover of the shell. Chat and Settings share one cover so
+/// that moving from one to the other swaps content instead of dismissing and presenting again.
+enum AppShellCover: Equatable {
+    case chat
+    case settings
 }
 
 // MARK: - Legacy mapping
@@ -229,20 +239,23 @@ struct AppShellLanding: Equatable {
     var settingsRoute: SettingsRoute?
     /// True when the landing opens the system chat (full screen) over the shell.
     var presentsChat: Bool
+    /// True when the landing opens the Settings hub (full screen) over the shell.
+    var presentsSettings: Bool
 
     init(tab: AppShellTab) {
         self.tab = tab
         self.presentsChat = false
+        self.presentsSettings = false
         self.homeRoute = nil
         self.agentsSection = nil
         self.settingsRoute = nil
     }
 
     init(legacy destination: RootTabs.SidebarDestination) {
-        self.init(tab: .overview)
+        self.init(tab: AppShellTab.launchTab)
         switch destination {
         case .chat:
-            // No Chat tab: the chat is presented over the Overview.
+            // No Chat tab: the chat is presented over Home.
             self.tab = .overview
             self.presentsChat = true
         case .overview:
@@ -277,18 +290,24 @@ struct AppShellLanding: Equatable {
             self.land(more: .docs)
         case .desktop, .terminal:
             // WebView-backed pages are not part of the native shell.
-            self.tab = .settings
+            self.landOnSettings(route: nil)
         case .settings:
-            self.tab = .settings
+            self.landOnSettings(route: nil)
         case .gateway:
-            self.tab = .settings
-            self.settingsRoute = .gateway
+            self.landOnSettings(route: .gateway)
         }
     }
 
     private mutating func land(more item: AppShellMoreItem) {
         self.tab = .overview
         self.homeRoute = .more(item)
+    }
+
+    /// Settings open from Home: the tab underneath is Home and the hub is shown full screen.
+    private mutating func landOnSettings(route: SettingsRoute?) {
+        self.tab = .overview
+        self.presentsSettings = true
+        self.settingsRoute = route
     }
 }
 
@@ -308,10 +327,15 @@ final class AppShellNavigation {
     var presentedMore: AppShellMoreItem?
     /// System chat (main session) presented full screen over the shell.
     var isChatPresented: Bool = false
+    /// Settings hub presented full screen over the shell (opened from the Home gear button).
+    var isSettingsPresented: Bool = false
+    /// Content of the shared full-screen cover. Kept after dismissal so the dismissal animation
+    /// still shows the screen that is leaving.
+    var coverKind: AppShellCover = .chat
     private(set) var resetTokens: [AppShellTab: Int] = [:]
     @ObservationIgnored private var lastActivitySection: AppShellActivitySection = .activity
 
-    init(landing: AppShellLanding = AppShellLanding(tab: .overview)) {
+    init(landing: AppShellLanding = AppShellLanding(tab: AppShellTab.launchTab)) {
         self.selection = landing.tab
         self.apply(landing)
     }
@@ -338,7 +362,7 @@ final class AppShellNavigation {
         }
     }
 
-    /// Segmented control of the Activity tab.
+    /// Segmented control of the Activity tab (Activity, Automations).
     func selectActivitySection(_ section: AppShellActivitySection) {
         guard section.tab != self.selection else { return }
         self.presentedMore = nil
@@ -357,6 +381,7 @@ final class AppShellNavigation {
         self.presentedMore = item
     }
 
+    /// Automations is a section of the Activity tab.
     func openAutomations() {
         self.move(to: .automations)
     }
@@ -364,6 +389,8 @@ final class AppShellNavigation {
     /// Presents the system chat full screen over the current tab (no tab switch).
     func openChat() {
         self.presentedMore = nil
+        self.resetSettings()
+        self.coverKind = .chat
         self.isChatPresented = true
     }
 
@@ -371,17 +398,34 @@ final class AppShellNavigation {
         self.isChatPresented = false
     }
 
-    /// Opens Settings on a given route, or on the hub root when `route` is nil.
+    /// Opens the Settings hub full screen, on a given route, or on the hub root when `route`
+    /// is nil. The selected tab does not change, so closing Settings returns to the same place.
     func openSettings(route: SettingsRoute?) {
-        var landing = AppShellLanding(tab: .settings)
-        landing.settingsRoute = route
-        self.apply(landing)
+        self.presentedMore = nil
+        self.isChatPresented = false
+        self.presentSettings(route: route)
     }
 
-    /// Route currently visible in Settings, or nil outside Settings / on the hub root.
+    func closeSettings() {
+        self.resetSettings()
+    }
+
+    /// Leaves the direct Gateway screen and shows the hub root.
+    func showSettingsHub() {
+        self.settingsPresentation = .hub
+        self.settingsPath.removeAll()
+    }
+
+    /// Dismisses whichever screen the full-screen cover is showing.
+    func dismissCover() {
+        self.isChatPresented = false
+        self.resetSettings()
+    }
+
+    /// Route currently visible in Settings, or nil when Settings is closed / on the hub root.
     /// Replaces `RootTabs.activeSettingsRoute` (exec-approval prompt suppression).
     var activeSettingsRoute: SettingsRoute? {
-        guard self.selection == .settings else { return nil }
+        guard self.isSettingsPresented else { return nil }
         if let last = self.settingsPath.last { return last }
         return self.settingsPresentation == .gateway ? .gateway : nil
     }
@@ -401,6 +445,9 @@ final class AppShellNavigation {
     }
 
     private func apply(_ landing: AppShellLanding) {
+        if landing.presentsChat {
+            self.coverKind = .chat
+        }
         self.isChatPresented = landing.presentsChat
         self.move(to: landing.tab)
         if let section = landing.agentsSection {
@@ -409,11 +456,10 @@ final class AppShellNavigation {
         switch landing.tab {
         case .overview:
             self.applyHome(landing)
-        case .settings:
-            self.applySettings(landing)
         case .agents, .activity, .automations:
             break
         }
+        self.applySettings(landing)
     }
 
     private func applyHome(_ landing: AppShellLanding) {
@@ -431,27 +477,39 @@ final class AppShellNavigation {
     }
 
     private func applySettings(_ landing: AppShellLanding) {
-        guard let route = landing.settingsRoute else {
-            self.settingsPresentation = .hub
-            self.settingsPath = []
+        guard landing.presentsSettings else {
+            self.resetSettings()
             return
         }
+        self.isChatPresented = false
+        self.presentSettings(route: landing.settingsRoute)
+    }
+
+    private func presentSettings(route: SettingsRoute?) {
+        self.coverKind = .settings
+        self.isSettingsPresented = true
         if route == .gateway {
             self.settingsPresentation = .gateway
             self.settingsPath = []
-        } else {
+        } else if let route {
             self.settingsPresentation = .hub
             self.settingsPath = [route]
+        } else {
+            self.settingsPresentation = .hub
+            self.settingsPath = []
         }
+    }
+
+    private func resetSettings() {
+        self.isSettingsPresented = false
+        self.settingsPath.removeAll()
+        self.settingsPresentation = .hub
     }
 
     private func reselect(_ tab: AppShellTab) {
         switch tab {
         case .overview:
             self.homePath.removeAll()
-        case .settings:
-            self.settingsPath.removeAll()
-            self.settingsPresentation = .hub
         case .agents, .activity, .automations:
             let next: Int = self.resetToken(for: tab) + 1
             self.resetTokens[tab] = next

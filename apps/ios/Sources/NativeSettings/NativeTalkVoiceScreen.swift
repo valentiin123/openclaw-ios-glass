@@ -52,6 +52,9 @@ struct NativeTalkVoiceScreen: View {
     @Environment(NodeAppModel.self) private var appModel
     @AppStorage(VoiceWakePreferences.enabledKey) private var voiceWakeEnabled: Bool = false
     @State private var loader: NativeSettingsLoader<NativeTalkVoiceSummary>
+    @State private var newWord: String = ""
+    @State private var isSavingWords: Bool = false
+    @State private var wordsError: String?
     var headerSidebarAction: OpenClawSidebarHeaderAction?
     var embedded: Bool = false
     var onClose: (() -> Void)?
@@ -85,6 +88,7 @@ struct NativeTalkVoiceScreen: View {
     private var list: some View {
         List {
             self.deviceSection
+            self.wakeWordsSection
             self.gatewaySection
         }
         .refreshable { await self.loader.refresh(appModel: self.appModel, showSpinner: false) }
@@ -165,9 +169,6 @@ struct NativeTalkVoiceScreen: View {
         let notSet: String = String(localized: "Not set")
         let providerValue: String = summary.provider ?? notSet
         let localeValue: String = summary.speechLocale ?? notSet
-        let triggersValue: String = summary.triggers.isEmpty
-            ? notSet
-            : summary.triggers.joined(separator: ", ")
         let silenceValue: String = Self.silenceText(summary.silenceTimeoutMs, fallback: notSet)
         let interruptValue: String = Self.interruptText(summary.interruptOnSpeech, fallback: notSet)
 
@@ -191,12 +192,100 @@ struct NativeTalkVoiceScreen: View {
             value: interruptValue,
             systemImage: "hand.raised",
             index: 5)
-        self.valueRow(
-            title: String(localized: "Wake words"),
-            value: triggersValue,
-            systemImage: "text.bubble",
-            index: 6,
-            lineLimit: nil)
+    }
+
+    // MARK: - Wake words (voicewake.set, operator.write)
+
+    private var wakeWordsSection: some View {
+        Section {
+            if let summary = self.loadedSummary {
+                ForEach(summary.triggers, id: \.self) { (word: String) in
+                    self.wakeWordRow(word, canDelete: summary.triggers.count > 1)
+                }
+                self.addWordRow(summary)
+                if let error = self.wordsError {
+                    Text(verbatim: error)
+                        .font(OpenClawType.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } header: {
+            NativeSettingsHeader("Wake words")
+        } footer: {
+            NativeSettingsFooter("Wake words are shared with every device connected to this Gateway.")
+        }
+    }
+
+    private func wakeWordRow(_ word: String, canDelete: Bool) -> some View {
+        Text(verbatim: word)
+            .font(OpenClawType.body)
+            .frame(maxWidth: .infinity, minHeight: OpenClawHitTarget.minimum, alignment: .leading)
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                if canDelete {
+                    Button(role: .destructive) {
+                        Task { await self.removeWord(word) }
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                }
+            }
+    }
+
+    private func addWordRow(_ summary: NativeTalkVoiceSummary) -> some View {
+        TextField("Add a wake word", text: self.$newWord)
+            .font(OpenClawType.body)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .submitLabel(.done)
+            .disabled(self.isSavingWords)
+            .frame(minHeight: OpenClawHitTarget.minimum)
+            .onSubmit {
+                Task { await self.addWord() }
+            }
+            .accessibilityIdentifier("NativeSettings.TalkVoice.AddWakeWord")
+    }
+
+    private func addWord() async {
+        let word: String = self.newWord.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !word.isEmpty, let summary = self.loadedSummary else { return }
+        if summary.triggers.contains(word) {
+            self.newWord = ""
+            return
+        }
+        var words: [String] = summary.triggers
+        words.append(word)
+        let saved: Bool = await self.saveWords(words)
+        if saved { self.newWord = "" }
+    }
+
+    private func removeWord(_ word: String) async {
+        guard let summary = self.loadedSummary else { return }
+        let words: [String] = summary.triggers.filter { (item: String) -> Bool in item != word }
+        _ = await self.saveWords(words)
+    }
+
+    /// Calls `voicewake.set` with `{ triggers: [String] }`; the Gateway normalizes and broadcasts `voicewake.changed`.
+    private func saveWords(_ words: [String]) async -> Bool {
+        let cleaned: [String] = VoiceWakePreferences.sanitizeTriggerWords(words)
+        self.isSavingWords = true
+        defer { self.isSavingWords = false }
+        do {
+            let result: [String] = try await NativeSettingsGateway.call(
+                appModel: self.appModel,
+                method: "voicewake.set",
+                params: ["triggers": cleaned]).strings("triggers")
+            let stored: [String] = VoiceWakePreferences.sanitizeTriggerWords(result)
+            VoiceWakePreferences.saveTriggerWords(stored)
+            if var summary = self.loadedSummary {
+                summary.triggers = stored
+                self.loader.state = .loaded(summary)
+            }
+            self.wordsError = nil
+            return true
+        } catch {
+            self.wordsError = error.localizedDescription
+            return false
+        }
     }
 
     private func valueRow(

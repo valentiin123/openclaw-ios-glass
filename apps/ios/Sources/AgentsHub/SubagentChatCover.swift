@@ -12,6 +12,8 @@ import SwiftUI
 /// What the shell presents: the session key of the subagent to open.
 struct SubagentChatRequest: Identifiable, Hashable, Sendable {
     let key: String
+    /// Global frame of the tapped tile (zoom origin). Nil -> plain cross-fade.
+    var sourceRect: CGRect?
     var id: String { self.key }
 }
 
@@ -27,6 +29,9 @@ struct SubagentChatRoute: Hashable, Sendable {
 @Observable
 final class SubagentChatStackModel {
     var path: [SubagentChatRoute] = []
+
+    /// Set by the zoom host: the root screen closes through it (reverse animation) instead of `dismiss`.
+    @ObservationIgnored var onCloseRoot: (@MainActor () -> Void)?
 
     func open(_ key: String) {
         let trimmed: String = key.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -52,6 +57,36 @@ final class SubagentChatPresenter {
         self.request = SubagentChatRequest(key: trimmed)
     }
 
+    /// Zoom host: presents WITHOUT the system animation; the host animates the frame itself.
+    func open(_ key: String, from rect: CGRect?) {
+        let trimmed: String = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let value: SubagentChatRequest = SubagentChatRequest(key: trimmed, sourceRect: rect)
+        self.setRequest(value)
+    }
+
+    /// Called by the zoom host once the reverse animation is done.
+    func finishClose() {
+        self.setRequest(nil)
+    }
+
+    private func setRequest(_ value: SubagentChatRequest?) {
+        var transaction: Transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            self.request = value
+        }
+    }
+
+    /// Hook for the zoom host (no tile frame -> cross-fade).
+    var zoomHook: OpenClawChatOpenSubagent {
+        let presenter: SubagentChatPresenter = self
+        let hook: OpenClawChatOpenSubagent = { key in
+            presenter.open(key, from: nil)
+        }
+        return hook
+    }
+
     /// Host hook handed to `OpenClawChatView` through `openClawChatOpenSubagent`.
     var openHook: OpenClawChatOpenSubagent {
         let presenter: SubagentChatPresenter = self
@@ -66,8 +101,14 @@ final class SubagentChatPresenter {
 
 struct SubagentChatCover: View {
     let rootKey: String
+    let onCloseRoot: (@MainActor () -> Void)?
 
     @State private var stack: SubagentChatStackModel = SubagentChatStackModel()
+
+    init(rootKey: String, onCloseRoot: (@MainActor () -> Void)? = nil) {
+        self.rootKey = rootKey
+        self.onCloseRoot = onCloseRoot
+    }
 
     private var pathBinding: Binding<[SubagentChatRoute]> {
         Binding<[SubagentChatRoute]>(
@@ -83,6 +124,11 @@ struct SubagentChatCover: View {
                 }
         }
         .accessibilityIdentifier("AppShell.SubagentChat")
+        .onAppear(perform: self.installCloseHandler)
+    }
+
+    private func installCloseHandler() {
+        self.stack.onCloseRoot = self.onCloseRoot
     }
 
     private func screen(key: String, isRoot: Bool) -> some View {

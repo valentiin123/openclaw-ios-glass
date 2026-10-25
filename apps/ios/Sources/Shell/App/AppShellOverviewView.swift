@@ -3,7 +3,9 @@ import SwiftUI
 
 // MARK: - Overview tab
 
-/// Overview tab: `CommandCenterTab` as root of a NavigationStack driven by `homePath`.
+/// Home tab (middle of the bar, selected at launch): `CommandCenterTab` as root of a NavigationStack driven by `homePath`.
+/// It hosts only the Overview; Activity and Automations live in the Activity tab.
+/// The gear button opens the full Settings hub full screen over the shell (no Settings tab).
 /// - Sessions are pushed (edge swipe-back stays enabled through `appShellSwipeBack`).
 /// - Secondary screens (Usage, Skill Workshop, Instances, Dreaming, Workboard, Docs) open in a
 ///   sheet because each hosted screen owns its own NavigationStack.
@@ -66,7 +68,7 @@ struct AppShellOverviewView: View {
             headerSidebarAction: self.moreAction,
             dashboardModel: self.context.sidebarModel,
             openChat: self.openChat,
-            openSettings: self.openGateway,
+            openSettings: self.openSettings,
             openSessions: self.openSessions,
             openApprovals: self.openApprovals,
             openAutomations: self.openAutomations,
@@ -133,6 +135,12 @@ struct AppShellOverviewView: View {
 
     private func openChat() {
         self.navigation.openChat()
+    }
+
+    /// Gear button: the full Settings hub, full screen, on its root.
+    private func openSettings() {
+        self.navigation.presentedMore = nil
+        self.navigation.openSettings(route: nil)
     }
 
     private func openGateway() {

@@ -41,7 +41,7 @@ enum OpenClawTextValue: ExpressibleByStringLiteral {
 
 struct OpenClawProBackground: View {
     var body: some View {
-        // Page background: OLED black in dark, warm paper (#faf9f7) in light.
+        // Page background: palette fond (dark #0E1015, light warm paper #FAF9F7).
         OpenClawBrand.void
             .ignoresSafeArea()
     }
@@ -243,12 +243,12 @@ struct OpenClawNoticeBanner: View {
                             Spacer(minLength: 0)
                             self.ownerLabel.text
                                 .font(OpenClawType.captionSemiBold)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(OpenClawPalette.texteAtténué)
                         }
 
                         self.message.text
                             .font(OpenClawType.footnote)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(OpenClawPalette.texteAtténué)
                             .fixedSize(horizontal: false, vertical: true)
 
                         self.detailView
@@ -297,7 +297,7 @@ struct OpenClawNoticeBanner: View {
                     format: String(localized: "Request ID: %@"),
                     value))
                     .font(OpenClawType.monoSmallMedium)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(OpenClawPalette.texteAtténué)
                     .textSelection(.enabled)
             }
         }
@@ -363,7 +363,7 @@ struct OpenClawAdaptiveHeaderRow<Leading: View, Accessory: View>: View {
             if let subtitle {
                 subtitle.text
                     .font(self.subtitleFont)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(OpenClawPalette.texteAtténué)
                     .lineLimit(self.subtitleLineLimit)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -379,7 +379,7 @@ struct OpenClawToggleIndicator: View {
 
     var body: some View {
         Capsule()
-            .fill(self.isOn ? OpenClawBrand.accentFill : Color.secondary.opacity(0.35))
+            .fill(self.isOn ? OpenClawBrand.accentFill : OpenClawPalette.texteAtténué.opacity(0.35))
             .frame(width: 52, height: 32)
             .overlay(alignment: self.isOn ? .trailing : .leading) {
                 Circle()
