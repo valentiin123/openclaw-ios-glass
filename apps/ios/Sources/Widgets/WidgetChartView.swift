@@ -9,6 +9,7 @@ struct WidgetChartView: View {
     var height: CGFloat = 240
 
     @State private var selectedX: String?
+    @State private var selectedAngle: Double?
 
     /// Point aplati avec tous ses textes précalculés : le compilateur n'a plus rien à inférer dans le builder.
     private struct FlatPoint: Identifiable {
@@ -246,6 +247,7 @@ struct WidgetChartView: View {
         }
         let categoryKey: Text = Text(verbatim: "Category")
         let valueKey: Text = Text(verbatim: "Value")
+        let selected: FlatPoint? = self.pieSlice(atAngle: self.selectedAngle, in: slices)
         return Chart(slices) { (slice: FlatPoint) in
             SectorMark(
                 angle: .value(valueKey, slice.y),
@@ -256,7 +258,38 @@ struct WidgetChartView: View {
                 .accessibilityLabel(slice.x)
                 .accessibilityValue(slice.accessibilityValue)
         }
+        .chartAngleSelection(value: self.$selectedAngle)
         .chartLegend(position: .bottom, alignment: .center)
+        .chartBackground { (proxy: ChartProxy) in
+            self.pieCenter(proxy: proxy, selected: selected)
+        }
+        .openClawAnimation(value: self.selectedAngle)
+    }
+
+    /// Secteur situé sous l'angle sélectionné (cumul des valeurs positives).
+    private func pieSlice(atAngle angle: Double?, in slices: [FlatPoint]) -> FlatPoint? {
+        guard let angle else { return nil }
+        var cumulative: Double = 0
+        for slice in slices {
+            cumulative += slice.y
+            if angle <= cumulative { return slice }
+        }
+        return nil
+    }
+
+    private func pieCenter(proxy: ChartProxy, selected: FlatPoint?) -> some View {
+        GeometryReader { (geometry: GeometryProxy) in
+            self.pieCenterContent(proxy: proxy, geometry: geometry, selected: selected)
+        }
+    }
+
+    @ViewBuilder
+    private func pieCenterContent(proxy: ChartProxy, geometry: GeometryProxy, selected: FlatPoint?) -> some View {
+        if let selected, let anchor = proxy.plotFrame {
+            let rect: CGRect = geometry[anchor]
+            ChartSelectionTooltip(title: selected.x, value: selected.accessibilityValue)
+                .position(x: rect.midX, y: rect.midY)
+        }
     }
 }
 
