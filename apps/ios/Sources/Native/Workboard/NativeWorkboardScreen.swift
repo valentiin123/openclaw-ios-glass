@@ -264,8 +264,8 @@ struct WorkboardListContent: View {
         }
         ForEach(self.visibleGroups, id: \.status) { group in
             Section {
-                ForEach(group.cards) { card in
-                    self.row(card)
+                ForEach(Array(group.cards.enumerated()), id: \.element.id) { (index: Int, card: WorkboardCardItem) in
+                    self.row(card, index: index)
                 }
             } header: {
                 WorkboardSectionHeader(
@@ -291,7 +291,7 @@ struct WorkboardListContent: View {
         return false
     }
 
-    private func row(_ card: WorkboardCardItem) -> some View {
+    private func row(_ card: WorkboardCardItem, index: Int) -> some View {
         let busy: Bool = self.busyCardIds.contains(card.id)
         return WorkboardCardView(
             card: card,
@@ -299,6 +299,7 @@ struct WorkboardListContent: View {
             canMove: self.canMove,
             isBusy: busy,
             onMove: self.onMove)
+            .openClawEntrance(index: index)
             .ngCardRow()
             .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
             .workboardDraggable(card.id, enabled: self.canMove && !busy)

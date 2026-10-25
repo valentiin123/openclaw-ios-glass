@@ -60,6 +60,7 @@ struct SettingsHubScreen: View {
                 pendingApprovals: self.appModel.pendingExecApprovalCount,
                 openGateway: { self.navigationPath.append(.gateway) },
                 openApprovals: { self.navigationPath.append(.approvals) })
+                .openClawEntrance(index: 0)
                 .ngCardRow()
             NavigationLink(value: SettingsRoute.gateway) {
                 NativeSettingsRow(

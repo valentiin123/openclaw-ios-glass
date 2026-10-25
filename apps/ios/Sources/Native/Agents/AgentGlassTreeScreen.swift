@@ -37,8 +37,37 @@ private struct AgentRowSwipeModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .offset(x: self.offsetX)
+            .background { self.revealHint }
             .simultaneousGesture(self.dragGesture)
             .sensoryFeedback(.impact(weight: .light), trigger: self.reachedThreshold)
+    }
+
+    // Icon revealed behind the tile while it travels: details (swipe right) or stop (swipe left).
+    // The offset is zero under Reduce Motion, so the hint never shows there.
+    @ViewBuilder
+    private var revealHint: some View {
+        if !self.reduceMotion, self.travel > 0 {
+            HStack(spacing: 0) {
+                self.hintIcon(name: "info.circle", tint: OpenClawColor.info)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, OpenClawSpace.md)
+        } else if !self.reduceMotion, self.travel < 0 {
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                self.hintIcon(name: "stop.circle.fill", tint: OpenClawColor.danger)
+            }
+            .padding(.horizontal, OpenClawSpace.md)
+        }
+    }
+
+    private func hintIcon(name: String, tint: Color) -> some View {
+        let opacity: Double = self.reachedThreshold ? 1 : 0.5
+        return Image(systemName: name)
+            .font(OpenClawType.headline)
+            .foregroundStyle(tint)
+            .opacity(opacity)
+            .accessibilityHidden(true)
     }
 
     private var dragGesture: some Gesture {
@@ -301,13 +330,19 @@ struct AgentGlassTreeScreen: View {
 
     private func rows(now: Date) -> some View {
         let list: [FlatSubagentRow] = self.model.visibleRows
-        return LazyVStack(alignment: .leading, spacing: 12) {
+        return GlassEffectContainer(spacing: OpenClawGlassMetric.containerSpacing) {
+            self.rowStack(list, now: now)
+        }
+        .openClawAnimation(value: list)
+        .accessibilityElement(children: .contain)
+    }
+
+    private func rowStack(_ list: [FlatSubagentRow], now: Date) -> some View {
+        LazyVStack(alignment: .leading, spacing: 12) {
             ForEach(list) { row in
                 self.rowView(row, now: now)
             }
         }
-        .openClawAnimation(value: list)
-        .accessibilityElement(children: .contain)
     }
 
     private func rowView(_ row: FlatSubagentRow, now: Date) -> some View {

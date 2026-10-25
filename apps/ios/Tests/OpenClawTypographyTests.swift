@@ -41,8 +41,8 @@ struct OpenClawTypographyTests {
         #expect(settings.contains(".fixedSize(horizontal: false, vertical: true)"))
         #expect(settings.contains(".textSelection(.enabled)"))
         let dashboard = try String(contentsOf: Self.sourceURL("Settings/DashboardPageScreen.swift"), encoding: .utf8)
-        #expect(dashboard.contains("Text(\"Open Gateway settings\")"))
-        #expect(dashboard.contains(".font(OpenClawType.body)"))
+        #expect(dashboard.contains("SettingsProTab("))
+        #expect(!dashboard.contains("EmbeddedDashboardContent("))
     }
 
     @Test(arguments: ["ChatFileAttachment.swift", "ChatMessageReactions.swift"])

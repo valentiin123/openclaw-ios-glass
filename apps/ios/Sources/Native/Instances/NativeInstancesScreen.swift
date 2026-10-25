@@ -217,8 +217,10 @@ struct NativeInstancesScreen: View {
                 pendingCount: snapshot?.pending.count ?? 0,
                 pairedCount: snapshot?.paired.count ?? 0,
                 connectedCount: snapshot?.presence.count ?? 0)
+                .openClawEntrance(index: 0)
                 .instancesCardRow()
             InstancesPairingEntryCard()
+                .openClawEntrance(index: 1)
                 .instancesCardRow()
         }
     }

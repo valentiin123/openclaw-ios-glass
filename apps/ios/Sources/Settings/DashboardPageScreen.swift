@@ -1,11 +1,11 @@
 import OpenClawKit
 import SwiftUI
 
-/// Dashboard pages share the Settings hub's authority gate, bridge, and native fallback.
+/// Dashboard pages are fully native: they always show the SwiftUI Settings screens.
+/// No web content is embedded here. `EmbeddedDashboardContent` and
+/// `SettingsHubScreen.usesDashboard` stay available for tests and legacy callers only.
 struct DashboardPageScreen: View {
-    @Environment(NodeAppModel.self) private var appModel
-    @Environment(AppAppearanceModel.self) private var appearanceModel
-    @Environment(GatewayConnectionController.self) private var gatewayController
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var navigationPath: [SettingsRoute] = []
     let path: String
     let title: String
@@ -38,58 +38,14 @@ struct DashboardPageScreen: View {
         .onChange(of: self.navigationPath) { _, path in
             self.onRouteChange?(path.last)
         }
+        .animation(OpenClawMotion.animation(reduceMotion: self.reduceMotion), value: self.navigationPath.count)
+        .openClawHaptic(.selection, trigger: self.navigationPath.count)
     }
 
-    @ViewBuilder private var root: some View {
-        let config = self.appModel.activeGatewayConnectConfig
-        if config?.ingressAuthorization != nil {
-            OpenClawEmptyState(
-                systemImage: "safari",
-                title: "Browser session needed",
-                message: "This Dashboard needs a browser session. Native chat and Gateway settings remain available.")
-            {
-                OpenClawGlassButton(
-                    title: "Open Gateway settings",
-                    systemImage: "network",
-                    kind: .prominent)
-                {
-                    self.navigationPath.append(.gateway)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background { OpenClawProBackground() }
-            .navigationTitle(self.title)
-            .navigationBarTitleDisplayMode(.inline)
-        } else if SettingsHubScreen.usesDashboard(
-            isOperatorConnected: self.appModel.isOperatorGatewayConnected,
-            hasOperatorAdminScope: self.appModel.hasOperatorAdminScope,
-            isDemoMode: self.appModel.isAppleReviewDemoModeEnabled,
-            isScreenshotMode: ProcessInfo.processInfo.arguments.contains("--openclaw-screenshot-mode")),
-            let url = AuthenticatedControlUI.pageURL(config: config, path: self.path, queryItems: [])
-        {
-            EmbeddedDashboardContent(
-                appModel: self.appModel,
-                appearanceModel: self.appearanceModel,
-                gatewayController: self.gatewayController,
-                url: url,
-                config: config,
-                openPanel: { panel in
-                    if let route = SettingsHubScreen.route(for: panel) {
-                        self.navigationPath.append(route)
-                    }
-                })
-                .navigationTitle(self.title)
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    if let headerSidebarAction {
-                        OpenClawSidebarToolbarItem(action: headerSidebarAction, placement: .topBarLeading)
-                    }
-                }
-        } else {
-            SettingsProTab(
-                registersNavigationDestinations: false,
-                headerSidebarAction: self.headerSidebarAction,
-                onApprovalNotificationsRoute: self.onApprovalNotificationsRoute)
-        }
+    private var root: some View {
+        SettingsProTab(
+            registersNavigationDestinations: false,
+            headerSidebarAction: self.headerSidebarAction,
+            onApprovalNotificationsRoute: self.onApprovalNotificationsRoute)
     }
 }
