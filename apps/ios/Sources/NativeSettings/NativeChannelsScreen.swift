@@ -12,6 +12,7 @@ struct NativeChannelItem: Identifiable, Equatable {
     var configuredCount: Int
     var issueMessage: String?
     var lastError: String?
+    var accounts: [NativeChannelAccount] = []
 }
 
 /// Gateway call for Channels. Verified: `channels.status` (params: probe?, timeoutMs?, channel?;
@@ -62,6 +63,7 @@ enum NativeChannelsLoader {
                 if let error, !error.isEmpty { lastError = error }
             }
         }
+        let mappedAccounts: [NativeChannelAccount] = Self.mapAccounts(accounts)
         var issueMessage: String?
         for issue in issues where issue.string("channel") == channelId {
             let message: String? = issue.string("message")
@@ -80,7 +82,29 @@ enum NativeChannelsLoader {
             connectedCount: connected,
             configuredCount: configured,
             issueMessage: issueMessage,
-            lastError: lastError)
+            lastError: lastError,
+            accounts: mappedAccounts)
+    }
+
+    /// Verified fields (`ChannelAccountSnapshotSchema`): accountId, name?, enabled?, configured?, running?, connected?, lastError?.
+    private static func mapAccounts(_ accounts: [[String: Any]]) -> [NativeChannelAccount] {
+        var result: [NativeChannelAccount] = []
+        for account in accounts {
+            guard let accountId: String = account.string("accountId"), !accountId.isEmpty else { continue }
+            let name: String = account.string("name") ?? accountId
+            let errorText: String? = account.string("lastError")
+            let cleanError: String? = (errorText?.isEmpty ?? true) ? nil : errorText
+            let mapped: NativeChannelAccount = NativeChannelAccount(
+                id: accountId,
+                name: name.isEmpty ? accountId : name,
+                isRunning: account.bool("running") ?? false,
+                isConnected: account.bool("connected") ?? false,
+                isConfigured: account.bool("configured") ?? false,
+                isEnabled: account.bool("enabled") ?? true,
+                lastError: cleanError)
+            result.append(mapped)
+        }
+        return result
     }
 }
 
@@ -192,7 +216,7 @@ struct NativeChannelsScreen: View {
                     NativeSettingsHeader("Channels")
                 }
             } footer: {
-                NativeSettingsFooter("Channel setup and login are managed in the Dashboard.")
+                NativeSettingsFooter("Open a channel to start, stop or log out its accounts. Setup and login are managed in the Dashboard.")
             }
         }
         .openClawAnimation(value: items)
@@ -218,14 +242,19 @@ struct NativeChannelsScreen: View {
         let pill: NativeSettingsPill = NativeChannelsPresentation.pill(item)
         let detail: String? = NativeChannelsPresentation.detail(item)
         let copyValue: String = detail ?? item.id
-        return NativeSettingsRow(
-            title: item.label,
-            detail: detail,
-            systemImage: item.systemImage,
-            tint: pill.tone.color,
-            pill: pill)
-            .nativeSettingsCopyMenu(copyValue)
-            .nativeSettingsCopySwipe(copyValue)
-            .openClawEntrance(index: index)
+        return NavigationLink {
+            NativeChannelDetailScreen(channelId: item.id, title: item.label)
+        } label: {
+            NativeSettingsRow(
+                title: item.label,
+                detail: detail,
+                systemImage: item.systemImage,
+                tint: pill.tone.color,
+                pill: pill)
+        }
+        .nativeSettingsCopyMenu(copyValue)
+        .nativeSettingsCopySwipe(copyValue)
+        .openClawEntrance(index: index)
+        .accessibilityIdentifier("NativeSettings.Channels.Row.\(item.id)")
     }
 }

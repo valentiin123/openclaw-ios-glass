@@ -51,6 +51,15 @@ enum NativeNotificationsPresentation {
         }
     }
 
+    /// Delivery details only mean something once the user has allowed notifications.
+    static func isAllowed(_ status: UNAuthorizationStatus) -> Bool {
+        switch status {
+        case .authorized, .provisional, .ephemeral: return true
+        case .denied, .notDetermined: return false
+        @unknown default: return false
+        }
+    }
+
     static func settingPill(_ setting: UNNotificationSetting) -> NativeSettingsPill {
         switch setting {
         case .enabled:
@@ -95,7 +104,9 @@ struct NativeNotificationsScreen: View {
         List {
             if let state = self.model.current {
                 self.statusSection(state)
-                self.deliverySection(state)
+                if NativeNotificationsPresentation.isAllowed(state.status) {
+                    self.deliverySection(state)
+                }
             } else {
                 Section {
                     ProgressView()
@@ -144,7 +155,7 @@ struct NativeNotificationsScreen: View {
                     .openClawEntrance(index: 1)
             }
         } footer: {
-            NativeSettingsFooter("Approval requests and agent replies can reach you as notifications. Change the delivery style in iOS Settings.")
+            NativeSettingsFooter("Approval requests and agent replies can reach you as notifications.")
         }
     }
 
@@ -158,19 +169,21 @@ struct NativeNotificationsScreen: View {
                 title: String(localized: "Alerts"),
                 systemImage: "text.bubble",
                 pill: alertPill)
-                .openClawEntrance(index: 0)
+                .openClawEntrance(index: 2)
             NativeSettingsRow(
                 title: String(localized: "Sounds"),
                 systemImage: "speaker.wave.2",
                 pill: soundPill)
-                .openClawEntrance(index: 1)
+                .openClawEntrance(index: 3)
             NativeSettingsRow(
                 title: String(localized: "Badges"),
                 systemImage: "app.badge",
                 pill: badgePill)
-                .openClawEntrance(index: 2)
+                .openClawEntrance(index: 4)
         } header: {
             NativeSettingsHeader("Delivery")
+        } footer: {
+            NativeSettingsFooter("Change the alert style, sounds and badges in iOS Settings.")
         }
     }
 }

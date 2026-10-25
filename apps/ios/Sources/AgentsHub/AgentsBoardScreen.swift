@@ -184,6 +184,7 @@ struct AgentsBoardView: View {
             .padding(.top, 4)
             .padding(.bottom, OpenClawProMetric.bottomScrollInset)
         }
+        .scrollBounceBehavior(.always)
         .refreshable { await self.loadBoardIfPossible() }
     }
 
@@ -194,14 +195,27 @@ struct AgentsBoardView: View {
         }
     }
 
+    /// Empty state only once an agent is selected and its board finished loading without error.
+    /// While loading (or on error) the grid stays empty: the spinner / error row already say why.
+    private var showsEmptyState: Bool {
+        if model.agents.isEmpty { return false }
+        if model.isLoadingBoard { return false }
+        return model.boardError == nil
+    }
+
+    @ViewBuilder
     private func grid(now: Date) -> some View {
         let list: [AgentTileItem] = self.items(now: now)
-        return LazyVGrid(columns: self.columns, alignment: .center, spacing: 12) {
-            ForEach(list) { item in
-                self.tile(item)
+        if list.isEmpty, self.showsEmptyState {
+            AgentsBoardEmptyState()
+        } else {
+            LazyVGrid(columns: self.columns, alignment: .center, spacing: 12) {
+                ForEach(list) { item in
+                    self.tile(item)
+                }
             }
+            .agentsHubAnimation(value: list)
         }
-        .agentsHubAnimation(value: list)
     }
 
     private func tile(_ item: AgentTileItem) -> some View {
@@ -270,6 +284,57 @@ struct AgentsBoardView: View {
         Task {
             await model.stop(node)
             if let agentID { await model.loadBoard(agentID: agentID) }
+        }
+    }
+}
+
+// MARK: - Empty state
+
+/// Shown when the selected agent has no root conversation and no subagent to display.
+/// Pixel sprite, a title and one sentence. The entrance goes through `OpenClawMotion`;
+/// with Reduce Motion it is a short fade without any movement.
+/// It lives inside the board scroll view, below the selector inset, so it never overlaps the selector.
+struct AgentsBoardEmptyState: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @State private var shown: Bool = false
+
+    private let spriteSize: CGFloat = 72
+
+    private var entranceOffset: CGFloat {
+        if self.reduceMotion { return 0 }
+        if self.shown { return 0 }
+        return OpenClawMotion.entranceOffset
+    }
+
+    var body: some View {
+        VStack(spacing: 12) {
+            AgentTileSpriteView(kind: AgentTileEmptyContent.sprite)
+                .frame(width: self.spriteSize, height: self.spriteSize)
+            Text(verbatim: AgentTileEmptyContent.title)
+                .font(OpenClawType.headline)
+                .foregroundStyle(OpenClawBrand.textPrimary)
+                .multilineTextAlignment(.center)
+            Text(verbatim: AgentTileEmptyContent.message)
+                .font(OpenClawType.subhead)
+                .foregroundStyle(OpenClawBrand.textSecondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 24)
+        .padding(.top, 48)
+        .opacity(self.shown ? 1 : 0)
+        .offset(y: self.entranceOffset)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("AppShell.Agents.EmptyState")
+        .onAppear(perform: self.reveal)
+    }
+
+    private func reveal() {
+        if self.shown { return }
+        OpenClawMotion.perform(reduceMotion: self.reduceMotion) {
+            self.shown = true
         }
     }
 }

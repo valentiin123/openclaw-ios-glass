@@ -3,7 +3,7 @@ import Observation
 import SwiftUI
 
 /// One installed skill, mapped tolerantly from a `skills.status` entry.
-struct NativeSkillItem: Identifiable, Equatable {
+struct NativeSkillItem: Identifiable, Hashable {
     let id: String
     var name: String
     var detail: String?
@@ -13,6 +13,10 @@ struct NativeSkillItem: Identifiable, Equatable {
     var isEligible: Bool
     var isBlocked: Bool
     var missingCount: Int
+    /// `primaryEnv` of `skills.status`: the variable the skill's API key is exposed as.
+    var primaryEnv: String?
+    /// `requirements.env` of `skills.status`: variables the skill needs.
+    var requiredEnv: [String] = []
 }
 
 /// Parses `skills.status`. Verified shape (`SkillsStatusReport` in OpenClawKit):
@@ -33,6 +37,8 @@ enum NativeSkillsParser {
             let platformBlocked: Bool = entry.bool("platformIncompatible") ?? false
             let isBlocked: Bool = allowlistBlocked || platformBlocked
             let missing: Int = Self.missingCount(entry.dict("missing"))
+            let primaryEnv: String? = entry.string("primaryEnv")
+            let requiredEnv: [String] = entry.dict("requirements")?.strings("env") ?? []
             let item: NativeSkillItem = NativeSkillItem(
                 id: key,
                 name: name,
@@ -42,7 +48,9 @@ enum NativeSkillsParser {
                 isDisabled: isDisabled,
                 isEligible: isEligible,
                 isBlocked: isBlocked,
-                missingCount: missing)
+                missingCount: missing,
+                primaryEnv: primaryEnv,
+                requiredEnv: requiredEnv)
             result.append(item)
         }
         result.sort { (lhs: NativeSkillItem, rhs: NativeSkillItem) -> Bool in
@@ -156,6 +164,7 @@ struct NativeSkillsScreen: View {
     @Environment(NodeAppModel.self) private var appModel
     @State private var model: NativeSkillsModel = NativeSkillsModel()
     @State private var searchText: String = ""
+    @State private var secretsItem: NativeSkillItem?
     var headerSidebarAction: OpenClawSidebarHeaderAction?
     var embedded: Bool = false
     var onClose: (() -> Void)?
@@ -170,6 +179,11 @@ struct NativeSkillsScreen: View {
             self.stateView
         }
         .task { await self.model.refresh(appModel: self.appModel, showSpinner: true) }
+        .sheet(item: self.$secretsItem) { (item: NativeSkillItem) in
+            NativeSkillSecretsScreen(item: item) {
+                Task { await self.model.refresh(appModel: self.appModel, showSpinner: false) }
+            }
+        }
     }
 
     private var stateView: some View {
@@ -266,14 +280,27 @@ struct NativeSkillsScreen: View {
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if canEdit {
                 self.swipeToggle(item)
+                self.secretsButton(item)
             }
         }
         .glassActionsMenu(copying: item.id) {
             if canEdit {
                 self.swipeToggle(item)
                     .disabled(isPending)
+                self.secretsButton(item)
+                    .disabled(isPending)
             }
         }
+    }
+
+    /// Opens the write-only API key / environment sheet (`skills.update`, operator.admin).
+    private func secretsButton(_ item: NativeSkillItem) -> some View {
+        Button {
+            self.secretsItem = item
+        } label: {
+            Label("API key & environment", systemImage: "key")
+        }
+        .tint(OpenClawBrand.accent)
     }
 
     private func swipeToggle(_ item: NativeSkillItem) -> some View {

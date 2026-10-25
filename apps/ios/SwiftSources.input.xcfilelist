@@ -457,12 +457,14 @@ Sources/Native/Workboard/NativeWorkboardScreen.swift
 Sources/Native/Workboard/WorkboardModels.swift
 Sources/Native/Workboard/WorkboardViewModel.swift
 Sources/NativeSettings/NativeAppearanceScreen.swift
+Sources/NativeSettings/NativeChannelDetailScreen.swift
 Sources/NativeSettings/NativeChannelPairingScreen.swift
 Sources/NativeSettings/NativeChannelsScreen.swift
 Sources/NativeSettings/NativeNotificationsScreen.swift
 Sources/NativeSettings/NativePermissionsScreen.swift
 Sources/NativeSettings/NativeSettingsRouter.swift
 Sources/NativeSettings/NativeSettingsSupport.swift
+Sources/NativeSettings/NativeSkillSecretsScreen.swift
 Sources/NativeSettings/NativeSkillsScreen.swift
 Sources/NativeSettings/NativeSkillsSearchScreen.swift
 Sources/NativeSettings/NativeTalkVoiceScreen.swift

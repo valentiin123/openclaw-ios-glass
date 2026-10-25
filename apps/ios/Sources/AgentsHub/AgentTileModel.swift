@@ -75,6 +75,24 @@ enum AgentTileState: Equatable, Sendable {
     }
 }
 
+// MARK: - Empty state
+
+/// Copy and sprite of the Agents board empty state (no root conversation and no subagent to show).
+/// Computed properties so the strings resolve at display time, in the current locale.
+enum AgentTileEmptyContent {
+    static var sprite: AgentTileSpriteKind {
+        .ghost
+    }
+
+    static var title: String {
+        String(localized: "Nothing here yet")
+    }
+
+    static var message: String {
+        String(localized: "Start a conversation with this agent. Its subagents will show up here too.")
+    }
+}
+
 // MARK: - Item
 
 struct AgentTileItem: Identifiable, Equatable, Sendable {
