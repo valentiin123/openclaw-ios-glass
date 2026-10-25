@@ -433,10 +433,10 @@ extension OpenClawChatView {
             let viewModel = self.viewModel
             ChatSubagentWaitList(
                 wait: wait,
-                sessionKey: viewModel.sessionKey,
                 fallbackOpen: { key in
                     viewModel.switchSession(to: key)
-                })
+                },
+                sessionKey: viewModel.sessionKey)
         }
     }
 
