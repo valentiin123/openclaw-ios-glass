@@ -4,6 +4,12 @@ These screens are used by `Settings/SettingsHubScreen.swift` (embedded in its st
 
 Design (redesign): few grouped sections (Connection, Agent & Voice, Notifications, Channels, Skills, Appearance, Permissions, About). Content sits on opaque list surfaces; Liquid Glass is only used through shared controls (`OpenClawGlassButton`, `OpenClawGlassSegmented`). One shared spring (`OpenClawMotion`), Reduce Motion honored, 44 pt targets, Dynamic Type (the row stacks its pill under the text at accessibility sizes), VoiceWare labels via combined accessibility elements, swipe actions and context menus (copy) where useful. Every screen accepts `onClose` to show a Done button when presented as a sheet.
 
+Shared gestures and feedback (`Native/Glass/`):
+
+- `GlassToastModel` + `glassToastHost(_:)`: one glass capsule toast ("Copied") with the shared spring, a VoiceOver announcement and a success haptic. `NativeSettingsPage` owns one toast per page and injects it into the environment.
+- `glassCopySwipe(_:)` / `glassCopyMenu(_:)` / `glassActionsMenu(copying:actions:)`: trailing swipe and long-press menu. `nativeSettingsCopySwipe` / `nativeSettingsCopyMenu` now delegate to them. Use `glassActionsMenu` when a row needs extra actions: one context menu per row (Skills: Enable/Disable + Copy key; Permissions: Allow + Open iOS Settings).
+- Pull-to-dismiss is intentionally NOT added to these pages: sheets already dismiss by drag, and the 140 pt grab zone of `chatPullToDismiss` would compete with `refreshable` on the lists. The Done button stays the primary way out.
+
 Older integration notes below are kept for reference.
 
 ## Files

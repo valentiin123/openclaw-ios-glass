@@ -128,18 +128,34 @@ struct NativeUsageDayChart: View {
     let range: NativeUsageRange
     @Binding var selectedDate: Date?
 
+    @State private var style: NativeUsageChartStyle = .bars
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            self.selectionHeader
+            HStack(alignment: .top, spacing: 8) {
+                self.selectionHeader
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                NativeUsageStylePicker(style: self.$style, options: [.bars, .line])
+            }
             Chart {
                 ForEach(self.days) { day in
-                    BarMark(
-                        x: .value("Day", day.date, unit: .day),
-                        y: .value("Value", self.value(day)))
-                        .foregroundStyle(self.barColor(for: day))
-                        .cornerRadius(3)
-                        .accessibilityLabel(day.date.formatted(.dateTime.weekday(.abbreviated).month().day()))
-                        .accessibilityValue(self.metric.full(self.value(day)))
+                    if self.style == .line {
+                        LineMark(
+                            x: .value("Day", day.date, unit: .day),
+                            y: .value("Value", self.value(day)))
+                            .interpolationMethod(.monotone)
+                            .foregroundStyle(OpenClawBrand.accent)
+                            .accessibilityLabel(day.date.formatted(.dateTime.weekday(.abbreviated).month().day()))
+                            .accessibilityValue(self.metric.full(self.value(day)))
+                    } else {
+                        BarMark(
+                            x: .value("Day", day.date, unit: .day),
+                            y: .value("Value", self.value(day)))
+                            .foregroundStyle(self.barColor(for: day))
+                            .cornerRadius(3)
+                            .accessibilityLabel(day.date.formatted(.dateTime.weekday(.abbreviated).month().day()))
+                            .accessibilityValue(self.metric.full(self.value(day)))
+                    }
                 }
                 if let average = self.average {
                     RuleMark(y: .value("Average", average))
@@ -247,9 +263,33 @@ struct NativeUsageBreakdownChart: View {
     let metric: NativeUsageMetric
     @Binding var selectedTitle: String?
 
+    @State private var style: NativeUsageChartStyle = .bars
+
+    private var headerRow: some View {
+        HStack(alignment: .top, spacing: 8) {
+            self.selectionHeader
+                .frame(maxWidth: .infinity, alignment: .leading)
+            NativeUsageStylePicker(style: self.$style, options: [.bars, .share])
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            self.selectionHeader
+            self.headerRow
+            if self.style == .share {
+                NativeUsageShareChart(
+                    items: self.items,
+                    metric: self.metric,
+                    selectedTitle: self.$selectedTitle)
+            } else {
+                self.barsChart
+            }
+        }
+        .padding(14)
+        .ngCardSurface(radius: 16)
+    }
+
+    private var barsChart: some View {
             Chart(self.items) { item in
                 BarMark(
                     x: .value("Value", self.value(item)),
@@ -273,9 +313,6 @@ struct NativeUsageBreakdownChart: View {
             .frame(height: CGFloat(max(self.items.count, 1)) * 36 + 28)
             .openClawChartReveal()
             .openClawAnimation(value: self.selectedTitle)
-        }
-        .padding(14)
-        .ngCardSurface(radius: 16)
     }
 
     private func value(_ item: NativeUsageBreakdownItem) -> Double {

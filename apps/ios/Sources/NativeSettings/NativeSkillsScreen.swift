@@ -250,7 +250,12 @@ struct NativeSkillsScreen: View {
                 self.swipeToggle(item)
             }
         }
-        .nativeSettingsCopyMenu(item.id)
+        .glassActionsMenu(copying: item.id) {
+            if canEdit {
+                self.swipeToggle(item)
+                    .disabled(isPending)
+            }
+        }
     }
 
     private func swipeToggle(_ item: NativeSkillItem) -> some View {

@@ -122,6 +122,7 @@ final class NativePermissionsModel {
 @MainActor
 struct NativePermissionsScreen: View {
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.openURL) private var openURL
     @State private var model = NativePermissionsModel()
     var headerSidebarAction: OpenClawSidebarHeaderAction?
     var embedded: Bool = false
@@ -164,6 +165,11 @@ struct NativePermissionsScreen: View {
         }
     }
 
+    private func openSystemSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        self.openURL(url)
+    }
+
     private func canAsk(_ item: NativePermissionItem) -> Bool {
         item.status == .notDetermined && NativePermissionPresentation.canPromptInApp(item.permission)
     }
@@ -199,7 +205,7 @@ struct NativePermissionsScreen: View {
                 .disabled(busy)
             }
         }
-        .contextMenu {
+        .glassActionsMenu(copying: nil) {
             if canAsk {
                 Button {
                     Task { await self.model.request(item.permission) }
@@ -209,7 +215,11 @@ struct NativePermissionsScreen: View {
                 .disabled(busy)
             }
             if item.status != .granted {
-                NativeSettingsSystemSettingsButton()
+                Button {
+                    self.openSystemSettings()
+                } label: {
+                    Label("Open iOS Settings", systemImage: "gearshape")
+                }
             }
         }
     }

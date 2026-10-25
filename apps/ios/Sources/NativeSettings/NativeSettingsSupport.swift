@@ -130,6 +130,17 @@ struct NativeSettingsPill: Equatable {
     var tone: OpenClawStatusTone
 }
 
+/// Owns the page toast and injects it, so copy gestures anywhere below confirm through one glass capsule.
+private struct NativeSettingsToastScope: ViewModifier {
+    @State private var toast: GlassToastModel = GlassToastModel()
+
+    func body(content: Content) -> some View {
+        content
+            .environment(self.toast)
+            .glassToastHost(self.toast)
+    }
+}
+
 /// Page shell: NavigationStack (unless embedded in a parent stack), inline title, sidebar toolbar item,
 /// and an optional "Done" button when the page is presented as a sheet (`onClose`).
 struct NativeSettingsPage<Content: View>: View {
@@ -154,6 +165,7 @@ struct NativeSettingsPage<Content: View>: View {
             .font(OpenClawType.body)
             .scrollContentBackground(.hidden)
             .background { OpenClawProBackground() }
+            .modifier(NativeSettingsToastScope())
             .navigationTitle(self.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -166,6 +178,7 @@ struct NativeSettingsPage<Content: View>: View {
                             Text("Done")
                                 .font(OpenClawType.subheadSemiBold)
                         }
+                        .accessibilityIdentifier("NativeSettings.Done")
                     }
                 }
             }
@@ -336,29 +349,14 @@ struct NativeSettingsSystemSettingsButton: View {
 
 extension View {
     /// Trailing swipe action offering to copy `value`. Shows nothing when the value is empty.
+    /// Delegates to the shared glass copy gesture (toast, VoiceOver announcement, haptic).
     func nativeSettingsCopySwipe(_ value: String?) -> some View {
-        self.swipeActions(edge: .trailing) {
-            if let value, !value.isEmpty {
-                Button {
-                    UIPasteboard.general.string = value
-                } label: {
-                    Label("Copy", systemImage: "doc.on.doc")
-                }
-                .tint(OpenClawBrand.info)
-            }
-        }
+        self.glassCopySwipe(value)
     }
 
     /// Long-press menu offering to copy `value`. Shows nothing when the value is empty.
+    /// Delegates to the shared glass copy gesture (toast, VoiceOver announcement, haptic).
     func nativeSettingsCopyMenu(_ value: String?) -> some View {
-        self.contextMenu {
-            if let value, !value.isEmpty {
-                Button {
-                    UIPasteboard.general.string = value
-                } label: {
-                    Label("Copy", systemImage: "doc.on.doc")
-                }
-            }
-        }
+        self.glassCopyMenu(value)
     }
 }
