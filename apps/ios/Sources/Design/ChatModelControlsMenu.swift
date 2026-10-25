@@ -254,28 +254,15 @@ struct ChatModelControlsMenuItems: View {
         if self.viewModel.showsFastModeControls {
             self.fastModeOptions
         }
-        self.verbosityOptions
     }
 
     private var modelPicker: some View {
-        let sections = self.viewModel.modelPickerSections
+        let sections: ChatModelPickerSections = self.viewModel.modelPickerSectionsWithoutRecents
         return Group {
-            ChatActionMenuSectionHeader(
-                title: "Model",
-                detail: self.viewModel.modelSelectionTargetDescription)
-            if self.viewModel.canSelectDefaultModel {
-                self.modelOption(
-                    title: self.defaultModelLabel,
-                    providerID: self.defaultProviderID,
-                    selectionID: OpenClawChatViewModel.defaultModelSelectionID)
-            }
+            ChatActionMenuSectionHeader(title: "Model")
             if !sections.pinned.isEmpty {
                 ChatActionMenuSectionHeader(title: "Pinned")
                 self.modelOptions(sections.pinned)
-            }
-            if !sections.recent.isEmpty {
-                ChatActionMenuSectionHeader(title: "Recent")
-                self.modelOptions(sections.recent)
             }
             ForEach(sections.providers) { provider in
                 self.providerDrawer(provider)
@@ -453,66 +440,12 @@ struct ChatModelControlsMenuItems: View {
         .padding(.vertical, 6)
     }
 
-    @ViewBuilder
-    private var verbosityOptions: some View {
-        let selectionID = self.viewModel.verboseLevel
-        let resolvedSelectionID = ChatVerbosityControlPresentation.resolvedSelectionID(
-            selectionID: selectionID,
-            inheritedLevelID: self.viewModel.preferredVerboseLevel)
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 12) {
-                Image(systemName: "text.alignleft")
-                    .foregroundStyle(OpenClawBrand.accent)
-                    .frame(width: ChatActionMenuMetric.iconWidth, alignment: .leading)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Tool details")
-                        .font(OpenClawType.body)
-                    Text("Choose how much tool activity to show.")
-                        .font(OpenClawType.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 8)
-                if selectionID != OpenClawChatViewModel.inheritedThinkingSelectionID {
-                    ChatActionResetButton(accessibilityIdentifier: "chat-verbosity-use-default") {
-                        self.viewModel.selectVerboseLevel(OpenClawChatViewModel.inheritedThinkingSelectionID)
-                    }
-                    .disabled(self.viewModel.isUpdatingSessionSettings)
-                }
-            }
-            VStack(spacing: 0) {
-                Picker("Tool details", selection: Binding(
-                    get: { resolvedSelectionID },
-                    set: { self.viewModel.selectVerboseLevel($0) }))
-                {
-                    ForEach(ChatVerbosityControlPresentation.levelIDs, id: \.self) { level in
-                        Text(ChatVerbosityControlPresentation.label(levelID: level))
-                            .font(OpenClawType.caption)
-                            .tag(level)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .disabled(self.viewModel.isUpdatingSessionSettings)
-                .accessibilityIdentifier("chat-verbosity-control")
-            }
-            .frame(minHeight: ChatActionMenuMetric.rowHeight)
-            .contentShape(Rectangle())
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("chat-verbosity-hit-target")
-        }
-        .padding(.horizontal, ChatActionMenuMetric.horizontalPadding)
-        .padding(.bottom, 10)
-    }
-
     private func modelOptions(_ models: [OpenClawChatModelChoice]) -> some View {
         ForEach(models) { model in
             self.modelOption(
-                title: model.displayLabel,
+                title: model.pickerName,
                 providerID: ChatModelMenuPresentation.providerID(for: model),
                 selectionID: model.selectionID,
-                showsDefaultBadge: self.viewModel.isDefaultModel(model),
-                capabilityDescription: model.capabilityDescription,
                 unavailableDescription: self.viewModel.modelUnavailableDescription(model))
         }
     }
@@ -522,12 +455,6 @@ struct ChatModelControlsMenuItems: View {
             .first(where: self.viewModel.isDefaultModel)
             .flatMap(ChatModelMenuPresentation.providerID)
             ?? ChatModelMenuPresentation.providerID(forModelReference: self.agentModelReference)
-    }
-
-    private var defaultModelLabel: String {
-        ChatModelMenuPresentation.resolvedDefaultLabel(
-            sessionDefaultLabel: self.viewModel.defaultModelLabel,
-            agentModelReference: self.agentModelReference)
     }
 
     private func providerDrawer(_ provider: ChatModelProviderSection) -> some View {

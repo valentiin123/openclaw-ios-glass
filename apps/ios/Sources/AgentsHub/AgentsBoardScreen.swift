@@ -45,6 +45,7 @@ struct AgentsBoardView: View {
     @State private var confirmStop: AgentTileItem?
     @State private var chatPresenter: SubagentChatPresenter = SubagentChatPresenter()
     @State private var tileFrames: AgentTileFrameStore = AgentTileFrameStore()
+    @State private var newConversation: AgentNewConversationRequest?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -88,7 +89,7 @@ struct AgentsBoardView: View {
     // MARK: Body
 
     var body: some View {
-        self.content
+        self.contentWithNewConversation
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .safeAreaInset(edge: .top, spacing: 0) {
                 self.selectorBar
@@ -108,6 +109,16 @@ struct AgentsBoardView: View {
                 actions: { self.stopDialogActions })
     }
 
+    /// The new-conversation cover hangs off the content (not the outer chain) so it never competes with the
+    /// subagent chat cover presented by `subagentChatZoomPresentation`.
+    private var contentWithNewConversation: some View {
+        self.content
+            .fullScreenCover(
+                item: self.$newConversation,
+                onDismiss: self.newConversationDismissed,
+                content: { request in AgentNewConversationCover(request: request) })
+    }
+
     // MARK: Loading
 
     private func loadAgentsIfNeeded() async {
@@ -122,12 +133,30 @@ struct AgentsBoardView: View {
     // MARK: Selector
 
     private var selectorBar: some View {
-        HStack(spacing: 0) {
+        HStack(alignment: .center, spacing: 12) {
             self.selector
             Spacer(minLength: 0)
+            self.newConversationButton
         }
         .padding(.horizontal, OpenClawProMetric.pagePadding)
         .padding(.vertical, 8)
+    }
+
+    /// Round Liquid Glass + (44 pt), top right, same row as the agent selector. Opens an empty draft chat for
+    /// the selected agent. No session is created until the first message is sent.
+    private var newConversationButton: some View {
+        Button(action: self.startNewConversation) {
+            Image(systemName: "plus")
+                .font(OpenClawType.subheadSemiBold)
+                .foregroundStyle(.primary)
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
+                .openClawGlass(in: Circle(), interactive: true)
+        }
+        .buttonStyle(.plain)
+        .disabled(self.currentAgentID == nil)
+        .accessibilityLabel(Text("New conversation"))
+        .accessibilityIdentifier("AppShell.Agents.NewConversation")
     }
 
     private var selector: some View {
@@ -251,6 +280,17 @@ struct AgentsBoardView: View {
             if model.agents.isEmpty { await model.loadAgents() }
             await self.loadBoardIfPossible()
         }
+    }
+
+    private func startNewConversation() {
+        guard let id = self.currentAgentID else { return }
+        let request: AgentNewConversationRequest = AgentNewConversationRequest(agentID: id)
+        self.newConversation = request
+    }
+
+    /// The first message may have created a root session: reload so its tile appears first in the grid.
+    private func newConversationDismissed() {
+        Task { await self.loadBoardIfPossible() }
     }
 
     private func openChat(_ item: AgentTileItem) {

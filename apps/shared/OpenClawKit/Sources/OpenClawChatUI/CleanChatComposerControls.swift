@@ -29,14 +29,23 @@ struct CleanChatComposerSurface: ViewModifier {
                         ? AnyShapeStyle(OpenClawChatTheme.desktopComposer(in: self.colorScheme))
                         : OpenClawChatTheme.composerField))
         #else
-        // Composer is chrome: Liquid Glass on iOS 26, thin material before (see ChatMotion.swift).
-        content.openClawChatGlass(cornerRadius: self.cornerRadius)
+        // Composer is chrome: Liquid Glass on iOS 26, thin material before. Squircle (continuous) shape.
+        let squircle: RoundedRectangle = RoundedRectangle(cornerRadius: self.cornerRadius, style: .continuous)
+        if #available(iOS 26.0, *) {
+            content.glassEffect(Glass.regular, in: squircle)
+        } else {
+            content.background(.regularMaterial, in: squircle)
+        }
         #endif
     }
 }
 
 enum CleanChatComposerMetrics {
     static let surfaceCornerRadius: CGFloat = 20
+    /// Large continuous radius of the iOS composer bar (squircle, not a capsule).
+    static let squircleCornerRadius: CGFloat = 28
+    /// Extra room between the bar and the keyboard on iOS.
+    static let keyboardGap: CGFloat = 8
     static let restingMinHeight: CGFloat = 104
     static let controlTouchSize: CGFloat = 44
     static let primaryVisualSize: CGFloat = 32
@@ -129,7 +138,19 @@ public struct OpenClawChatContextUsageControl: View {
         self.onCompact = onCompact
     }
 
+    @ViewBuilder
     public var body: some View {
+        #if os(iOS)
+        ChatPopoverButton {
+            self.popoverContent
+        } label: {
+            CleanChatContextUsageLabel(usage: self.usage, controlSize: self.controlSize)
+        }
+        .help(self.tokensLine)
+        .accessibilityLabel("Context usage")
+        .accessibilityValue(self.tokensLine)
+        .accessibilityIdentifier("chat-context-usage")
+        #else
         Menu {
             Text(self.tokensLine)
                 .font(OpenClawChatTypography.body)
@@ -156,7 +177,30 @@ public struct OpenClawChatContextUsageControl: View {
         #endif
         .help(self.tokensLine)
         .accessibilityIdentifier("chat-context-usage")
+        #endif
     }
+
+    #if os(iOS)
+    private var popoverContent: some View {
+        VStack(spacing: 0) {
+            ChatPopoverNote(text: self.tokensLine)
+            if let cost = self.usage.totalCost {
+                ChatPopoverNote(text: String(
+                    format: String(localized: "Thread cost %@"),
+                    ChatContextUsageFormatter.cost(cost)))
+            }
+            ChatPopoverDivider()
+            ChatPopoverRow(
+                title: String(localized: "Compact Thread"),
+                systemImage: "arrow.down.right.and.arrow.up.left",
+                isEnabled: self.canCompact)
+            {
+                self.onCompact()
+            }
+        }
+        .padding(.vertical, 4)
+    }
+    #endif
 
     private var tokensLine: String {
         let used = ChatContextUsageFormatter.tokens(self.usage.usedTokens)

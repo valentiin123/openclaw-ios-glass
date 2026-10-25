@@ -23,7 +23,7 @@ struct AppShellOverviewView: View {
 
     private var moreAction: OpenClawSidebarHeaderAction {
         OpenClawSidebarHeaderAction(
-            systemName: "ellipsis.circle",
+            systemName: "ellipsis",
             accessibilityLabel: "More",
             accessibilityIdentifier: "AppShell.Overview.More",
             action: self.openMoreList)
@@ -170,23 +170,20 @@ struct AppShellOverviewView: View {
 /// Plain grouped list: opaque content, glass only on the floating Done control.
 struct AppShellMoreListView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let onSelectMore: (AppShellMoreItem) -> Void
     let onSelectChat: () -> Void
 
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    self.chatRow
+            ZStack {
+                OpenClawProBackground()
+                ScrollView {
+                    self.rows
                 }
-                Section {
-                    ForEach(AppShellMoreItem.allCases) { (item: AppShellMoreItem) in
-                        self.moreRow(item)
-                    }
-                }
+                .scrollBounceBehavior(.basedOnSize)
             }
-            .listStyle(.insetGrouped)
             .navigationTitle("More")
             .navigationBarTitleDisplayMode(.inline)
             .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -194,13 +191,26 @@ struct AppShellMoreListView: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .presentationBackground(OpenClawBrand.void)
         .accessibilityIdentifier("AppShell.More.List")
+    }
+
+    private var rows: some View {
+        VStack(alignment: .leading, spacing: OpenClawSpace.sm) {
+            self.chatRow
+            ForEach(AppShellMoreItem.allCases) { (item: AppShellMoreItem) in
+                self.moreRow(item)
+            }
+        }
+        .padding(.horizontal, OpenClawProMetric.pagePadding)
+        .padding(.vertical, OpenClawSpace.md)
     }
 
     private var chatRow: some View {
         Button(action: self.onSelectChat) {
             self.row(title: "Talk to OpenClaw", systemImage: "bubble.left")
         }
+        .buttonStyle(OverviewPressStyle(reduceMotion: self.reduceMotion))
         .accessibilityIdentifier("AppShell.More.chat")
     }
 
@@ -208,27 +218,40 @@ struct AppShellMoreListView: View {
         Button(action: { self.onSelectMore(item) }) {
             self.row(title: item.title, systemImage: item.systemImage)
         }
+        .buttonStyle(OverviewPressStyle(reduceMotion: self.reduceMotion))
         .accessibilityIdentifier(item.accessibilityIdentifier)
     }
 
     private func row(title: LocalizedStringKey, systemImage: String) -> some View {
         HStack(spacing: OpenClawSpace.md) {
-            Image(systemName: systemImage)
-                .font(OpenClawType.subheadSemiBold)
-                .foregroundStyle(OpenClawBrand.accent)
-                .frame(width: 28)
-                .accessibilityHidden(true)
+            self.glyph(systemImage)
             Text(title)
                 .font(OpenClawType.body)
-                .foregroundStyle(Color.primary)
+                .foregroundStyle(OpenClawPalette.texteFort)
             Spacer(minLength: OpenClawSpace.sm)
             Image(systemName: "chevron.right")
                 .font(OpenClawType.captionSemiBold)
-                .foregroundStyle(Color.secondary)
+                .foregroundStyle(OpenClawPalette.texteAtténué)
                 .accessibilityHidden(true)
         }
-        .frame(minHeight: 44)
+        .padding(.horizontal, OpenClawSpace.md)
+        .padding(.vertical, OpenClawSpace.sm)
+        .frame(maxWidth: .infinity, minHeight: OverviewMetric.minTarget + OpenClawSpace.sm, alignment: .leading)
+        .overviewTile()
         .contentShape(Rectangle())
+    }
+
+    private func glyph(_ systemImage: String) -> some View {
+        let shape: RoundedRectangle = RoundedRectangle(
+            cornerRadius: OpenClawRadius.xs,
+            style: .continuous)
+        return Image(systemName: systemImage)
+            .font(OpenClawType.subheadSemiBold)
+            .foregroundStyle(OpenClawBrand.accent)
+            .frame(width: 32, height: 32)
+            .background(shape.fill(OpenClawPalette.surfaceInset))
+            .overlay(shape.strokeBorder(OpenClawBrand.hairlineBorderStrong, lineWidth: OpenClawProMetric.borderWidth))
+            .accessibilityHidden(true)
     }
 }
 

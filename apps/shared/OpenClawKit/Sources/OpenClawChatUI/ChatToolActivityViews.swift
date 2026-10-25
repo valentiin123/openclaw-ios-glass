@@ -161,11 +161,13 @@ private struct ChatToolActivityRowContent: View {
     let item: ChatToolActivityItem
     private let displayCall: (name: String?, args: AnyCodable?)
     private let resolvedDiff: (lines: [ChatToolDiffLine], stat: ChatToolDiffStat?)?
+    private let argumentsText: String
     @State private var expanded = false
     @State private var showsFullResult = false
 
     private static let disclosureWidth: CGFloat = 12
     private static let expandedLineLimit = 40
+    private static let argumentsCharLimit: Int = 4000
 
     private var display: ToolDisplaySummary {
         ToolDisplayRegistry.resolve(name: self.displayCall.name, args: self.displayCall.args)
@@ -182,7 +184,12 @@ private struct ChatToolActivityRowContent: View {
     }
 
     private var expandable: Bool {
-        self.resolvedDiff != nil || !self.formattedResult.isEmpty
+        self.resolvedDiff != nil || !self.formattedResult.isEmpty || self.showsArguments
+    }
+
+    /// Arguments are the first thing the detail shows, except for edits where the diff already says it.
+    private var showsArguments: Bool {
+        self.resolvedDiff == nil && !self.argumentsText.isEmpty
     }
 
     private var accessibilityValue: String {
@@ -220,6 +227,7 @@ private struct ChatToolActivityRowContent: View {
         self.item = item
         let displayCall = ToolDisplayRegistry.displayCall(name: item.name, args: item.arguments)
         self.displayCall = displayCall
+        self.argumentsText = Self.formatArguments(displayCall.args)
         self.resolvedDiff = ChatToolDiff.resolveDiff(
             name: displayCall.name,
             arguments: displayCall.args,
@@ -227,7 +235,18 @@ private struct ChatToolActivityRowContent: View {
             isError: item.isError)
     }
 
+    /// Touch layout: a flat, sober row (no card, no accent bar). Desktop keeps its card.
+    @ViewBuilder
     var body: some View {
+        if self.isDesktopLayout {
+            self.column.modifier(ChatWorkCardStyle(tint: self.cardTint))
+        } else {
+            self.column
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var column: some View {
         VStack(alignment: .leading, spacing: 4) {
             if self.expandable {
                 Button {
@@ -253,64 +272,100 @@ private struct ChatToolActivityRowContent: View {
             }
 
             if self.expanded, self.expandable {
-                VStack(alignment: .leading, spacing: 6) {
-                    if self.resolvedDiff != nil {
-                        self.diffRows
-                        // The result text carries the outcome (success summary or the
-                        // error diagnostic); hiding it would misrepresent failed edits
-                        // as applied changes. Bounded so foreign harness output cannot
-                        // dwarf the diff.
-                        if !self.formattedResult.isEmpty {
-                            Text(self.formattedResult)
-                                .font(OpenClawChatTypography.mono(size: 12, relativeTo: .footnote))
-                                .foregroundStyle(.secondary)
-                                .textSelection(.enabled)
-                                .lineLimit(Self.expandedLineLimit)
-                        }
-                    } else {
-                        Text(self.expandedResult)
-                            .font(OpenClawChatTypography.mono(size: 12, relativeTo: .footnote))
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                    }
-
-                    if self.isResultTruncated {
-                        Button {
-                            self.showsFullResult.toggle()
-                        } label: {
-                            Text(
-                                self.showsFullResult
-                                    ? String(localized: "Show less")
-                                    : String(
-                                        format: String(localized: "Show all %lld lines"),
-                                        Int64(self.expandedLineCount)))
-                                .font(OpenClawChatTypography.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background {
-                    if !self.isDesktopLayout {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(OpenClawChatTheme.surfaceAlt)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .strokeBorder(OpenClawChatTheme.hairline, lineWidth: 1))
-                    }
-                }
-                .padding(.leading, self.isDesktopLayout ? 0 : 19)
+                self.detailPanel
             }
         }
-        .modifier(ChatWorkCardStyle(tint: self.cardTint))
     }
 
-    /// Error wins over the tool type; otherwise the card carries its tool category color.
+    /// What the old "tool details" showed: arguments, then the result (or the diff).
+    private var detailPanel: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if self.showsArguments {
+                self.sectionLabel(String(localized: "Arguments"))
+                Text(self.argumentsText)
+                    .font(OpenClawChatTypography.mono(size: 12, relativeTo: .footnote))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if self.resolvedDiff != nil {
+                self.diffRows
+                // The result text carries the outcome (success summary or the
+                // error diagnostic); hiding it would misrepresent failed edits
+                // as applied changes. Bounded so foreign harness output cannot
+                // dwarf the diff.
+                if !self.formattedResult.isEmpty {
+                    Text(self.formattedResult)
+                        .font(OpenClawChatTypography.mono(size: 12, relativeTo: .footnote))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .lineLimit(Self.expandedLineLimit)
+                }
+            } else if !self.formattedResult.isEmpty {
+                if self.showsArguments {
+                    self.sectionLabel(String(localized: "Result"))
+                }
+                Text(self.expandedResult)
+                    .font(OpenClawChatTypography.mono(size: 12, relativeTo: .footnote))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if self.isResultTruncated {
+                Button {
+                    self.showsFullResult.toggle()
+                } label: {
+                    Text(
+                        self.showsFullResult
+                            ? String(localized: "Show less")
+                            : String(
+                                format: String(localized: "Show all %lld lines"),
+                                Int64(self.expandedLineCount)))
+                        .font(OpenClawChatTypography.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            if !self.isDesktopLayout {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(OpenClawChatTheme.surfaceAlt)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .strokeBorder(OpenClawChatTheme.hairline, lineWidth: 1))
+            }
+        }
+        .padding(.leading, self.isDesktopLayout ? 0 : 19)
+    }
+
+    private func sectionLabel(_ title: String) -> some View {
+        Text(title)
+            .font(OpenClawChatTypography.captionSemiBold)
+            .foregroundStyle(OpenClawChatTheme.inkMuted)
+    }
+
+    /// Pretty JSON of the call arguments, bounded so a huge payload cannot flood the transcript.
+    private static func formatArguments(_ args: AnyCodable?) -> String {
+        guard let args else { return "" }
+        if let dictionary = args.dictionaryValue, dictionary.isEmpty { return "" }
+        let encoder: JSONEncoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        guard let data = try? encoder.encode(args),
+              let text = String(data: data, encoding: .utf8)
+        else { return "" }
+        let trimmed: String = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed == "null" || trimmed == "{}" { return "" }
+        return String(trimmed.unicodeScalars.prefix(Self.argumentsCharLimit))
+    }
+
+    /// The icon always carries the tool category color; the state lives in a small pill.
     private var kindTint: Color {
-        if self.item.isError { return OpenClawChatTheme.danger }
-        return ChatToolKindTint.color(for: self.display.name)
+        ChatToolKindTint.color(for: self.display.name)
     }
 
     /// The card's accent bar follows the state first (running, failed, blocked), then the tool type.
@@ -346,12 +401,36 @@ private struct ChatToolActivityRowContent: View {
 
     @ViewBuilder
     private var stateBadge: some View {
-        if let symbol = self.stateSymbol {
-            Image(systemName: symbol)
-                .font(OpenClawChatTypography.caption)
-                .foregroundStyle(self.stateTint)
-                .accessibilityHidden(true)
+        if self.isDesktopLayout {
+            if let symbol = self.stateSymbol {
+                Image(systemName: symbol)
+                    .font(OpenClawChatTypography.caption)
+                    .foregroundStyle(self.stateTint)
+                    .accessibilityHidden(true)
+            }
+        } else if self.item.displayState != .finished {
+            self.statePill
         }
+    }
+
+    /// Discrete state cue (working, failed, blocked...), never a large colored frame.
+    private var statePill: some View {
+        let color: Color = self.stateTint
+        return HStack(spacing: 3) {
+            if let symbol = self.stateSymbol {
+                Image(systemName: symbol)
+                    .font(OpenClawChatTypography.body(size: 9, weight: .semibold, relativeTo: .caption2))
+            }
+            Text(self.item.displayState.title)
+                .font(OpenClawChatTypography.captionSemiBold)
+                .lineLimit(1)
+        }
+        .foregroundStyle(color)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 1)
+        .background(color.opacity(0.12), in: Capsule())
+        .fixedSize()
+        .accessibilityHidden(true)
     }
 
     private var collapsedRow: some View {
@@ -394,21 +473,21 @@ private struct ChatToolActivityRowContent: View {
 
             self.stateBadge
 
-            // The local title replaces the Gateway warning, so unknown outcomes still need a visible cue.
-            if self.isDesktopLayout || self.item.displayState == .unavailable {
+            // Desktop spells the state out; touch uses the pill above.
+            if self.isDesktopLayout {
                 Text(self.item.displayState.title)
                     .font(OpenClawChatTypography.caption)
                     .foregroundStyle(self.stateTint)
                     .fixedSize()
             }
         }
-        .padding(.vertical, 3)
+        .padding(.vertical, self.isDesktopLayout ? 3 : 5)
     }
 
     private var toolTitle: some View {
         Text(self.item.activity?.preparedTitle ?? self.display.title)
             .font(OpenClawChatTypography.footnoteSemiBold)
-            .foregroundStyle(self.item.isError ? OpenClawChatTheme.danger : self.textColor)
+            .foregroundStyle(self.textColor)
             .lineLimit(1)
     }
 
@@ -610,21 +689,31 @@ struct ChatToolActivityList: View {
     @Environment(\.openClawChatDesktopLayout) private var isDesktopLayout
     let items: [ChatToolActivityItem]
 
+    /// Visible calls first, then the quiet ones; every call shows its name directly.
+    private var orderedIndices: [Int] {
+        let visible: [Int] = self.items.indices.filter { self.items[$0].isVisible }
+        let quiet: [Int] = self.items.indices.filter { !self.items[$0].isVisible }
+        return visible + quiet
+    }
+
+    private var rowSpacing: CGFloat {
+        self.isDesktopLayout ? 6 : 2
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: self.isDesktopLayout ? 6 : 6) {
-            ForEach(self.items.indices.filter { self.items[$0].isVisible }, id: \.self) { index in
-                ChatToolActivityRow(item: self.items[index])
-                    .equatable()
-            }
-            let quiet = self.items.indices.filter { !self.items[$0].isVisible }
-            if !quiet.isEmpty {
-                DisclosureGroup("Tool details") {
-                    ForEach(quiet, id: \.self) { index in
-                        ChatToolActivityRow(item: self.items[index]).equatable()
-                    }
-                }
+        VStack(alignment: .leading, spacing: self.rowSpacing) {
+            ForEach(self.orderedIndices, id: \.self) { index in
+                self.row(at: index)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func row(at index: Int) -> some View {
+        let item: ChatToolActivityItem = self.items[index]
+        let opacity: Double = item.isVisible ? 1 : 0.8
+        return ChatToolActivityRow(item: item)
+            .equatable()
+            .opacity(opacity)
     }
 }

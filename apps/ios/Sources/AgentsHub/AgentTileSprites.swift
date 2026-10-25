@@ -3,6 +3,10 @@ import SwiftUI
 // Pixel-art sprites for the Agents board. Drawn with Canvas from character grids (no bitmap assets).
 // Grid legend: `.` transparent, `a` body, `b` shade, `c` accent, `w` white, `k` ink.
 // Every sprite is a 10 x 10 grid.
+//
+// Raw values are persisted by `AgentTileAssignmentStore`: only ever APPEND new cases at the end,
+// never reorder or remove existing ones. `.robot` is reserved (Overview / system chat) and is never
+// handed out to a tile.
 
 enum AgentTileSpriteKind: Int, CaseIterable, Sendable {
     case robot
@@ -13,6 +17,24 @@ enum AgentTileSpriteKind: Int, CaseIterable, Sendable {
     case crystal
     case frog
     case alien
+    case fox
+    case penguin
+    case octopus
+    case dragon
+    case plant
+    case moon
+    case star
+    case cloud
+    case flame
+    case drop
+    case key
+    case book
+    case planet
+    case bee
+    case crab
+    case panda
+    case rabbit
+    case fish
 
     var rows: [String] {
         switch self {
@@ -24,6 +46,24 @@ enum AgentTileSpriteKind: Int, CaseIterable, Sendable {
         case .crystal: AgentTileSpriteArt.crystal
         case .frog: AgentTileSpriteArt.frog
         case .alien: AgentTileSpriteArt.alien
+        case .fox: AgentTileSpriteArt.fox
+        case .penguin: AgentTileSpriteArt.penguin
+        case .octopus: AgentTileSpriteArt.octopus
+        case .dragon: AgentTileSpriteArt.dragon
+        case .plant: AgentTileSpriteArt.plant
+        case .moon: AgentTileSpriteArt.moon
+        case .star: AgentTileSpriteArt.star
+        case .cloud: AgentTileSpriteArt.cloud
+        case .flame: AgentTileSpriteArt.flame
+        case .drop: AgentTileSpriteArt.drop
+        case .key: AgentTileSpriteArt.key
+        case .book: AgentTileSpriteArt.book
+        case .planet: AgentTileSpriteArt.planet
+        case .bee: AgentTileSpriteArt.bee
+        case .crab: AgentTileSpriteArt.crab
+        case .panda: AgentTileSpriteArt.panda
+        case .rabbit: AgentTileSpriteArt.rabbit
+        case .fish: AgentTileSpriteArt.fish
         }
     }
 
@@ -37,6 +77,24 @@ enum AgentTileSpriteKind: Int, CaseIterable, Sendable {
         case .crystal: AgentTilePalette.crystal
         case .frog: AgentTilePalette.frog
         case .alien: AgentTilePalette.alien
+        case .fox: AgentTilePalette.fox
+        case .penguin: AgentTilePalette.penguin
+        case .octopus: AgentTilePalette.octopus
+        case .dragon: AgentTilePalette.dragon
+        case .plant: AgentTilePalette.plant
+        case .moon: AgentTilePalette.moon
+        case .star: AgentTilePalette.star
+        case .cloud: AgentTilePalette.cloud
+        case .flame: AgentTilePalette.flame
+        case .drop: AgentTilePalette.drop
+        case .key: AgentTilePalette.key
+        case .book: AgentTilePalette.book
+        case .planet: AgentTilePalette.planet
+        case .bee: AgentTilePalette.bee
+        case .crab: AgentTilePalette.crab
+        case .panda: AgentTilePalette.panda
+        case .rabbit: AgentTilePalette.rabbit
+        case .fish: AgentTilePalette.fish
         }
     }
 }
@@ -145,6 +203,240 @@ enum AgentTileSpriteArt {
         "....aa....",
         "....bb....",
     ]
+
+    static let fox: [String] = [
+        "ab......ba",
+        "aaa....aaa",
+        ".aaaaaaaa.",
+        ".akaaaaka.",
+        "aaaaaaaaaa",
+        ".wwaaaaww.",
+        "..wwkkww..",
+        "...wwww...",
+        "....ww....",
+        "....cc....",
+    ]
+
+    static let penguin: [String] = [
+        "...aaaa...",
+        "..aaaaaa..",
+        "..akaaka..",
+        "..aaccaa..",
+        ".aawwwwaa.",
+        ".aawwwwaa.",
+        "aaawwwwaaa",
+        ".aawwwwaa.",
+        "..aawwaa..",
+        "..cc..cc..",
+    ]
+
+    static let octopus: [String] = [
+        "...aaaa...",
+        "..aaaaaa..",
+        ".aaaaaaaa.",
+        ".awkaawka.",
+        ".aaaaaaaa.",
+        ".aaaccaaa.",
+        ".aaaaaaaa.",
+        "ba.baab.ab",
+        "a..b..b..a",
+        "c........c",
+    ]
+
+    static let dragon: [String] = [
+        "b........b",
+        ".bb....bb.",
+        ".aaaaaaaa.",
+        ".akaaaaka.",
+        ".aaaaaaaa.",
+        ".aaakkaaa.",
+        "..aaaaaa..",
+        ".bacccaab.",
+        ".baccccab.",
+        "..bb..bb..",
+    ]
+
+    static let plant: [String] = [
+        "...cccc...",
+        "..ccwwcc..",
+        "..ccwwcc..",
+        "...cccc...",
+        "....aa....",
+        ".aa.aa.aa.",
+        "..aaaaaa..",
+        ".bbbbbbbb.",
+        "..bkbbkb..",
+        "..bbbbbb..",
+    ]
+
+    static let moon: [String] = [
+        "...aaaaa..",
+        "..aaaaa...",
+        ".aaabaa..c",
+        ".aaaaa....",
+        ".aabaa....",
+        ".aaaaa....",
+        ".aaabaa...",
+        "..aaaaa...",
+        "...aaaaa..",
+        "...bbbb...",
+    ]
+
+    static let star: [String] = [
+        "....aa....",
+        "....aa....",
+        "...aaaa...",
+        "aaaaaaaaaa",
+        ".aaaaaaaa.",
+        "..akaaka..",
+        "...aaaa...",
+        "..aaccaa..",
+        "..aa..aa..",
+        ".bb....bb.",
+    ]
+
+    static let cloud: [String] = [
+        "...aaa....",
+        "..aaaaa.aa",
+        ".aaaaaaaaa",
+        "aaaaaaaaaa",
+        "aakaaaakaa",
+        "aaaaccaaaa",
+        ".bbbbbbbb.",
+        "..c..c..c.",
+        "...c..c...",
+        ".c..c...c.",
+    ]
+
+    static let flame: [String] = [
+        ".....b....",
+        "....bb....",
+        "...bab..b.",
+        "..baab.bb.",
+        "..baaabab.",
+        ".baaaaaaab",
+        ".baakaakab",
+        ".baacccaab",
+        "..baccaab.",
+        "...bbbb...",
+    ]
+
+    static let drop: [String] = [
+        "....aa....",
+        "....aa....",
+        "...aaaa...",
+        "...aaaa...",
+        "..awaaaa..",
+        ".awaaaaaa.",
+        ".aakaakaa.",
+        ".aaaccaaa.",
+        "..aaaaaa..",
+        "...bbbb...",
+    ]
+
+    static let key: [String] = [
+        "...aaaa...",
+        "..aabbaa..",
+        "..abccba..",
+        "..abccba..",
+        "..aabbaa..",
+        "...aaaa...",
+        "....aa....",
+        "....aab...",
+        "....aa....",
+        "....aab...",
+    ]
+
+    static let book: [String] = [
+        ".bbbbbbbb.",
+        "baaaaaaaab",
+        "baacccaaab",
+        "baaaaaaaab",
+        "baakaakaab",
+        "baaaaaaaab",
+        "baaaccaaab",
+        "bwwwwwwwwb",
+        ".wwwwwwww.",
+        ".bbbbbbbb.",
+    ]
+
+    static let planet: [String] = [
+        "...aaaa...",
+        "..aaaaaa..",
+        ".aaaaaaaa.",
+        ".aakaakaa.",
+        "cccccccccc",
+        ".aaaaaaaa.",
+        ".aabbbbaa.",
+        "..aabbaa..",
+        "...aaaa...",
+        "....bb....",
+    ]
+
+    static let bee: [String] = [
+        "...w..w...",
+        "..ww..ww..",
+        "...aaaa...",
+        "..akaaka..",
+        "..aaaaaa..",
+        "..kkkkkk..",
+        "..aaaaaa..",
+        "..kkkkkk..",
+        "...aaaa...",
+        "....cc....",
+    ]
+
+    static let crab: [String] = [
+        "cc..ww..cc",
+        "cc..kk..cc",
+        ".c.aaaa.c.",
+        "..aaaaaa..",
+        ".aakaakaa.",
+        ".aaaaaaaa.",
+        ".aaaccaaa.",
+        "..aaaaaa..",
+        ".b.b..b.b.",
+        "b..b..b..b",
+    ]
+
+    static let panda: [String] = [
+        "kk......kk",
+        "kkk....kkk",
+        ".aaaaaaaa.",
+        ".akkaakka.",
+        ".aaaaaaaa.",
+        ".aaakkaaa.",
+        "..aaccaa..",
+        ".kkaaaakk.",
+        ".kkaaaakk.",
+        "..kk..kk..",
+    ]
+
+    static let rabbit: [String] = [
+        "..aa..aa..",
+        "..ac..ca..",
+        "..ac..ca..",
+        "..aaaaaa..",
+        ".aaaaaaaa.",
+        ".akaaaaka.",
+        ".aaaccaaa.",
+        "..aaaaaa..",
+        "..aaaaaa..",
+        "..bb..bb..",
+    ]
+
+    static let fish: [String] = [
+        "...w......",
+        "....w.....",
+        "...bbbb...",
+        "..baaaab.c",
+        ".baaaaaabc",
+        "baakaaaaac",
+        "baaaaaaacc",
+        ".baaaaaabc",
+        "..baaaab.c",
+        "...bbbb...",
+    ]
 }
 
 struct AgentTilePalette: Sendable {
@@ -198,6 +490,96 @@ struct AgentTilePalette: Sendable {
         body: rgb(0.62, 0.50, 0.90),
         shade: rgb(0.40, 0.30, 0.70),
         accent: rgb(0.50, 0.95, 0.70))
+
+    static let fox: AgentTilePalette = AgentTilePalette(
+        body: rgb(0.92, 0.50, 0.20),
+        shade: rgb(0.62, 0.28, 0.12),
+        accent: rgb(0.30, 0.22, 0.20))
+
+    static let penguin: AgentTilePalette = AgentTilePalette(
+        body: rgb(0.20, 0.27, 0.40),
+        shade: rgb(0.12, 0.17, 0.27),
+        accent: rgb(0.98, 0.70, 0.20))
+
+    static let octopus: AgentTilePalette = AgentTilePalette(
+        body: rgb(0.88, 0.45, 0.70),
+        shade: rgb(0.62, 0.25, 0.48),
+        accent: rgb(0.99, 0.80, 0.85))
+
+    static let dragon: AgentTilePalette = AgentTilePalette(
+        body: rgb(0.30, 0.72, 0.55),
+        shade: rgb(0.15, 0.45, 0.38),
+        accent: rgb(0.98, 0.82, 0.40))
+
+    static let plant: AgentTilePalette = AgentTilePalette(
+        body: rgb(0.35, 0.72, 0.30),
+        shade: rgb(0.72, 0.42, 0.28),
+        accent: rgb(0.98, 0.45, 0.60))
+
+    static let moon: AgentTilePalette = AgentTilePalette(
+        body: rgb(0.98, 0.88, 0.50),
+        shade: rgb(0.80, 0.66, 0.28),
+        accent: rgb(0.70, 0.80, 1.00))
+
+    static let star: AgentTilePalette = AgentTilePalette(
+        body: rgb(1.00, 0.82, 0.25),
+        shade: rgb(0.85, 0.60, 0.10),
+        accent: rgb(0.96, 0.45, 0.40))
+
+    static let cloud: AgentTilePalette = AgentTilePalette(
+        body: rgb(0.82, 0.88, 0.96),
+        shade: rgb(0.55, 0.65, 0.82),
+        accent: rgb(0.35, 0.60, 0.98))
+
+    static let flame: AgentTilePalette = AgentTilePalette(
+        body: rgb(0.99, 0.60, 0.15),
+        shade: rgb(0.82, 0.25, 0.15),
+        accent: rgb(1.00, 0.88, 0.35))
+
+    static let drop: AgentTilePalette = AgentTilePalette(
+        body: rgb(0.30, 0.62, 0.98),
+        shade: rgb(0.18, 0.40, 0.78),
+        accent: rgb(0.98, 0.55, 0.65))
+
+    static let key: AgentTilePalette = AgentTilePalette(
+        body: rgb(0.95, 0.78, 0.25),
+        shade: rgb(0.72, 0.52, 0.12),
+        accent: rgb(0.40, 0.85, 0.80))
+
+    static let book: AgentTilePalette = AgentTilePalette(
+        body: rgb(0.28, 0.45, 0.80),
+        shade: rgb(0.16, 0.26, 0.52),
+        accent: rgb(0.98, 0.78, 0.30))
+
+    static let planet: AgentTilePalette = AgentTilePalette(
+        body: rgb(0.55, 0.40, 0.85),
+        shade: rgb(0.34, 0.24, 0.62),
+        accent: rgb(0.98, 0.72, 0.38))
+
+    static let bee: AgentTilePalette = AgentTilePalette(
+        body: rgb(0.99, 0.82, 0.22),
+        shade: rgb(0.70, 0.50, 0.10),
+        accent: rgb(0.90, 0.35, 0.30))
+
+    static let crab: AgentTilePalette = AgentTilePalette(
+        body: rgb(0.92, 0.32, 0.28),
+        shade: rgb(0.62, 0.18, 0.18),
+        accent: rgb(0.98, 0.52, 0.40))
+
+    static let panda: AgentTilePalette = AgentTilePalette(
+        body: rgb(0.95, 0.95, 0.93),
+        shade: rgb(0.60, 0.60, 0.62),
+        accent: rgb(0.98, 0.60, 0.68))
+
+    static let rabbit: AgentTilePalette = AgentTilePalette(
+        body: rgb(0.86, 0.78, 0.70),
+        shade: rgb(0.58, 0.48, 0.42),
+        accent: rgb(0.98, 0.62, 0.72))
+
+    static let fish: AgentTilePalette = AgentTilePalette(
+        body: rgb(0.25, 0.78, 0.78),
+        shade: rgb(0.14, 0.50, 0.58),
+        accent: rgb(0.98, 0.65, 0.30))
 
     func color(for pixel: Character) -> Color? {
         switch pixel {

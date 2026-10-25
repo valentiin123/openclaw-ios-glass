@@ -135,9 +135,282 @@ struct AgentTileItem: Identifiable, Equatable, Sendable {
     }
 }
 
-// MARK: - Naming (deterministic)
+// MARK: - Assignments (persisted)
+
+/// Name and sprite given to one session key. Persisted so a tile never changes identity.
+struct AgentTileAssignment: Codable, Equatable, Sendable {
+    var name: String
+    /// Raw value of `AgentTileSpriteKind`.
+    var sprite: Int
+    /// First time the key was assigned (older keys keep their name when two collide).
+    var created: Double
+    /// Last time the key was displayed (drives the cleanup of vanished keys).
+    var seen: Double
+}
+
+/// Shared store of `sessionKey -> name / sprite`, backed by UserDefaults. Used by the board tiles,
+/// the subagent chat header and the tree screen so they always agree.
+/// Thread safety: every access goes through `lock` (no actor hop, callable from any context).
+final class AgentTileAssignmentStore: @unchecked Sendable {
+    static let shared: AgentTileAssignmentStore = AgentTileAssignmentStore()
+
+    static let defaultsKey: String = "agentsHub.tileAssignments.v1"
+    /// Hard bound on the persisted dictionary.
+    static let maxEntries: Int = 300
+    /// A key not displayed for this long is forgotten.
+    static let expiry: TimeInterval = 3 * 24 * 3600
+    /// Every sprite except the reserved robot.
+    static let spritePool: [Int] = AgentTileAssignmentStore.makeSpritePool()
+
+    private static let touchInterval: TimeInterval = 3600
+    private static let recentWindow: TimeInterval = 6 * 3600
+
+    private let lock: NSLock = NSLock()
+    private let defaults: UserDefaults
+    private var entries: [String: AgentTileAssignment] = [:]
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        self.entries = AgentTileAssignmentStore.load(from: defaults)
+    }
+
+    /// Unique names and sprites for the tiles displayed together. Older keys keep their identity;
+    /// a new key probes linearly from its hashed slot to the next free name / sprite.
+    /// `reservedNames` (lowercased) are titles already shown by other tiles: pool names avoid them.
+    func assignments(
+        for keys: [String],
+        reservedNames: Set<String> = [],
+        now: Date) -> [String: AgentTileAssignment]
+    {
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        let stamp: Double = now.timeIntervalSince1970
+        let ordered: [String] = Self.creationOrder(keys, entries: self.entries)
+        var usedNames: Set<String> = reservedNames
+        var usedSprites: Set<Int> = []
+        var result: [String: AgentTileAssignment] = [:]
+        var changed: Bool = false
+        for key in ordered {
+            let previous: AgentTileAssignment? = self.entries[key]
+            let spritesFull: Bool = usedSprites.count >= Self.spritePool.count
+            let entry: AgentTileAssignment = Self.resolve(
+                key: key,
+                previous: previous,
+                usedNames: usedNames,
+                usedSprites: usedSprites,
+                spritesFull: spritesFull,
+                stamp: stamp)
+            if entry != previous {
+                self.entries[key] = entry
+                changed = true
+            }
+            usedNames.insert(Self.fold(entry.name))
+            usedSprites.insert(entry.sprite)
+            result[key] = entry
+        }
+        let protected: Set<String> = Set<String>(ordered)
+        if self.prune(now: stamp, protecting: protected) { changed = true }
+        if changed { self.persist() }
+        return result
+    }
+
+    /// Identity of a single key outside of a grid (chat header, tree). Avoids what was shown recently.
+    func assignment(for key: String, now: Date) -> AgentTileAssignment {
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        if let existing = self.entries[key], !existing.name.isEmpty, Self.isPoolSprite(existing.sprite) {
+            return existing
+        }
+        let stamp: Double = now.timeIntervalSince1970
+        let cutoff: Double = stamp - Self.recentWindow
+        var usedNames: Set<String> = []
+        var usedSprites: Set<Int> = []
+        for (otherKey, other) in self.entries where otherKey != key && other.seen >= cutoff {
+            usedNames.insert(Self.fold(other.name))
+            usedSprites.insert(other.sprite)
+        }
+        let spritesFull: Bool = usedSprites.count >= Self.spritePool.count
+        let entry: AgentTileAssignment = Self.resolve(
+            key: key,
+            previous: self.entries[key],
+            usedNames: usedNames,
+            usedSprites: usedSprites,
+            spritesFull: spritesFull,
+            stamp: stamp)
+        self.entries[key] = entry
+        let protected: Set<String> = [key]
+        self.prune(now: stamp, protecting: protected)
+        self.persist()
+        return entry
+    }
+
+    // MARK: Resolution
+
+    private struct OrderedKey {
+        let key: String
+        let created: Double
+
+        static func isBefore(_ lhs: OrderedKey, _ rhs: OrderedKey) -> Bool {
+            if lhs.created != rhs.created { return lhs.created < rhs.created }
+            return lhs.key < rhs.key
+        }
+    }
+
+    private struct PruneCandidate {
+        let key: String
+        let seen: Double
+
+        static func isOlder(_ lhs: PruneCandidate, _ rhs: PruneCandidate) -> Bool {
+            if lhs.seen != rhs.seen { return lhs.seen < rhs.seen }
+            return lhs.key < rhs.key
+        }
+    }
+
+    /// Known keys first (oldest assignment first), then new keys sorted by key. Duplicates removed.
+    private static func creationOrder(_ keys: [String], entries: [String: AgentTileAssignment]) -> [String] {
+        var seenKeys: Set<String> = []
+        var known: [OrderedKey] = []
+        var fresh: [String] = []
+        for key in keys {
+            if seenKeys.contains(key) { continue }
+            seenKeys.insert(key)
+            if let entry = entries[key] {
+                known.append(OrderedKey(key: key, created: entry.created))
+            } else {
+                fresh.append(key)
+            }
+        }
+        known.sort(by: OrderedKey.isBefore)
+        fresh.sort()
+        var ordered: [String] = []
+        for item in known { ordered.append(item.key) }
+        ordered.append(contentsOf: fresh)
+        return ordered
+    }
+
+    private static func resolve(
+        key: String,
+        previous: AgentTileAssignment?,
+        usedNames: Set<String>,
+        usedSprites: Set<Int>,
+        spritesFull: Bool,
+        stamp: Double) -> AgentTileAssignment
+    {
+        var name: String = ""
+        var sprite: Int = -1
+        var created: Double = stamp
+        var seen: Double = stamp
+        if let previous {
+            created = previous.created
+            seen = previous.seen
+            if stamp - previous.seen > touchInterval { seen = stamp }
+            if !previous.name.isEmpty, !usedNames.contains(fold(previous.name)) {
+                name = previous.name
+            }
+            let spriteFree: Bool = spritesFull || !usedSprites.contains(previous.sprite)
+            if isPoolSprite(previous.sprite), spriteFree {
+                sprite = previous.sprite
+            }
+        }
+        if name.isEmpty { name = freeName(for: key, used: usedNames) }
+        if sprite < 0 { sprite = freeSprite(for: key, used: usedSprites) }
+        return AgentTileAssignment(name: name, sprite: sprite, created: created, seen: seen)
+    }
+
+    /// Linear probe from the hashed slot; numeric suffix ("Pixel 2") once the whole pool is taken.
+    private static func freeName(for key: String, used: Set<String>) -> String {
+        let pool: [String] = AgentTileNaming.names
+        let count: Int = pool.count
+        let start: Int = Int((AgentTileNaming.hash(key) >> 11) % UInt64(count))
+        for offset in 0..<count {
+            let candidate: String = pool[(start + offset) % count]
+            if !used.contains(fold(candidate)) { return candidate }
+        }
+        let base: String = pool[start]
+        var suffix: Int = 2
+        while true {
+            let candidate: String = "\(base) \(suffix)"
+            if !used.contains(fold(candidate)) { return candidate }
+            suffix += 1
+        }
+    }
+
+    /// Linear probe over the sprite pool; reuse (hashed slot) once every sprite is taken.
+    private static func freeSprite(for key: String, used: Set<Int>) -> Int {
+        let pool: [Int] = spritePool
+        let count: Int = pool.count
+        let start: Int = Int((AgentTileNaming.hash(key) >> 29) % UInt64(count))
+        for offset in 0..<count {
+            let candidate: Int = pool[(start + offset) % count]
+            if !used.contains(candidate) { return candidate }
+        }
+        return pool[start]
+    }
+
+    private static func makeSpritePool() -> [Int] {
+        var pool: [Int] = []
+        for kind in AgentTileSpriteKind.allCases where kind != .robot {
+            pool.append(kind.rawValue)
+        }
+        return pool
+    }
+
+    private static func isPoolSprite(_ raw: Int) -> Bool {
+        spritePool.contains(raw)
+    }
+
+    static func fold(_ text: String) -> String {
+        text.lowercased()
+    }
+
+    // MARK: Persistence
+
+    private static func load(from defaults: UserDefaults) -> [String: AgentTileAssignment] {
+        guard let data: Data = defaults.data(forKey: defaultsKey) else { return [:] }
+        let decoded: [String: AgentTileAssignment]? = try? JSONDecoder().decode(
+            [String: AgentTileAssignment].self,
+            from: data)
+        return decoded ?? [:]
+    }
+
+    private func persist() {
+        guard let data: Data = try? JSONEncoder().encode(self.entries) else { return }
+        self.defaults.set(data, forKey: Self.defaultsKey)
+    }
+
+    /// Drops expired keys, then the oldest ones above `maxEntries`. Keys in `protecting` are kept.
+    @discardableResult
+    private func prune(now: Double, protecting: Set<String>) -> Bool {
+        var changed: Bool = false
+        let cutoff: Double = now - Self.expiry
+        var stale: [String] = []
+        for (key, entry) in self.entries where entry.seen < cutoff && !protecting.contains(key) {
+            stale.append(key)
+        }
+        for key in stale {
+            self.entries[key] = nil
+            changed = true
+        }
+        let excess: Int = self.entries.count - Self.maxEntries
+        if excess > 0 {
+            var candidates: [PruneCandidate] = []
+            for (key, entry) in self.entries where !protecting.contains(key) {
+                candidates.append(PruneCandidate(key: key, seen: entry.seen))
+            }
+            candidates.sort(by: PruneCandidate.isOlder)
+            for candidate in candidates.prefix(excess) {
+                self.entries[candidate.key] = nil
+                changed = true
+            }
+        }
+        return changed
+    }
+}
+
+// MARK: - Naming (deterministic, unique, persisted)
 
 enum AgentTileNaming {
+    /// Short, easy to read names. Must stay free of duplicates (case-insensitive).
     static let names: [String] = [
         "Pixel", "Mochi", "Nova", "Pip", "Bean", "Zed", "Echo", "Juno",
         "Kiwi", "Orbit", "Blip", "Cosmo", "Dot", "Fizz", "Gizmo", "Haze",
@@ -145,6 +418,16 @@ enum AgentTileNaming {
         "Sprout", "Taco", "Ume", "Vex", "Wisp", "Yuzu", "Zap", "Ash",
         "Bolt", "Cleo", "Dash", "Ember", "Fern", "Gus", "Hugo", "Ivy",
         "Jazz", "Koko", "Luna", "Moss", "Nori", "Olive", "Peep", "Rune",
+        "Ace", "Bao", "Cory", "Dex", "Elm", "Finn", "Gigi", "Hana",
+        "Indy", "Jet", "Kai", "Lola", "Milo", "Nix", "Oak", "Pearl",
+        "Remy", "Sage", "Tofu", "Uma", "Vito", "Wren", "Xan", "Yara",
+        "Zuzu", "Basil", "Cocoa", "Dune", "Elio", "Flint", "Goji", "Hazel",
+        "Iris", "Jade", "Kit", "Lark", "Maple", "Nico", "Opal", "Pico",
+        "Quip", "Rio", "Sunny", "Tango", "Umber", "Vale", "Waffle", "Yoyo",
+        "Zest", "Alba", "Bruno", "Cinder", "Fable", "Gem", "Honey", "Inky",
+        "Jolly", "Kelp", "Lemon", "Mango", "Nugget", "Onyx", "Poppy", "Quartz",
+        "Rusty", "Sky", "Toast", "Uno", "Velvet", "Willow", "Yam", "Zen",
+        "Pebble", "Clover", "Biscuit", "Comet", "Dingo", "Ripple", "Tulip", "Marble",
     ]
 
     /// FNV-1a. Swift's `hashValue` is randomized per launch, so it cannot be used here.
@@ -157,16 +440,15 @@ enum AgentTileNaming {
         return value
     }
 
+    /// Sprite of a session. Reads (and creates if needed) the shared persisted assignment.
     static func sprite(for key: String) -> AgentTileSpriteKind {
-        let all: [AgentTileSpriteKind] = AgentTileSpriteKind.allCases
-        let index: Int = Int(hash(key) % UInt64(all.count))
-        return all[index]
+        let assignment: AgentTileAssignment = AgentTileAssignmentStore.shared.assignment(for: key, now: Date())
+        return AgentTileSpriteKind(rawValue: assignment.sprite) ?? .ghost
     }
 
+    /// Name of a session. Reads (and creates if needed) the shared persisted assignment.
     static func name(for key: String) -> String {
-        let mixed: UInt64 = hash(key) >> 11
-        let index: Int = Int(mixed % UInt64(names.count))
-        return names[index]
+        AgentTileAssignmentStore.shared.assignment(for: key, now: Date()).name
     }
 }
 
@@ -198,32 +480,121 @@ enum AgentTileFactory {
     private static let thinkWords: [String] = ["think", "reason", "plan"]
 
     /// Root conversations first (always shown, most recent activity first), then subagents
-    /// (active first, then the most recent). Outdated subagents are dropped.
+    /// (active first, then the most recent). Outdated subagents are dropped. Roots and subagents are
+    /// never interleaved. Names and sprites come from the persisted assignment store and every displayed
+    /// name is unique (case-insensitive).
     static func items(sessions: [OpenClawChatSessionEntry], agentID: String, now: Date) -> [AgentTileItem] {
         var byKey: [String: OpenClawChatSessionEntry] = [:]
         for session in sessions {
             byKey[session.key] = session
         }
-        var roots: [AgentTileItem] = []
-        var subagents: [AgentTileItem] = []
+        var seenKeys: Set<String> = []
+        var rootSessions: [OpenClawChatSessionEntry] = []
+        var subSessions: [OpenClawChatSessionEntry] = []
         for session in sessions {
+            if seenKeys.contains(session.key) { continue }
             if isRootConversation(session) {
-                let title: String = displayName(for: session)
-                let rootItem: AgentTileItem = makeItem(session, isMain: true, name: title, parentName: nil, now: now)
-                roots.append(rootItem)
+                seenKeys.insert(session.key)
+                rootSessions.append(session)
                 continue
             }
             if !isSubagent(session) { continue }
+            if isFromExternalParent(session, in: byKey) { continue }
             if isOutdated(session, now: now) { continue }
-            let name: String = AgentTileNaming.name(for: session.key)
-            let parent: String? = parentName(of: session, in: byKey)
-            let subItem: AgentTileItem = makeItem(session, isMain: false, name: name, parentName: parent, now: now)
+            seenKeys.insert(session.key)
+            subSessions.append(session)
+        }
+
+        var keys: [String] = []
+        var titleNames: Set<String> = []
+        for session in rootSessions {
+            keys.append(session.key)
+            if let title = readableTitle(session) {
+                titleNames.insert(title.lowercased())
+            }
+        }
+        for session in subSessions {
+            keys.append(session.key)
+        }
+        let assigned: [String: AgentTileAssignment] = AgentTileAssignmentStore.shared.assignments(
+            for: keys,
+            reservedNames: titleNames,
+            now: now)
+        let names: [String: String] = uniqueNames(roots: rootSessions, subs: subSessions, assigned: assigned)
+
+        var roots: [AgentTileItem] = []
+        for session in rootSessions {
+            let name: String = names[session.key] ?? AgentTileNaming.name(for: session.key)
+            let sprite: AgentTileSpriteKind = resolvedSprite(assigned[session.key], key: session.key)
+            let rootItem: AgentTileItem = makeItem(
+                session, isMain: true, name: name, sprite: sprite, parentName: nil, now: now)
+            roots.append(rootItem)
+        }
+        var subagents: [AgentTileItem] = []
+        for session in subSessions {
+            let name: String = names[session.key] ?? AgentTileNaming.name(for: session.key)
+            let sprite: AgentTileSpriteKind = resolvedSprite(assigned[session.key], key: session.key)
+            let parent: String? = parentName(of: session, in: byKey, names: names)
+            let subItem: AgentTileItem = makeItem(
+                session, isMain: false, name: name, sprite: sprite, parentName: parent, now: now)
             subagents.append(subItem)
         }
         roots.sort(by: AgentTileFactory.isRootOrderedBefore)
         subagents.sort(by: AgentTileFactory.isOrderedBefore)
         var result: [AgentTileItem] = roots
         result.append(contentsOf: subagents)
+        return result
+    }
+
+    // MARK: Unique names
+
+    private static func isKeyOrderedBefore(_ lhs: OpenClawChatSessionEntry, _ rhs: OpenClawChatSessionEntry) -> Bool {
+        lhs.key < rhs.key
+    }
+
+    private static func resolvedSprite(_ assignment: AgentTileAssignment?, key: String) -> AgentTileSpriteKind {
+        if let assignment, let kind = AgentTileSpriteKind(rawValue: assignment.sprite) { return kind }
+        return AgentTileNaming.sprite(for: key)
+    }
+
+    /// Readable title for a root conversation, otherwise the persisted pool name.
+    private static func baseName(
+        for session: OpenClawChatSessionEntry,
+        assigned: [String: AgentTileAssignment]) -> String
+    {
+        if let title = readableTitle(session) { return title }
+        if let assignment = assigned[session.key], !assignment.name.isEmpty { return assignment.name }
+        return AgentTileNaming.name(for: session.key)
+    }
+
+    /// First free spelling of `base` ("Name", "Name 2", "Name 3"...). Case-insensitive.
+    private static func uniqueName(_ base: String, taken: inout Set<String>) -> String {
+        var candidate: String = base
+        var suffix: Int = 2
+        while taken.contains(candidate.lowercased()) {
+            candidate = "\(base) \(suffix)"
+            suffix += 1
+        }
+        taken.insert(candidate.lowercased())
+        return candidate
+    }
+
+    /// One unique display name per displayed session. Claimed in a stable order (roots, then subagents,
+    /// each by session key) so a refresh never swaps two names.
+    private static func uniqueNames(
+        roots: [OpenClawChatSessionEntry],
+        subs: [OpenClawChatSessionEntry],
+        assigned: [String: AgentTileAssignment]) -> [String: String]
+    {
+        var ordered: [OpenClawChatSessionEntry] = []
+        ordered.append(contentsOf: roots.sorted(by: AgentTileFactory.isKeyOrderedBefore))
+        ordered.append(contentsOf: subs.sorted(by: AgentTileFactory.isKeyOrderedBefore))
+        var taken: Set<String> = []
+        var result: [String: String] = [:]
+        for session in ordered {
+            let base: String = baseName(for: session, assigned: assigned)
+            result[session.key] = uniqueName(base, taken: &taken)
+        }
         return result
     }
 
@@ -235,7 +606,8 @@ enum AgentTileFactory {
         if readable {
             name = displayName(for: session)
         }
-        return makeItem(session, isMain: isMain, name: name, parentName: nil, now: now)
+        let sprite: AgentTileSpriteKind = spriteKind(for: session)
+        return makeItem(session, isMain: isMain, name: name, sprite: sprite, parentName: nil, now: now)
     }
 
     /// Detail / stop reuse the existing AgentsHub types.
@@ -289,7 +661,78 @@ enum AgentTileFactory {
         if isSubagent(session) { return false }
         if session.isBackground == true { return false }
         if session.classification == "heartbeat" { return false }
+        if isExternalChannel(session) { return false }
         return true
+    }
+
+    // MARK: External channels
+
+    /// Messaging channels whose conversations are hidden from the board (they live in those apps).
+    private static let externalChannels: Set<String> = [
+        "telegram", "whatsapp", "discord", "slack", "signal", "imessage", "bluebubbles",
+        "matrix", "msteams", "googlechat", "mattermost", "irc", "email", "sms", "line",
+        "feishu", "wechat", "zalo", "twitch", "nostr", "tlon", "nextcloud-talk",
+    ]
+
+    private static let peerRouteKinds: Set<String> = ["direct", "dm", "group", "channel", "thread"]
+
+    /// Channel segment of a peer route key `agent:<id>:<channel>[:<account>]:(direct|dm|group|channel|thread):<peer>`.
+    /// Nil for in-app keys (`agent:<id>:ios-<uuid>`, `agent:<id>:main`, `...:subagent:...`).
+    private static func channelFromKey(_ key: String) -> String? {
+        let parts: [Substring] = key.split(separator: ":", omittingEmptySubsequences: false)
+        if parts.count < 5 { return nil }
+        if parts[0].lowercased() != "agent" { return nil }
+        let kindA: String = parts[3].lowercased()
+        let kindB: String = parts[4].lowercased()
+        let isPeerRoute: Bool = peerRouteKinds.contains(kindA) || peerRouteKinds.contains(kindB)
+        if !isPeerRoute { return nil }
+        let channel: String = parts[2].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if channel.isEmpty { return nil }
+        return channel
+    }
+
+    private static func isExternalName(_ raw: String?) -> Bool {
+        guard let raw else { return false }
+        let name: String = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if name.isEmpty { return false }
+        return externalChannels.contains(name)
+    }
+
+    /// True when the conversation comes from an external messaging channel. Criteria, any of:
+    /// 1. `session.channel` is a known external channel (Telegram, WhatsApp, Discord, Slack, Signal, ...);
+    /// 2. `session.deliveryContext["channel"]` is a known external channel;
+    /// 3. the session key is a peer route (`agent:<id>:<channel>:direct|dm|group|channel|thread:<peer>`)
+    ///    whose channel segment is NOT an in-app one (`ios`, `webchat`, `dashboard`, `openclaw-*`).
+    /// In-app conversations (`agent:<id>:ios-<uuid>`, webchat, dashboard) never match.
+    static func isExternalChannel(_ session: OpenClawChatSessionEntry) -> Bool {
+        if isExternalName(session.channel) { return true }
+        if let context = session.deliveryContext, let value = context["channel"]?.value as? String {
+            if isExternalName(value) { return true }
+        }
+        guard let routeChannel = channelFromKey(session.key) else { return false }
+        if externalChannels.contains(routeChannel) { return true }
+        let inApp: Set<String> = ["ios", "webchat", "dashboard", "web", "app", "internal", "main", "subagent", "cron"]
+        if inApp.contains(routeChannel) { return false }
+        return !routeChannel.hasPrefix("openclaw")
+    }
+
+    /// A subagent spawned (directly) by an external channel conversation is hidden with it. Only the route of
+    /// the parent session or of the subagent key decides: the delivery metadata of the system chat is not used,
+    /// because it can point to a messaging channel without making its subagents external.
+    private static func isFromExternalParent(
+        _ session: OpenClawChatSessionEntry,
+        in byKey: [String: OpenClawChatSessionEntry]) -> Bool
+    {
+        if let own = channelFromKey(session.key), externalChannels.contains(own) { return true }
+        var parentKey: String?
+        if hasText(session.spawnedBy) {
+            parentKey = session.spawnedBy
+        } else if hasText(session.parentSessionKey) {
+            parentKey = session.parentSessionKey
+        }
+        guard let parentKey, let parent = byKey[parentKey] else { return false }
+        if isSystemMain(parent) { return false }
+        return isExternalChannel(parent)
     }
 
     private static func date(ms: Double?) -> Date? {
@@ -391,7 +834,8 @@ enum AgentTileFactory {
     /// Name of the session that spawned `session`, when it is part of the loaded list.
     private static func parentName(
         of session: OpenClawChatSessionEntry,
-        in byKey: [String: OpenClawChatSessionEntry]) -> String?
+        in byKey: [String: OpenClawChatSessionEntry],
+        names: [String: String]) -> String?
     {
         var parentKey: String?
         if hasText(session.spawnedBy) {
@@ -401,6 +845,7 @@ enum AgentTileFactory {
         }
         guard let parentKey, let parent = byKey[parentKey] else { return nil }
         if isSystemMain(parent) { return nil }
+        if let shown = names[parent.key] { return shown }
         if isRootConversation(parent) { return displayName(for: parent) }
         return AgentTileNaming.name(for: parent.key)
     }
@@ -411,6 +856,7 @@ enum AgentTileFactory {
         _ session: OpenClawChatSessionEntry,
         isMain: Bool,
         name: String,
+        sprite: AgentTileSpriteKind,
         parentName: String?,
         now: Date) -> AgentTileItem
     {
@@ -428,7 +874,6 @@ enum AgentTileFactory {
             runningStart = start
         }
         let progress: Double? = (status == .done) ? 1 : nil
-        let sprite: AgentTileSpriteKind = spriteKind(for: session)
         var recency: Double = (start ?? reference)?.timeIntervalSince1970 ?? 0
         if isMain, let latest = latestActivity(session) {
             recency = latest.timeIntervalSince1970
@@ -551,13 +996,16 @@ enum AgentTileFactory {
 
     // MARK: Order
 
+    /// 0 = run in progress (including stuck / waiting on the user), 1 = finished (done, failed, idle, napping).
+    /// Based on the real run status as well as the tile state, so an active run never sinks below a finished one.
     private static func rank(_ item: AgentTileItem) -> Int {
+        if item.runStatus.isActive { return 0 }
         if item.state.isActive { return 0 }
-        if item.state.isAsleep { return 2 }
         return 1
     }
 
-    /// Subagents: active first, then idle, then asleep; most recent first inside each group.
+    /// Subagents: active or in progress first, finished last; most recent first inside each group.
+    /// Root conversations never go through this comparator, they are listed before every subagent.
     static func isOrderedBefore(_ lhs: AgentTileItem, _ rhs: AgentTileItem) -> Bool {
         let left: Int = rank(lhs)
         let right: Int = rank(rhs)

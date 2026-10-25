@@ -14,6 +14,7 @@ enum NativeSettingsDestination: String, CaseIterable, Identifiable, Hashable {
     case talkVoice
     case channels
     case skills
+    case gatewayStatus
 
     var id: String {
         self.rawValue
@@ -26,7 +27,7 @@ enum NativeSettingsDestination: String, CaseIterable, Identifiable, Hashable {
         case .permissions: DashboardRouteMap.devicePermissionsSettingsPath
         case .channels: DashboardRouteMap.channelsSettingsPath
         case .skills: DashboardRouteMap.skillsPagePath
-        case .notifications, .talkVoice: nil
+        case .notifications, .talkVoice, .gatewayStatus: nil
         }
     }
 
@@ -38,6 +39,7 @@ enum NativeSettingsDestination: String, CaseIterable, Identifiable, Hashable {
         case .talkVoice: String(localized: "Talk & Voice")
         case .channels: String(localized: "Channels")
         case .skills: String(localized: "Skills")
+        case .gatewayStatus: String(localized: "Gateway status")
         }
     }
 
@@ -49,6 +51,7 @@ enum NativeSettingsDestination: String, CaseIterable, Identifiable, Hashable {
         case .talkVoice: "waveform"
         case .channels: "bubble.left.and.bubble.right"
         case .skills: "sparkles"
+        case .gatewayStatus: "heart.text.square"
         }
     }
 

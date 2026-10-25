@@ -24,6 +24,7 @@ public final class OpenClawChatViewModel {
         didSet {
             guard self.input != oldValue else { return }
             self.noteComposerInputChanged()
+            self.scheduleDraftPersistence()
         }
     }
 
@@ -42,6 +43,13 @@ public final class OpenClawChatViewModel {
     var savedDraftRevisionsBySession: [String: UInt64] = [:]
     @ObservationIgnored
     var isApplyingRecalledInput = false
+    /// Persistent per-session drafts (text only). See `ChatViewModel+Drafts.swift`.
+    @ObservationIgnored
+    var draftStore = ChatDraftStore()
+    @ObservationIgnored
+    var draftSaveTask: Task<Void, Never>?
+    @ObservationIgnored
+    var pendingDraftWrite: PendingDraftWrite?
     public internal(set) var thinkingLevel: String
     /// User intent stays stable while `thinkingLevel` follows the selected model's advertised levels.
     var preferredThinkingLevel: String
@@ -656,6 +664,7 @@ public final class OpenClawChatViewModel {
     }
 
     public func load() {
+        self.restorePersistedDraftIfNeeded()
         startBootstrap()
     }
 
@@ -1228,6 +1237,7 @@ extension OpenClawChatViewModel {
         self.scopedSessionTransport = scopedTransport
         self.sessionKey = next
         self.restoreComposerAfterSessionSwitch()
+        self.restorePersistedDraftIfNeeded()
         if intent == .userInitiated {
             self.onSessionChanged?(next)
         }

@@ -1,13 +1,18 @@
 import Foundation
 import OpenClawKit
 import SwiftUI
+import UIKit
 
-/// Read-only summary of the Gateway Talk configuration plus Voice Wake triggers.
+/// Summary of the Gateway Talk configuration plus Voice Wake triggers.
 struct NativeTalkVoiceSummary: Equatable {
     var provider: String?
     var speechLocale: String?
     var interruptOnSpeech: Bool?
     var silenceTimeoutMs: Int?
+    /// Voice of the active provider (`talk.providers.<provider>.voiceId` or `.voice`).
+    var voiceId: String?
+    /// Config key that currently holds the voice for the active provider (`voiceId` or `voice`).
+    var voiceKey: String = "voiceId"
     var triggers: [String]
 }
 
@@ -32,7 +37,18 @@ enum NativeTalkVoiceLoader {
             triggers = VoiceWakePreferences.sanitizeTriggerWords(rawTriggers)
         }
 
-        let provider: String? = talk.string("provider")
+        let resolved: [String: Any] = talk.dict("resolved") ?? [:]
+        let provider: String? = talk.string("provider") ?? resolved.string("provider")
+        let providerConfig: [String: Any] = Self.providerConfig(talk: talk, resolved: resolved, provider: provider)
+        let voiceId: String? = Self.nonEmpty(providerConfig.string("voiceId"))
+        let voice: String? = Self.nonEmpty(providerConfig.string("voice"))
+        var voiceKey: String = "voiceId"
+        var currentVoice: String? = voiceId
+        if voiceId == nil, let voice {
+            voiceKey = "voice"
+            currentVoice = voice
+        }
+
         let locale: String? = talk.string("speechLocale")
         let interrupt: Bool? = talk.bool("interruptOnSpeech")
         let silence: Int? = talk.int("silenceTimeoutMs")
@@ -41,11 +57,32 @@ enum NativeTalkVoiceLoader {
             speechLocale: locale,
             interruptOnSpeech: interrupt,
             silenceTimeoutMs: silence,
+            voiceId: currentVoice,
+            voiceKey: voiceKey,
             triggers: triggers)
+    }
+
+    private static func providerConfig(
+        talk: [String: Any],
+        resolved: [String: Any],
+        provider: String?) -> [String: Any]
+    {
+        let providers: [String: Any] = talk.dict("providers") ?? [:]
+        if let provider, let entry = providers.dict(provider) {
+            return entry
+        }
+        return resolved.dict("config") ?? [:]
+    }
+
+    private static func nonEmpty(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed: String = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
 
-/// Native Talk & Voice settings. Two toggles on this device, then the Gateway values read-only.
+/// Native Talk & Voice settings. Two toggles on this device, the editable Gateway Talk values
+/// (written through `config.patch`, `operator.admin`), then the wake words.
 /// Device toggles are local (`NodeAppModel.setTalkEnabled` / `setVoiceWakeEnabled`).
 @MainActor
 struct NativeTalkVoiceScreen: View {
@@ -55,6 +92,14 @@ struct NativeTalkVoiceScreen: View {
     @State private var newWord: String = ""
     @State private var isSavingWords: Bool = false
     @State private var wordsError: String?
+    @State private var draft: NativeTalkConfigDraft = NativeTalkConfigDraft.empty
+    @State private var pendingPlan: NativeTalkConfigPlan?
+    @State private var pendingDraft: NativeTalkConfigDraft = NativeTalkConfigDraft.empty
+    @State private var showConfirm: Bool = false
+    @State private var isSavingConfig: Bool = false
+    @State private var saveError: String?
+    @State private var saveNotice: String?
+    @State private var saveCount: Int = 0
     var headerSidebarAction: OpenClawSidebarHeaderAction?
     var embedded: Bool = false
     var onClose: (() -> Void)?
@@ -94,12 +139,51 @@ struct NativeTalkVoiceScreen: View {
         .refreshable { await self.loader.refresh(appModel: self.appModel, showSpinner: false) }
         .openClawHaptic(.selection, trigger: self.appModel.talkMode.isEnabled)
         .openClawHaptic(.selection, trigger: self.voiceWakeEnabled)
+        .openClawHaptic(.selection, trigger: self.saveCount)
         .openClawAnimation(value: self.loadedSummary)
+        .onChange(of: self.loadedSummary) { (_: NativeTalkVoiceSummary?, newValue: NativeTalkVoiceSummary?) in
+            guard let newValue else { return }
+            self.draft = NativeTalkConfigDraft(summary: newValue)
+        }
+        .confirmationDialog(
+            String(localized: "Change the Gateway configuration?"),
+            isPresented: self.$showConfirm,
+            titleVisibility: .visible)
+        {
+            Button(String(localized: "Apply changes")) {
+                Task { await self.confirmSave() }
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {
+                self.pendingPlan = nil
+            }
+        } message: {
+            Text(verbatim: self.confirmationMessage)
+        }
     }
 
     private var loadedSummary: NativeTalkVoiceSummary? {
         if case let .loaded(value) = self.loader.state { return value }
         return nil
+    }
+
+    private var canEditConfig: Bool {
+        self.appModel.hasOperatorAdminScope
+    }
+
+    private var isDirty: Bool {
+        guard let summary = self.loadedSummary else { return false }
+        return self.draft != NativeTalkConfigDraft(summary: summary)
+    }
+
+    private var canSave: Bool {
+        self.canEditConfig && self.isDirty && !self.isSavingConfig
+    }
+
+    private var confirmationMessage: String {
+        let fields: [String] = self.pendingPlan?.fields ?? []
+        let list: String = fields.joined(separator: ", ")
+        return String(
+            localized: "This changes the Gateway Talk settings (\(list)). The Gateway may restart and this app may briefly disconnect.")
     }
 
     private var talkBinding: Binding<Bool> {
@@ -149,49 +233,175 @@ struct NativeTalkVoiceScreen: View {
         .openClawAnimation(value: self.voiceWakeEnabled)
     }
 
+    // MARK: - Gateway Talk configuration (config.get + config.patch, operator.admin)
+
     private var gatewaySection: some View {
         Section {
             NativeSettingsInlineState(
                 state: self.loader.state,
                 retry: { await self.loader.refresh(appModel: self.appModel, showSpinner: true) },
-                content: { (summary: NativeTalkVoiceSummary) in
-                    self.summaryRows(summary)
+                content: { (_: NativeTalkVoiceSummary) in
+                    self.editorRows
                 })
         } header: {
             NativeSettingsHeader("Gateway")
         } footer: {
-            NativeSettingsFooter("These values are read from the Gateway and can be changed in the Dashboard.")
+            if self.canEditConfig {
+                NativeSettingsFooter("Changes are written to the Gateway configuration. The Gateway may restart.")
+            } else {
+                NativeSettingsFooter("Changing Talk settings requires operator.admin access.")
+            }
         }
+        .openClawAnimation(value: self.saveError)
+        .openClawAnimation(value: self.saveNotice)
     }
 
     @ViewBuilder
-    private func summaryRows(_ summary: NativeTalkVoiceSummary) -> some View {
-        let notSet: String = String(localized: "Not set")
-        let providerValue: String = summary.provider ?? notSet
-        let localeValue: String = summary.speechLocale ?? notSet
-        let silenceValue: String = Self.silenceText(summary.silenceTimeoutMs, fallback: notSet)
-        let interruptValue: String = Self.interruptText(summary.interruptOnSpeech, fallback: notSet)
-
-        self.valueRow(
+    private var editorRows: some View {
+        self.fieldRow(
             title: String(localized: "Provider"),
-            value: providerValue,
+            placeholder: String(localized: "Not set"),
+            text: self.$draft.provider,
             systemImage: "speaker.wave.2",
-            index: 2)
-        self.valueRow(
+            index: 2,
+            identifier: "NativeSettings.TalkVoice.Provider")
+        self.fieldRow(
+            title: String(localized: "Voice"),
+            placeholder: String(localized: "Not set"),
+            text: self.$draft.voiceId,
+            systemImage: "person.wave.2",
+            index: 3,
+            identifier: "NativeSettings.TalkVoice.Voice")
+        self.fieldRow(
             title: String(localized: "Speech language"),
-            value: localeValue,
+            placeholder: String(localized: "fr-FR"),
+            text: self.$draft.speechLocale,
             systemImage: "globe",
-            index: 3)
-        self.valueRow(
-            title: String(localized: "Silence timeout"),
-            value: silenceValue,
+            index: 4,
+            identifier: "NativeSettings.TalkVoice.Locale")
+        self.fieldRow(
+            title: String(localized: "Silence timeout (ms)"),
+            placeholder: String(localized: "Not set"),
+            text: self.$draft.silenceText,
             systemImage: "timer",
-            index: 4)
-        self.valueRow(
-            title: String(localized: "Interrupt on speech"),
-            value: interruptValue,
-            systemImage: "hand.raised",
-            index: 5)
+            index: 5,
+            identifier: "NativeSettings.TalkVoice.Silence",
+            keyboard: .numberPad)
+        Toggle(isOn: self.$draft.interruptOnSpeech) {
+            Label {
+                Text("Interrupt on speech")
+                    .font(OpenClawType.body)
+            } icon: {
+                Image(systemName: "hand.raised")
+            }
+        }
+        .disabled(!self.canEditConfig)
+        .frame(minHeight: OpenClawHitTarget.minimum)
+        .openClawEntrance(index: 6)
+        .accessibilityIdentifier("NativeSettings.TalkVoice.Interrupt")
+        self.saveRow
+    }
+
+    private func fieldRow(
+        title: String,
+        placeholder: String,
+        text: Binding<String>,
+        systemImage: String,
+        index: Int,
+        identifier: String,
+        keyboard: UIKeyboardType = .default) -> some View
+    {
+        VStack(alignment: .leading, spacing: OpenClawSpace.xs) {
+            Label {
+                Text(verbatim: title)
+                    .font(OpenClawType.footnote)
+                    .foregroundStyle(.secondary)
+            } icon: {
+                Image(systemName: systemImage)
+                    .font(OpenClawType.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            TextField(placeholder, text: text)
+                .font(OpenClawType.body)
+                .keyboardType(keyboard)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.done)
+                .disabled(!self.canEditConfig)
+                .accessibilityLabel(Text(verbatim: title))
+                .accessibilityIdentifier(identifier)
+        }
+        .frame(maxWidth: .infinity, minHeight: OpenClawHitTarget.minimum, alignment: .leading)
+        .openClawEntrance(index: index)
+    }
+
+    private var saveRow: some View {
+        VStack(alignment: .leading, spacing: OpenClawSpace.sm) {
+            if let error = self.saveError {
+                Text(verbatim: error)
+                    .font(OpenClawType.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            if let notice = self.saveNotice {
+                Text(verbatim: notice)
+                    .font(OpenClawType.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            HStack(spacing: OpenClawSpace.md) {
+                OpenClawGlassButton(title: "Save changes", systemImage: "checkmark", kind: .prominent) {
+                    self.requestSave()
+                }
+                .disabled(!self.canSave)
+                .accessibilityIdentifier("NativeSettings.TalkVoice.Save")
+                if self.isSavingConfig {
+                    ProgressView()
+                        .accessibilityLabel(Text("Saving"))
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: OpenClawHitTarget.minimum, alignment: .leading)
+    }
+
+    /// Validates the draft, builds the minimal patch and asks for confirmation. Nothing is sent yet.
+    private func requestSave() {
+        guard self.canEditConfig, let summary = self.loadedSummary else { return }
+        self.saveError = nil
+        self.saveNotice = nil
+        do {
+            let plan: NativeTalkConfigPlan? = try NativeTalkConfigPatch.plan(original: summary, draft: self.draft)
+            guard let plan else { return }
+            self.pendingPlan = plan
+            self.pendingDraft = self.draft
+            self.showConfirm = true
+        } catch {
+            self.saveError = error.localizedDescription
+        }
+    }
+
+    /// Sends the confirmed patch (`config.get` for the hash, then `config.patch`).
+    private func confirmSave() async {
+        guard let plan = self.pendingPlan, let summary = self.loadedSummary else { return }
+        let draftToApply: NativeTalkConfigDraft = self.pendingDraft
+        self.pendingPlan = nil
+        self.isSavingConfig = true
+        defer { self.isSavingConfig = false }
+        do {
+            let outcome: NativeTalkConfigWriter.Outcome = try await NativeTalkConfigWriter.apply(
+                appModel: self.appModel,
+                patch: plan.patch)
+            let applied: NativeTalkVoiceSummary = NativeTalkConfigPatch.applying(draftToApply, to: summary)
+            self.loader.state = .loaded(applied)
+            self.saveCount += 1
+            if outcome.restartScheduled {
+                self.saveNotice = String(localized: "Saved. The Gateway is restarting; the app will reconnect.")
+            } else {
+                self.saveNotice = String(localized: "Saved.")
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            self.saveError = error.localizedDescription
+        }
     }
 
     // MARK: - Wake words (voicewake.set, operator.write)
@@ -286,33 +496,5 @@ struct NativeTalkVoiceScreen: View {
             self.wordsError = error.localizedDescription
             return false
         }
-    }
-
-    private func valueRow(
-        title: String,
-        value: String,
-        systemImage: String,
-        index: Int,
-        lineLimit: Int? = 2) -> some View
-    {
-        NativeSettingsRow(
-            title: title,
-            detail: value,
-            systemImage: systemImage,
-            detailLineLimit: lineLimit)
-            .nativeSettingsCopyMenu(value)
-            .nativeSettingsCopySwipe(value)
-            .openClawEntrance(index: index)
-    }
-
-    private static func silenceText(_ milliseconds: Int?, fallback: String) -> String {
-        guard let milliseconds else { return fallback }
-        let seconds: Double = Double(milliseconds) / 1000
-        return seconds.formatted(.number.precision(.fractionLength(0...1))) + " s"
-    }
-
-    private static func interruptText(_ value: Bool?, fallback: String) -> String {
-        guard let value else { return fallback }
-        return value ? String(localized: "On") : String(localized: "Off")
     }
 }

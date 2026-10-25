@@ -199,9 +199,50 @@ private struct SubagentChatHeaderBar: View {
 
 // MARK: - Children list
 
+private struct SubagentChatChildrenChip: View {
+    let count: Int
+    let onShow: () -> Void
+
+    private var valueText: String {
+        let format: String = String(localized: "%lld subagents")
+        return String(format: format, Int64(self.count))
+    }
+
+    var body: some View {
+        let shape: RoundedRectangle = RoundedRectangle(cornerRadius: 8, style: .continuous)
+        let countText: String = "\(self.count)"
+        return HStack {
+            Button(action: self.onShow) {
+                HStack(spacing: 6) {
+                    Image(systemName: "person.2")
+                        .font(OpenClawType.subheadSemiBold)
+                        .foregroundStyle(.primary)
+                    Text(verbatim: countText)
+                        .font(OpenClawType.captionSemiBold)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                .padding(.horizontal, 12)
+                .frame(minWidth: 44, minHeight: 44)
+                .background(OpenClawBrand.surfaceCard, in: shape)
+                .overlay(shape.strokeBorder(OpenClawBrand.hairlineBorder, lineWidth: 1))
+                .contentShape(shape)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text("Show subagents"))
+            .accessibilityValue(Text(verbatim: self.valueText))
+            .accessibilityIdentifier("subagent-chat-children-show")
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
+    }
+}
+
 private struct SubagentChatChildrenList: View {
     let children: [SubagentChatChild]
     let onOpen: (String) -> Void
+    let onCollapse: () -> Void
 
     private let visibleLimit: Int = 4
 
@@ -213,8 +254,33 @@ private struct SubagentChatChildrenList: View {
         max(0, self.children.count - self.visibleLimit)
     }
 
+    private var header: some View {
+        HStack(spacing: 8) {
+            Text("Subagents")
+                .font(OpenClawType.captionSemiBold)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            Button(action: self.onCollapse) {
+                Image(systemName: "chevron.up")
+                    .font(OpenClawType.captionSemiBold)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text("Hide subagents"))
+            .accessibilityIdentifier("subagent-chat-children-hide")
+        }
+        .padding(.leading, 12)
+        .frame(minHeight: 44)
+    }
+
     var body: some View {
-        VStack(spacing: 0) {
+        let shape: RoundedRectangle = RoundedRectangle(cornerRadius: 8, style: .continuous)
+        return VStack(spacing: 0) {
+            self.header
+            Divider().overlay(OpenClawBrand.hairlineBorder)
             ForEach(self.visible) { child in
                 self.row(child)
                 if child.id != self.visible.last?.id {
@@ -224,10 +290,8 @@ private struct SubagentChatChildrenList: View {
             self.moreRow
         }
         .background(OpenClawBrand.surfaceCard)
-        .clipShape(RoundedRectangle(cornerRadius: OpenClawProMetric.cardRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: OpenClawProMetric.cardRadius, style: .continuous)
-                .strokeBorder(OpenClawBrand.hairlineBorder, lineWidth: 1))
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(OpenClawBrand.hairlineBorder, lineWidth: 1))
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .accessibilityElement(children: .contain)
@@ -297,6 +361,7 @@ struct SubagentChatScreen: View {
     @State private var viewModel: OpenClawChatViewModel?
     @State private var confirmsStop: Bool = false
     @State private var openedChildCount: Int = 0
+    @State private var childrenCollapsed: Bool = false
 
     // MARK: Derived
 
@@ -395,11 +460,23 @@ struct SubagentChatScreen: View {
     @ViewBuilder
     private var childrenSection: some View {
         let list: [SubagentChatChild] = self.children
-        if !list.isEmpty {
-            SubagentChatChildrenList(children: list, onOpen: self.openChild)
-                .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
-                .openClawAnimation(value: list)
+        let transition: AnyTransition = OpenClawMotion.appear(reduceMotion: self.reduceMotion)
+        Group {
+            if !list.isEmpty {
+                if self.childrenCollapsed {
+                    SubagentChatChildrenChip(count: list.count, onShow: self.showChildren)
+                        .transition(transition)
+                } else {
+                    SubagentChatChildrenList(
+                        children: list,
+                        onOpen: self.openChild,
+                        onCollapse: self.hideChildren)
+                        .transition(transition)
+                }
+            }
         }
+        .openClawAnimation(value: list)
+        .openClawAnimation(value: self.childrenCollapsed)
     }
 
     @ViewBuilder
@@ -425,6 +502,23 @@ struct SubagentChatScreen: View {
         self.stack.open(key)
     }
 
+    /// Tucked/open state lives in the shared store, keyed by chat session, for the app session.
+    private func hideChildren() {
+        self.setChildrenCollapsed(true)
+    }
+
+    private func showChildren() {
+        self.setChildrenCollapsed(false)
+    }
+
+    private func setChildrenCollapsed(_ value: Bool) {
+        let key: String = "subagent-chat-children:\(self.sessionKey)"
+        OpenClawChatSubagentListState.shared.setCollapsed(value, for: key)
+        OpenClawMotion.perform(reduceMotion: self.reduceMotion) {
+            self.childrenCollapsed = value
+        }
+    }
+
     private func requestStop() {
         self.confirmsStop = true
     }
@@ -442,6 +536,8 @@ struct SubagentChatScreen: View {
 
     /// Builds the view model once, then keeps the session row fresh while the screen is up.
     private func run() async {
+        let key: String = "subagent-chat-children:\(self.sessionKey)"
+        self.childrenCollapsed = OpenClawChatSubagentListState.shared.isCollapsed(key)
         self.prepare()
         while !Task.isCancelled {
             self.viewModel?.refreshSessions()

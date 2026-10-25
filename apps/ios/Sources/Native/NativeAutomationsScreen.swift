@@ -373,15 +373,18 @@ enum NativeAutomationFilter: String, Hashable {
 
 // MARK: - Screen
 
+/// Automations list. Same column as the Activity feed, nothing stacked:
+/// [shell header] -> [one filter line] -> [list grouped Active / Paused].
+/// Rows are sober (state glyph, name, schedule, next run, state tag when it is not healthy).
 struct NativeAutomationsScreen: View {
     @Environment(NodeAppModel.self) private var appModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var showCopied = false
-    @State private var model = NativeAutomationsModel()
-    @State private var search = ""
+    @State private var model: NativeAutomationsModel = NativeAutomationsModel()
+    @State private var search: String = ""
     @State private var filterID: String = NGFilterID.all
     @State private var pendingDelete: NativeCronJob?
-    @State private var copiedTick = 0
+    @State private var selected: NativeCronJob?
+    @State private var toast: GlassToastModel = GlassToastModel()
     let title: String
     var headerSidebarAction: OpenClawSidebarHeaderAction?
 
@@ -391,37 +394,39 @@ struct NativeAutomationsScreen: View {
 
     var body: some View {
         NavigationStack {
-            self.content
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background { OpenClawProBackground() }
-                .nativeChrome(title: self.title, sidebar: self.headerSidebarAction)
-                .searchable(text: self.$search, prompt: Text("Search automations"))
-                .navigationDestination(for: NativeCronJob.self) { job in
+            self.page
+                .navigationDestination(item: self.$selected) { (job: NativeCronJob) in
                     NativeAutomationDetailView(jobId: job.id, model: self.model)
                 }
-                .nativeErrorAlert(self.$model.actionError)
-                .overlay(alignment: .bottom) { self.copiedToast }
-                .confirmationDialog(
-                    Text("Delete this automation?"),
-                    isPresented: self.deleteBinding,
-                    titleVisibility: .visible,
-                    presenting: self.pendingDelete)
-                { job in
-                    Button("Delete", role: .destructive) {
-                        Task { await self.model.remove(job: job, appModel: self.appModel) }
-                    }
-                } message: { job in
-                    Text(verbatim: job.name)
-                }
         }
-        .task { await self.reload(showSpinner: true) }
+        .task { await self.reload(spinner: true) }
+        .nativeErrorAlert(self.$model.actionError)
+        .confirmationDialog(
+            Text("Delete this automation?"),
+            isPresented: self.deleteBinding,
+            titleVisibility: .visible,
+            presenting: self.pendingDelete)
+        { (job: NativeCronJob) in
+            Button("Delete", role: .destructive) {
+                Task { await self.model.remove(job: job, appModel: self.appModel) }
+            }
+        } message: { (job: NativeCronJob) in
+            Text(verbatim: job.name)
+        }
         .sensoryFeedback(.success, trigger: self.model.successTick)
         .sensoryFeedback(.error, trigger: self.model.errorTick)
-        .sensoryFeedback(.success, trigger: self.copiedTick)
     }
 
-    private func reload(showSpinner: Bool) async {
-        await self.model.load(appModel: self.appModel, showSpinner: showSpinner)
+    private var page: some View {
+        VStack(spacing: 0) {
+            ActivityHeaderSlot()
+            self.filterLine
+            self.content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .background { OpenClawProBackground() }
+        .activityNavigationChrome(title: self.title, sidebar: self.headerSidebarAction)
+        .glassToastHost(self.toast)
     }
 
     private var deleteBinding: Binding<Bool> {
@@ -432,22 +437,64 @@ struct NativeAutomationsScreen: View {
             })
     }
 
+    private func reload(spinner: Bool) async {
+        await self.model.load(appModel: self.appModel, showSpinner: spinner)
+    }
+
+    private func pullRefresh() async {
+        await self.reload(spinner: false)
+    }
+
+    private func retry() {
+        Task { await self.reload(spinner: true) }
+    }
+
+    // MARK: Filter line
+
+    @ViewBuilder
+    private var filterLine: some View {
+        if !self.model.unavailable, case let .loaded(jobs) = self.model.state, !jobs.isEmpty {
+            VStack(spacing: 0) {
+                ActivityFilterRow(
+                    items: self.chipItems(jobs),
+                    selection: self.$filterID,
+                    failuresOnly: nil,
+                    search: self.$search,
+                    searchPrompt: "Search automations")
+                ActivityHairline()
+            }
+        }
+    }
+
+    private func chipItem(_ filter: NativeAutomationFilter, title: String, jobs: [NativeCronJob]) -> ActivityChipItem {
+        let count: Int = jobs.filter { filter.includes($0) }.count
+        return ActivityChipItem(id: filter.filterID, title: title, count: count, systemImage: nil)
+    }
+
+    private func chipItems(_ jobs: [NativeCronJob]) -> [ActivityChipItem] {
+        let all: ActivityChipItem = ActivityChipItem(
+            id: NativeAutomationFilter.all.filterID,
+            title: String(localized: "All"),
+            count: jobs.count,
+            systemImage: nil)
+        let running: ActivityChipItem = self.chipItem(.running, title: String(localized: "Running"), jobs: jobs)
+        let failing: ActivityChipItem = self.chipItem(.failing, title: String(localized: "Failing"), jobs: jobs)
+        let paused: ActivityChipItem = self.chipItem(.paused, title: String(localized: "Paused"), jobs: jobs)
+        return [all, running, failing, paused]
+    }
+
     // MARK: State switch
 
     @ViewBuilder
     private var content: some View {
         if self.model.unavailable {
-            NGUnavailableState(
-                systemImage: "timer",
-                title: String(localized: "Automations unavailable on this Gateway"),
-                message: String(localized: "The connected Gateway does not offer scheduled jobs."),
-                retry: { await self.reload(showSpinner: true) })
+            self.unavailableState
         } else {
             switch self.model.state {
             case .idle, .loading:
-                NGSkeletonList()
+                ActivitySkeleton()
             case let .failed(message):
-                NGErrorState(message: message, retry: { await self.reload(showSpinner: true) })
+                self.errorState(message)
             case let .loaded(jobs):
                 if jobs.isEmpty {
                     self.emptyState
@@ -458,15 +505,66 @@ struct NativeAutomationsScreen: View {
         }
     }
 
+    private func actionButton(
+        _ title: LocalizedStringKey,
+        systemImage: String,
+        prominent: Bool,
+        action: @escaping () -> Void) -> some View
+    {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+        }
+        .buttonStyle(ActivityActionButtonStyle(prominent: prominent))
+    }
+
+    private var unavailableState: some View {
+        let title: OpenClawTextValue = .verbatim(String(localized: "Automations unavailable on this Gateway"))
+        let message: OpenClawTextValue = .verbatim(String(localized: "The connected Gateway does not offer scheduled jobs."))
+        return ActivityPlaceholder(refresh: self.pullRefresh) {
+            OpenClawEmptyState(systemImage: "timer", title: title, message: message) {
+                self.actionButton("Check again", systemImage: "arrow.clockwise", prominent: false, action: self.retry)
+            }
+        }
+    }
+
+    private func errorState(_ text: String) -> some View {
+        let message: OpenClawTextValue = .verbatim(text)
+        return ActivityPlaceholder(refresh: self.pullRefresh) {
+            OpenClawEmptyState(systemImage: "exclamationmark.triangle", title: "Could not load", message: message) {
+                self.actionButton("Retry", systemImage: "arrow.clockwise", prominent: true, action: self.retry)
+            }
+        }
+    }
+
     private var emptyState: some View {
-        ScrollView {
+        ActivityPlaceholder(refresh: self.pullRefresh) {
             OpenClawEmptyState(
                 systemImage: "timer",
                 title: "No automations",
                 message: "Scheduled jobs created on the Gateway show up here.")
-                .padding(.top, 80)
         }
-        .refreshable { await self.reload(showSpinner: false) }
+    }
+
+    @ViewBuilder
+    private var noMatches: some View {
+        if !self.search.isEmpty {
+            ContentUnavailableView.search(text: self.search)
+        } else {
+            OpenClawEmptyState(
+                systemImage: "line.3.horizontal.decrease.circle",
+                title: "No matching automations",
+                message: "Try another filter.")
+            {
+                self.actionButton("Clear filters", systemImage: "xmark.circle", prominent: false, action: self.resetFilters)
+            }
+        }
+    }
+
+    private func resetFilters() {
+        OpenClawMotion.perform(reduceMotion: self.reduceMotion) {
+            self.filterID = NGFilterID.all
+            self.search = ""
+        }
     }
 
     // MARK: List
@@ -477,162 +575,114 @@ struct NativeAutomationsScreen: View {
         return jobs.filter { $0.matches(query) }
     }
 
-    private func filterItems(_ jobs: [NativeCronJob]) -> [NGFilterBar.Item] {
-        let running: Int = jobs.filter { NativeAutomationFilter.running.includes($0) }.count
-        let failing: Int = jobs.filter { NativeAutomationFilter.failing.includes($0) }.count
-        let paused: Int = jobs.filter { NativeAutomationFilter.paused.includes($0) }.count
-        return [
-            NGFilterBar.Item(id: NativeAutomationFilter.all.filterID, title: String(localized: "All"), count: jobs.count),
-            NGFilterBar.Item(
-                id: NativeAutomationFilter.running.filterID,
-                title: String(localized: "Running"),
-                count: running),
-            NGFilterBar.Item(
-                id: NativeAutomationFilter.failing.filterID,
-                title: String(localized: "Failing"),
-                count: failing),
-            NGFilterBar.Item(
-                id: NativeAutomationFilter.paused.filterID,
-                title: String(localized: "Paused"),
-                count: paused),
-        ]
-    }
-
-    private func metrics(_ jobs: [NativeCronJob]) -> [NGMetricItem] {
+    private func stats(_ jobs: [NativeCronJob]) -> [ActivityStat] {
         let active: Int = jobs.filter { $0.enabled }.count
         let failing: Int = jobs.filter { $0.enabled && $0.isFailing }.count
         let paused: Int = jobs.filter { !$0.enabled }.count
-        return [
-            NGMetricItem(
-                id: "active", value: active, label: String(localized: "Active"),
-                systemImage: "timer", tint: OpenClawBrand.ok),
-            NGMetricItem(
-                id: "failing", value: failing, label: String(localized: "Failing"),
-                systemImage: "exclamationmark.triangle", tint: OpenClawBrand.danger),
-            NGMetricItem(
-                id: "paused", value: paused, label: String(localized: "Paused"),
-                systemImage: "pause.circle", tint: OpenClawBrand.warn),
-        ]
+        let muted: Color = OpenClawPalette.texteAtténué
+        let failingTint: Color = failing > 0 ? OpenClawBrand.danger : muted
+        var result: [ActivityStat] = []
+        result.append(ActivityStat(id: "active", value: active, label: String(localized: "Active"), tint: OpenClawBrand.ok))
+        result.append(ActivityStat(id: "failing", value: failing, label: String(localized: "Failing"), tint: failingTint))
+        result.append(ActivityStat(id: "paused", value: paused, label: String(localized: "Paused"), tint: OpenClawBrand.warn))
+        return result
     }
 
+    @ViewBuilder
     private func list(_ jobs: [NativeCronJob]) -> some View {
         let visible: [NativeCronJob] = self.searched(jobs)
-        let shown: [NativeCronJob] = visible.filter { self.filter.includes($0) }
+        let currentFilter: NativeAutomationFilter = self.filter
+        let shown: [NativeCronJob] = visible.filter { currentFilter.includes($0) }
+        if shown.isEmpty {
+            ActivityPlaceholder(refresh: self.pullRefresh) {
+                self.noMatches
+            }
+        } else {
+            self.sections(jobs, shown: shown)
+        }
+    }
+
+    private func sections(_ jobs: [NativeCronJob], shown: [NativeCronJob]) -> some View {
         let active: [NativeCronJob] = shown.filter { $0.enabled }
         let paused: [NativeCronJob] = shown.filter { !$0.enabled }
+        let ids: [String] = shown.map { $0.id }
         return List {
-            NGSummaryHeader(items: self.metrics(jobs))
-                .ngCardRow()
-            if !active.isEmpty {
-                Section {
-                    self.rows(active)
-                } header: {
-                    self.sectionHeader(String(localized: "Active"), count: active.count)
-                }
-            }
-            if !paused.isEmpty {
-                Section {
-                    self.rows(paused)
-                } header: {
-                    self.sectionHeader(String(localized: "Paused"), count: paused.count)
-                }
-            }
+            ActivitySummaryStrip(stats: self.stats(jobs))
+                .openClawEntrance(index: 0)
+                .activityBlockRow()
+            self.section(String(localized: "Active"), jobs: active)
+            self.section(String(localized: "Paused"), jobs: paused)
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .ngTopScrollEdge()
-        .refreshable { await self.reload(showSpinner: false) }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            NGFilterBar(items: self.filterItems(jobs), selection: self.$filterID)
-        }
-        .openClawAnimation(value: shown.map(\.id))
-        .overlay {
-            if shown.isEmpty {
-                self.noMatches(hasSearch: !self.search.isEmpty)
+        .refreshable { await self.pullRefresh() }
+        .openClawAnimation(value: ids)
+    }
+
+    @ViewBuilder
+    private func section(_ title: String, jobs: [NativeCronJob]) -> some View {
+        if !jobs.isEmpty {
+            Section {
+                ForEach(jobs) { (job: NativeCronJob) in
+                    self.row(job)
+                }
+            } header: {
+                ActivitySectionHeader(title: title, count: jobs.count)
             }
         }
     }
 
-    @ViewBuilder
-    private func noMatches(hasSearch: Bool) -> some View {
-        if hasSearch {
-            ContentUnavailableView.search(text: self.search)
-        } else {
-            OpenClawEmptyState(
-                systemImage: "timer",
-                title: "No matching automations",
-                message: "Try another filter.")
-        }
+    private func runNow(_ job: NativeCronJob) {
+        Task { await self.model.runNow(job: job, appModel: self.appModel) }
     }
 
-    private func sectionHeader(_ text: String, count: Int) -> some View {
-        HStack {
-            Text(verbatim: text)
-            Spacer(minLength: 8)
-            Text(count, format: .number).monospacedDigit()
-        }
-        .font(OpenClawType.subheadSemiBold)
-        .foregroundStyle(.secondary)
-        .textCase(nil)
-        .ngStickyHeader()
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isHeader)
+    private func setEnabled(_ enabled: Bool, job: NativeCronJob) {
+        Task { await self.model.setEnabled(enabled, job: job, appModel: self.appModel) }
     }
 
-    @ViewBuilder
-    private func rows(_ jobs: [NativeCronJob]) -> some View {
-        ForEach(jobs) { job in
-            NavigationLink(value: job) {
-                NativeAutomationCard(job: job, isBusy: self.model.busyIds.contains(job.id))
-            }
-            .ngCardRow()
-            .swipeActions(edge: .trailing, allowsFullSwipe: false) { self.trailingActions(job) }
-            .swipeActions(edge: .leading, allowsFullSwipe: true) { self.leadingAction(job) }
-            .contextMenu { self.menu(job) }
-            .accessibilityAction(named: Text("Run now")) {
-                Task { await self.model.runNow(job: job, appModel: self.appModel) }
-            }
-            .transition(.opacity)
+    private func row(_ job: NativeCronJob) -> some View {
+        let busy: Bool = self.model.busyIds.contains(job.id)
+        return Button {
+            self.selected = job
+        } label: {
+            NativeAutomationRow(job: job, isBusy: busy)
         }
-    }
-
-    // MARK: Copy feedback
-
-    private func copy(_ value: String) {
-        UIPasteboard.general.string = value
-        self.copiedTick += 1
-        OpenClawMotion.perform(reduceMotion: self.reduceMotion) { self.showCopied = true }
-        Task {
-            try? await Task.sleep(for: .seconds(1.4))
-            OpenClawMotion.perform(reduceMotion: self.reduceMotion) { self.showCopied = false }
-        }
-    }
-
-    @ViewBuilder
-    private var copiedToast: some View {
-        if self.showCopied {
-            Label("Copied", systemImage: "checkmark")
-                .font(OpenClawType.subheadSemiBold)
-                .padding(.horizontal, 16)
-                .frame(minHeight: 44)
-                .openClawGlassCapsule(tint: OpenClawBrand.ok.opacity(0.18))
-                .padding(.bottom, 24)
-                .transition(OpenClawMotion.edge(.bottom, reduceMotion: self.reduceMotion))
-                .accessibilityAddTraits(.updatesFrequently)
-        }
+        .buttonStyle(ActivityRowButtonStyle())
+        .activityPlainRow()
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) { self.trailingActions(job) }
+        .swipeActions(edge: .leading, allowsFullSwipe: true) { self.leadingAction(job) }
+        .contextMenu { self.menu(job) }
+        .accessibilityAction(named: Text("Run now")) { self.runNow(job) }
     }
 
     // MARK: Actions
+
+    private func copy(_ value: String) {
+        GlassClipboard.copy(value, toast: self.toast)
+    }
 
     @ViewBuilder
     private func leadingAction(_ job: NativeCronJob) -> some View {
         if self.model.canRun, !self.model.busyIds.contains(job.id) {
             Button {
-                Task { await self.model.runNow(job: job, appModel: self.appModel) }
+                self.runNow(job)
             } label: {
                 Label("Run now", systemImage: "play.fill")
             }
             .tint(OpenClawBrand.ok)
+        }
+    }
+
+    @ViewBuilder
+    private func toggleButton(_ job: NativeCronJob) -> some View {
+        Button {
+            self.setEnabled(!job.enabled, job: job)
+        } label: {
+            if job.enabled {
+                Label("Pause", systemImage: "pause.circle")
+            } else {
+                Label("Resume", systemImage: "play.circle")
+            }
         }
     }
 
@@ -646,16 +696,8 @@ struct NativeAutomationsScreen: View {
             }
         }
         if self.model.canToggle {
-            Button {
-                Task { await self.model.setEnabled(!job.enabled, job: job, appModel: self.appModel) }
-            } label: {
-                if job.enabled {
-                    Label("Pause", systemImage: "pause.circle")
-                } else {
-                    Label("Resume", systemImage: "play.circle")
-                }
-            }
-            .tint(OpenClawBrand.warn)
+            self.toggleButton(job)
+                .tint(OpenClawBrand.warn)
         }
     }
 
@@ -663,21 +705,13 @@ struct NativeAutomationsScreen: View {
     private func menu(_ job: NativeCronJob) -> some View {
         if self.model.canRun {
             Button {
-                Task { await self.model.runNow(job: job, appModel: self.appModel) }
+                self.runNow(job)
             } label: {
                 Label("Run now", systemImage: "play.fill")
             }
         }
         if self.model.canToggle {
-            Button {
-                Task { await self.model.setEnabled(!job.enabled, job: job, appModel: self.appModel) }
-            } label: {
-                if job.enabled {
-                    Label("Pause", systemImage: "pause.circle")
-                } else {
-                    Label("Resume", systemImage: "play.circle")
-                }
-            }
+            self.toggleButton(job)
         }
         Button {
             self.copy(job.id)
@@ -695,45 +729,63 @@ struct NativeAutomationsScreen: View {
     }
 }
 
-// MARK: - Card
+// MARK: - Row
 
-private struct NativeAutomationCard: View {
+/// One automation: state glyph, name, schedule, next run (or last error when failing).
+/// A flat tag spells the state out whenever it is not healthy, so it never relies on color alone.
+private struct NativeAutomationRow: View {
     let job: NativeCronJob
     let isBusy: Bool
 
+    private var nextText: String? {
+        guard self.job.enabled, let relative = NativeFormat.relative(ms: self.job.nextRunAtMs) else { return nil }
+        return String(localized: "Next run \(relative)")
+    }
+
+    private var errorText: String? {
+        guard self.job.phase == .failing, let error = self.job.lastError, !error.isEmpty else { return nil }
+        return error
+    }
+
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            NGIconBadge(systemImage: self.job.phase.systemImage, tint: self.job.phase.tint)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(verbatim: self.job.name)
-                    .font(OpenClawType.body)
-                    .lineLimit(2)
-                Text(verbatim: self.job.scheduleText)
-                    .font(OpenClawType.footnote)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                if let next = self.nextText {
-                    Text(verbatim: next)
-                        .font(OpenClawType.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                if self.job.phase == .failing, let error = self.job.lastError, !error.isEmpty {
-                    Text(verbatim: error)
-                        .font(OpenClawType.caption)
-                        .foregroundStyle(OpenClawBrand.danger)
-                        .lineLimit(1)
-                }
-            }
-            Spacer(minLength: 8)
+        HStack(alignment: .top, spacing: OpenClawSpace.md) {
+            ActivityGlyph(systemImage: self.job.phase.systemImage, tint: self.job.phase.tint)
+            self.texts
+            Spacer(minLength: OpenClawSpace.sm)
             self.trailing
         }
-        .padding(12)
-        .frame(minHeight: 44)
-        .ngCardSurface()
-        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, minHeight: ActivityMetric.minTarget, alignment: .leading)
+        .overlay(alignment: .bottom) { ActivityHairline() }
+        .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityValue(Text(verbatim: self.job.phase.label))
+    }
+
+    private var texts: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(verbatim: self.job.name)
+                .font(OpenClawType.subheadMedium)
+                .foregroundStyle(OpenClawPalette.texteFort)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+            Text(verbatim: self.job.scheduleText)
+                .font(OpenClawType.footnote)
+                .foregroundStyle(OpenClawPalette.texteAtténué)
+                .lineLimit(1)
+            if let next = self.nextText {
+                Text(verbatim: next)
+                    .font(OpenClawType.caption)
+                    .foregroundStyle(OpenClawPalette.texteAtténué)
+                    .lineLimit(1)
+            }
+            if let error = self.errorText {
+                Text(verbatim: error)
+                    .font(OpenClawType.caption)
+                    .foregroundStyle(OpenClawBrand.danger)
+                    .lineLimit(2)
+            }
+        }
     }
 
     @ViewBuilder
@@ -741,15 +793,14 @@ private struct NativeAutomationCard: View {
         if self.isBusy {
             ProgressView()
         } else if self.job.phase != .healthy {
-            NGPill(text: self.job.phase.label, systemImage: self.job.phase.systemImage, tint: self.job.phase.tint)
+            ActivityStatusTag(
+                text: self.job.phase.label,
+                systemImage: self.job.phase.systemImage,
+                tint: self.job.phase.tint)
         }
     }
-
-    private var nextText: String? {
-        guard self.job.enabled, let relative = NativeFormat.relative(ms: self.job.nextRunAtMs) else { return nil }
-        return String(localized: "Next run \(relative)")
-    }
 }
+
 
 // MARK: - Detail
 

@@ -59,6 +59,11 @@ struct NativeSettingsRouter: View {
                 headerSidebarAction: self.headerSidebarAction,
                 embedded: self.embedded,
                 onClose: self.onClose)
+        case .gatewayStatus:
+            NativeGatewayStatusScreen(
+                headerSidebarAction: self.headerSidebarAction,
+                embedded: self.embedded,
+                onClose: self.onClose)
         }
     }
 }

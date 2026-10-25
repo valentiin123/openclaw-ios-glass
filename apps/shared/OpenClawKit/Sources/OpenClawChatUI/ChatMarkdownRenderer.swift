@@ -67,6 +67,9 @@ struct ChatMarkdownRenderer: View {
     let textColor: Color
 
     var reveal: ChatMarkdownProseReveal?
+    /// Top-level assistant responses merge contiguous prose into one selectable text view (iOS).
+    /// Nested renderers (list items, disclosures) switch this off and keep per-block `Text`.
+    var groupsSelectableProse = true
 
     @ScaledMetric private var inlineMathFontSize: CGFloat
     @Environment(\.colorScheme) private var colorScheme
@@ -109,14 +112,57 @@ struct ChatMarkdownRenderer: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ForEach(Array(self.snapshot.blocks.enumerated()), id: \.offset) { entry in
-                self.blockView(entry.element, index: entry.offset)
+            ForEach(Array(self.layoutItems.enumerated()), id: \.offset) { entry in
+                self.layoutView(entry.element)
             }
 
             if !self.snapshot.images.isEmpty {
                 InlineImageList(images: self.snapshot.images)
             }
         }
+    }
+
+    /// Copy for list items and disclosures: keeps per-block `Text` so rows and toggles stay tappable.
+    func nested() -> ChatMarkdownRenderer {
+        var copy: ChatMarkdownRenderer = self
+        copy.groupsSelectableProse = false
+        return copy
+    }
+
+    private var usesSelectableProseRuns: Bool {
+        self.groupsSelectableProse
+            && self.context == .assistant
+            && self.typography == .response
+            && self.reveal == nil
+    }
+
+    private var layoutItems: [ChatMarkdownLayoutItem] {
+        ChatMarkdownLayout.items(for: self.snapshot.blocks, groupsProse: self.usesSelectableProseRuns)
+    }
+
+    @ViewBuilder
+    private func layoutView(_ item: ChatMarkdownLayoutItem) -> some View {
+        switch item {
+        case let .single(index, block):
+            self.blockView(block, index: index)
+        case let .run(blocks):
+            self.selectableRun(blocks)
+        }
+    }
+
+    @ViewBuilder
+    private func selectableRun(_ blocks: [ChatSelectableProseBlock]) -> some View {
+        #if os(iOS)
+        ChatSelectableProseRun(
+            blocks: blocks,
+            textColor: self.textColor,
+            linkColor: self.linkColor,
+            lineSpacing: self.variant == .compact ? 2 : 4,
+            blockSpacing: 10,
+            compact: self.variant == .compact)
+        #else
+        EmptyView()
+        #endif
     }
 
     @ViewBuilder
@@ -432,6 +478,7 @@ private struct ChatMarkdownDisclosureView: View {
                 variant: self.variant,
                 typography: self.typography,
                 textColor: self.textColor)
+                .nested()
                 .padding(.top, self.variant == .compact ? 4 : 6)
         } label: {
             ChatMarkdownRenderer(
@@ -440,6 +487,7 @@ private struct ChatMarkdownDisclosureView: View {
                 variant: self.variant,
                 typography: self.typography,
                 textColor: self.textColor)
+                .nested()
                 .accessibilityLabel(
                     self.disclosure.summary.inlineAccessibilityText
                         ?? String(self.disclosure.summary.attributed.characters))

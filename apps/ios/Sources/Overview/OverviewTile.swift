@@ -10,7 +10,9 @@ enum OverviewMetric {
     static let radius: CGFloat = OpenClawRadius.md
     /// Minimum hit target.
     static let minTarget: CGFloat = 44
-    static let sectionSpacing: CGFloat = 16
+    static let sectionSpacing: CGFloat = OpenClawSpace.lg
+    /// Visible square of the header buttons (the hit target stays `minTarget`).
+    static let headerButtonSize: CGFloat = 40
 }
 
 /// One figure of the summary strip.
@@ -18,6 +20,8 @@ struct OverviewStat: Identifiable {
     let id: String
     let title: String
     let value: String
+    /// Colour of the small square marker in front of the title.
+    var marker: Color = OpenClawPalette.accentSecondaire
 }
 
 // MARK: - Surface
@@ -75,7 +79,7 @@ struct OverviewSectionLabel: View {
     let title: LocalizedStringKey
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: OpenClawSpace.sm) {
             Rectangle()
                 .fill(OpenClawBrand.accent)
                 .frame(width: 6, height: 6)

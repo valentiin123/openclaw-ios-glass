@@ -329,6 +329,7 @@ struct ChatMarkdownListView: View {
             variant: self.variant,
             typography: self.typography,
             textColor: self.textColor)
+            .nested()
     }
 
     func nestedListView(_ list: ChatMarkdownList) -> ChatMarkdownListView {

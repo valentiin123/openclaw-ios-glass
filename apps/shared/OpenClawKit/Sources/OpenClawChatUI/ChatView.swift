@@ -140,9 +140,6 @@ public struct OpenClawChatView: View {
     #endif
     @State private var fullMessageRequest: ChatFullMessageReaderRequest?
     @State private var reactionPickerMessage: OpenClawChatMessage?
-    #if os(iOS)
-    @State private var selectTextMessage: OpenClawChatMessage?
-    #endif
     @State private var turnRecapResolver = ChatTurnRecapResolver()
     @State private var turnRecap: ChatTurnRecap?
     @State private var turnRecapSessionKey: String?
@@ -286,11 +283,6 @@ public struct OpenClawChatView: View {
                 request: request,
                 markdownVariant: self.markdownVariant)
         }
-        #if os(iOS)
-        .sheet(item: self.$selectTextMessage) {
-            ChatSelectableTextSheet(text: ChatMessageVisibleText.copyText(in: $0))
-        }
-        #endif
     }
 }
 
@@ -441,6 +433,7 @@ extension OpenClawChatView {
             let viewModel = self.viewModel
             ChatSubagentWaitList(
                 wait: wait,
+                sessionKey: viewModel.sessionKey,
                 fallbackOpen: { key in
                     viewModel.switchSession(to: key)
                 })
@@ -559,10 +552,9 @@ extension OpenClawChatView {
         // Ensure the message list claims vertical space on the first layout pass.
         .frame(maxHeight: .infinity, alignment: .top)
         .layoutPriority(1)
-        .simultaneousGesture(
-            TapGesture().onEnded {
-                self.dismissKeyboardIfNeeded()
-            })
+        .chatTapToDismissKeyboard {
+            self.dismissKeyboardIfNeeded()
+        }
         .onChange(of: self.viewModel.isLoading) { _, isLoading in
             guard !isLoading, !self.hasPerformedInitialScroll else { return }
             self.restoreInitialScrollPosition()
@@ -580,6 +572,9 @@ extension OpenClawChatView {
             self.lastTurnStartID = nil
         }
         .onChange(of: self.scenePhase) { _, newValue in
+            if newValue == .background || newValue == .inactive {
+                self.viewModel.flushDraftPersistence()
+            }
             if newValue == .background {
                 self.speech?.stop()
             }
@@ -587,6 +582,7 @@ extension OpenClawChatView {
             self.viewModel.resumeFromForeground()
         }
         .onDisappear {
+            self.viewModel.flushDraftPersistence()
             self.speech?.stop()
             self.scrollCommand.cancel()
         }
@@ -848,17 +844,13 @@ extension OpenClawChatView {
             }
             #if os(iOS)
             if !isUser, showsActions {
-                self.messageActionsMenu(for: msg)
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.borderless)
-                    .font(OpenClawChatTypography.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(
-                        width: CleanChatComposerMetrics.controlTouchSize,
-                        height: CleanChatComposerMetrics.controlTouchSize)
-                    .contentShape(Rectangle())
-                    .padding(.leading, 8)
-                    .padding(.bottom, 8)
+                ChatMessageActionBar(
+                    copyText: ChatMessageVisibleText.copyText(in: msg),
+                    canReact: self.viewModel.canReact(to: msg),
+                    onReact: { self.reactionPickerMessage = msg },
+                    onReply: self.swipeReplyAction(for: msg))
+                    .padding(.leading, 4)
+                    .padding(.bottom, 4)
             }
             #endif
             #if os(macOS)
@@ -938,9 +930,6 @@ extension OpenClawChatView {
             self.reactionPickerMessage = message
         }
         self.copyMessageButton(for: message)
-        #if os(iOS)
-        self.selectTextButton(for: message)
-        #endif
         self.replyMessageButton(for: message)
         self.openFullMessageButton(for: message)
         self.messageSessionActions(for: message)
@@ -1386,19 +1375,6 @@ extension OpenClawChatView {
             }
         }
     }
-
-    #if os(iOS)
-    @ViewBuilder
-    private func selectTextButton(for message: OpenClawChatMessage) -> some View {
-        if !ChatMessageVisibleText.copyText(in: message).isEmpty {
-            Button {
-                self.selectTextMessage = message
-            } label: {
-                chatActionLabel(Text("Select Text"), systemImage: "text.cursor")
-            }
-        }
-    }
-    #endif
 
     @ViewBuilder
     private func openFullMessageButton(for message: OpenClawChatMessage) -> some View {

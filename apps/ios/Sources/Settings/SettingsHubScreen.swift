@@ -91,6 +91,9 @@ struct SettingsHubScreen: View {
             }
             .openClawEntrance(index: 2)
             .accessibilityIdentifier("SettingsHub.Approvals")
+            if self.appModel.isOperatorGatewayConnected {
+                self.nativeLink(.gatewayStatus, index: 3)
+            }
         } header: {
             NativeSettingsHeader("Connection")
         }

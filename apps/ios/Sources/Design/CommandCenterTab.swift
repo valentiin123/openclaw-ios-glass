@@ -53,7 +53,7 @@ struct CommandCenterTab: View {
             ScrollView {
                 self.page(split: split)
             }
-            .safeAreaPadding(.bottom, OpenClawProMetric.bottomScrollInset)
+            .scrollBounceBehavior(.basedOnSize)
         }
     }
 
@@ -63,8 +63,8 @@ struct CommandCenterTab: View {
             self.content(split: split)
                 .padding(.horizontal, OpenClawProMetric.pagePadding)
         }
-        .padding(.top, 18)
-        .padding(.bottom, 18)
+        .padding(.top, OpenClawSpace.sm)
+        .padding(.bottom, OpenClawSpace.lg)
     }
 
     private func content(split: Bool) -> some View {
@@ -94,34 +94,41 @@ struct CommandCenterTab: View {
         }
     }
 
-    // MARK: Header (glass controls only)
+    // MARK: Header (opaque surfaces, no glass)
 
     private var header: some View {
-        OpenClawAdaptiveHeaderRow(
-            title: .localized(self.headerTitle),
-            subtitle: .localized(self.gatewaySubtitle),
-            titleFont: OpenClawType.title3SemiBold,
-            subtitleFont: OpenClawType.caption,
-            subtitleLineLimit: 1)
-        {
-            if let headerSidebarAction {
-                OpenClawSidebarControlButton(action: headerSidebarAction)
-            }
-        } accessory: {
+        OverviewHeader(
+            title: "Overview",
+            subtitle: self.gatewaySubtitle,
+            trailing: { self.headerButtons })
+            .padding(.horizontal, OpenClawProMetric.pagePadding)
+    }
+
+    private var headerButtons: some View {
+        HStack(spacing: OpenClawSpace.sm) {
+            self.moreButton
             self.settingsButton
         }
-        .padding(.horizontal, OpenClawProMetric.pagePadding)
+    }
+
+    @ViewBuilder
+    private var moreButton: some View {
+        if let action = self.headerSidebarAction {
+            OverviewHeaderButton(
+                systemName: "ellipsis",
+                label: action.accessibilityLabel.text,
+                identifier: action.accessibilityIdentifier ?? "",
+                action: action.action)
+        }
     }
 
     private var settingsButton: some View {
-        Button(action: self.openSettings) {
-            Image(systemName: "gearshape.fill")
-                .font(OpenClawType.subheadSemiBold)
-                .frame(width: OverviewMetric.minTarget, height: OverviewMetric.minTarget)
-        }
-        .openClawGlassButton()
-        .accessibilityLabel("Gateway settings")
-        .accessibilityHint("Opens gateway settings")
+        OverviewHeaderButton(
+            systemName: "gearshape",
+            label: Text("Settings"),
+            hint: Text("Opens settings"),
+            identifier: "AppShell.Overview.Settings",
+            action: self.openSettings)
     }
 
     // MARK: Summary strip

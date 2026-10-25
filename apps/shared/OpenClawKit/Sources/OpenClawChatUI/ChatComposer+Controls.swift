@@ -81,7 +81,7 @@ extension OpenClawChatComposer {
 
     var modelPicker: some View {
         // Sections come from an O(n) recompute over the catalog; bind once per body eval.
-        let sections = self.viewModel.modelPickerSections
+        let sections: ChatModelPickerSections = self.viewModel.modelPickerSectionsWithoutRecents
         return Menu {
             if self.viewModel.canSelectDefaultModel {
                 self.modelMenuOption(
@@ -93,14 +93,6 @@ extension OpenClawChatComposer {
                     self.modelOptions(sections.pinned)
                 } header: {
                     Text("Pinned")
-                        .font(OpenClawChatTypography.captionSemiBold)
-                }
-            }
-            if !sections.recent.isEmpty {
-                Section {
-                    self.modelOptions(sections.recent)
-                } header: {
-                    Text("Recent")
                         .font(OpenClawChatTypography.captionSemiBold)
                 }
             }

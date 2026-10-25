@@ -1,74 +1,72 @@
 import SwiftUI
 
+#if os(iOS)
+
+// Capability rows of the "+" popover and the permission popover. Opaque palette rows, no system menus.
 extension OpenClawChatComposer {
     @ViewBuilder
     var cleanComposerCapabilityItems: some View {
         if self.viewModel.supportsComposerCapabilities,
            self.viewModel.composerCapabilityControlsAvailable
         {
-            Divider()
-            Text("Tool changes apply to the next run.")
-                .font(OpenClawChatTypography.caption)
-            self.composerWebSearchButton
-            self.composerSkillsMenu
-            self.composerConnectorsMenu
+            ChatPopoverDivider()
+            self.composerWebSearchRow
+            self.composerSkillsDisclosure
+            self.composerConnectorsDisclosure
             if self.viewModel.composerToolOverrides.overrideCount > 0 {
-                Divider()
-                Button {
+                ChatPopoverDivider()
+                ChatPopoverRow(
+                    title: String(localized: "Clear tool overrides"),
+                    systemImage: "xmark.circle",
+                    isEnabled: !self.viewModel.composerClearToolOverridesDisabled,
+                    closesPopover: false,
+                    hint: self.viewModel.composerToolOverrideMutationDisabledReason ?? "")
+                {
                     self.viewModel.clearComposerToolOverrides()
-                } label: {
-                    chatActionLabel(Text("Clear tool overrides"), systemImage: "xmark.circle")
-                }
-                .disabled(self.viewModel.composerClearToolOverridesDisabled)
-                .accessibilityHint(
-                    self.viewModel.composerToolOverrideMutationDisabledReason ?? "")
-            }
-            if !self.viewModel.composerCapabilitiesLoading,
-               let reason = self.viewModel.composerPermissionMutationDisabledReason,
-               !self.viewModel.composerCapabilityCatalog.permissionMutationAvailable
-            {
-                Text(reason)
-                    .font(OpenClawChatTypography.caption)
-            }
-            if !self.viewModel.composerCapabilitiesLoading,
-               let reason = self.viewModel.composerToolOverrideMutationDisabledReason,
-               !self.viewModel.composerCapabilityCatalog.toolOverrideMutationAvailable
-            {
-                Text(reason)
-                    .font(OpenClawChatTypography.caption)
-            }
-            if !self.viewModel.composerCapabilitiesLoading,
-               !self.viewModel.composerCapabilityCatalog.webSearchAvailable,
-               self.viewModel.composerCapabilityErrorMessage == nil
-            {
-                Text("Web Search is unavailable on this Gateway.")
-                    .font(OpenClawChatTypography.caption)
-            }
-            if let errorMessage = self.viewModel.composerCapabilityErrorMessage {
-                Text(errorMessage)
-                    .font(OpenClawChatTypography.caption)
-                Button {
-                    Task { await self.viewModel.loadComposerCapabilities(force: true) }
-                } label: {
-                    chatActionLabel(Text("Retry capability loading"), systemImage: "arrow.clockwise")
                 }
             }
+            self.composerCapabilityNotes
         }
     }
 
     @ViewBuilder
+    private var composerCapabilityNotes: some View {
+        let catalog: OpenClawChatComposerCapabilityCatalog = self.viewModel.composerCapabilityCatalog
+        let loading: Bool = self.viewModel.composerCapabilitiesLoading
+        if !loading,
+           let reason = self.viewModel.composerPermissionMutationDisabledReason,
+           !catalog.permissionMutationAvailable
+        {
+            ChatPopoverNote(text: reason)
+        }
+        if !loading,
+           let reason = self.viewModel.composerToolOverrideMutationDisabledReason,
+           !catalog.toolOverrideMutationAvailable
+        {
+            ChatPopoverNote(text: reason)
+        }
+        if !loading, !catalog.webSearchAvailable, self.viewModel.composerCapabilityErrorMessage == nil {
+            ChatPopoverNote(text: String(localized: "Web Search is unavailable on this Gateway."))
+        }
+        if let errorMessage = self.viewModel.composerCapabilityErrorMessage {
+            ChatPopoverNote(text: errorMessage)
+            ChatPopoverRow(
+                title: String(localized: "Retry capability loading"),
+                systemImage: "arrow.clockwise",
+                closesPopover: false)
+            {
+                Task { await self.viewModel.loadComposerCapabilities(force: true) }
+            }
+        }
+    }
+
+    // MARK: Permissions popover
+
+    @ViewBuilder
     var cleanInlinePermissionMenu: some View {
         if self.viewModel.composerCapabilityControlsAvailable {
-            Menu {
-                self.permissionButton(nil, title: String(localized: "Default (inherited)"))
-                ForEach(OpenClawChatPermissionMode.allCases, id: \.rawValue) { mode in
-                    self.permissionButton(mode, title: mode.displayName)
-                        .disabled(mode == .full && !self.viewModel.composerCapabilityCatalog.canSelectFullPermission)
-                }
-                if !self.viewModel.composerCapabilityCatalog.canSelectFullPermission {
-                    Text("Full permission requires operator.admin access.")
-                        .font(OpenClawChatTypography.caption)
-                }
+            ChatPopoverButton {
+                self.permissionPopoverContent
             } label: {
                 self.cleanInlinePermissionGlyph
                     .frame(
@@ -76,8 +74,6 @@ extension OpenClawChatComposer {
                         height: CleanChatComposerMetrics.controlTouchSize)
                     .contentShape(Rectangle())
             }
-            .menuIndicator(.hidden)
-            .tint(OpenClawChatTheme.muted)
             .disabled(
                 !self.viewModel.composerCapabilityCatalog.permissionMutationAvailable ||
                     self.viewModel.composerCapabilityMutationDisabled)
@@ -86,6 +82,39 @@ extension OpenClawChatComposer {
                 self.viewModel.composerPermissionMode?.displayName ?? String(localized: "Default (inherited)"))
             .accessibilityHint(self.viewModel.composerPermissionMutationDisabledReason ?? "")
             .accessibilityIdentifier("chat-composer-inline-permissions")
+        }
+    }
+
+    private var permissionPopoverContent: some View {
+        let canSelectFull: Bool = self.viewModel.composerCapabilityCatalog.canSelectFullPermission
+        return VStack(spacing: 0) {
+            self.permissionRow(nil, title: String(localized: "Default (inherited)"), isEnabled: true)
+            ForEach(OpenClawChatPermissionMode.allCases, id: \.rawValue) { mode in
+                self.permissionRow(
+                    mode,
+                    title: mode.displayName,
+                    isEnabled: mode != OpenClawChatPermissionMode.full || canSelectFull)
+            }
+            if !canSelectFull {
+                ChatPopoverNote(text: String(localized: "Full permission requires operator.admin access."))
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func permissionRow(
+        _ mode: OpenClawChatPermissionMode?,
+        title: String,
+        isEnabled: Bool) -> some View
+    {
+        let isSelected: Bool = self.viewModel.composerPermissionMode == mode
+        return ChatPopoverRow(
+            title: title,
+            isSelected: isSelected,
+            isEnabled: isEnabled,
+            hint: self.viewModel.composerPermissionDisabledReason(mode) ?? "")
+        {
+            self.viewModel.selectComposerPermissionMode(mode)
         }
     }
 
@@ -110,184 +139,141 @@ extension OpenClawChatComposer {
         }
     }
 
-    private func permissionButton(
-        _ mode: OpenClawChatPermissionMode?,
-        title: String) -> some View
-    {
-        let isSelected = self.viewModel.composerPermissionMode == mode
-        return Button {
-            self.viewModel.selectComposerPermissionMode(mode)
-        } label: {
-            chatActionLabel(Text(title), systemImage: isSelected ? "checkmark.circle.fill" : "circle")
-        }
-        .accessibilityValue(isSelected ? String(localized: "Selected") : String(localized: "Not selected"))
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .accessibilityHint(self.viewModel.composerPermissionDisabledReason(mode) ?? "")
+    // MARK: Web search, skills, connectors
+
+    private var composerCapabilityBlocked: Bool {
+        let catalog: OpenClawChatComposerCapabilityCatalog = self.viewModel.composerCapabilityCatalog
+        return !catalog.toolOverrideMutationAvailable || self.viewModel.composerCapabilityMutationDisabled
     }
 
-    private var composerWebSearchButton: some View {
-        let isEnabled = self.viewModel.composerWebSearchEnabled
-        return Button {
+    private var composerWebSearchRow: some View {
+        let isOn: Bool = self.viewModel.composerWebSearchEnabled
+        let catalog: OpenClawChatComposerCapabilityCatalog = self.viewModel.composerCapabilityCatalog
+        let available: Bool = catalog.webSearchAvailable && catalog.webSearchBaseEnabled
+        return ChatPopoverRow(
+            title: String(localized: "Web Search"),
+            systemImage: "globe",
+            isSelected: isOn,
+            isEnabled: available && !self.composerCapabilityBlocked,
+            closesPopover: false,
+            hint: self.viewModel.composerWebSearchMutationDisabledReason ?? "")
+        {
             self.viewModel.toggleComposerWebSearch()
-        } label: {
-            chatActionLabel(Text("Web Search"), systemImage: isEnabled ? "checkmark.circle.fill" : "circle")
         }
-        .disabled(
-            !self.viewModel.composerCapabilityCatalog.webSearchAvailable ||
-                !self.viewModel.composerCapabilityCatalog.webSearchBaseEnabled ||
-                !self.viewModel.composerCapabilityCatalog.toolOverrideMutationAvailable ||
-                self.viewModel.composerCapabilityMutationDisabled)
-        .accessibilityValue(isEnabled ? String(localized: "On") : String(localized: "Off"))
-        .accessibilityAddTraits(isEnabled ? .isSelected : [])
-        .accessibilityHint(self.viewModel.composerWebSearchMutationDisabledReason ?? "")
         .accessibilityIdentifier("chat-composer-web-search")
     }
 
-    private var composerSkillsMenu: some View {
-        Menu {
-            if self.viewModel.composerCapabilitiesLoading {
-                Text("Loading skills…")
-                    .font(OpenClawChatTypography.body)
-            } else if !self.viewModel.composerCapabilityCatalog.skillsAvailable {
-                Text("Skills unavailable")
-                    .font(OpenClawChatTypography.body)
-            } else if self.viewModel.composerCapabilityCatalog.skills.isEmpty {
-                Text("No skills configured")
-                    .font(OpenClawChatTypography.body)
-            } else {
-                ForEach(self.viewModel.composerCapabilityCatalog.skills) { skill in
-                    let isEnabled = self.viewModel.composerSkillEnabled(skill)
-                    let statusMessage = self.viewModel.composerSkillStatusMessage(skill)
-                    Button {
-                        self.viewModel.toggleComposerSkill(skill)
-                    } label: {
-                        chatActionLabel(
-                            Text(statusMessage.map { "\(skill.name) — \($0)" } ?? skill.name),
-                            systemImage: isEnabled ? "checkmark.circle.fill" : "circle")
-                    }
-                    .disabled(
-                        !skill.baseEnabled || skill.missingDependencies || skill.blocked ||
-                            !self.viewModel.composerCapabilityCatalog.toolOverrideMutationAvailable ||
-                            self.viewModel.composerCapabilityMutationDisabled)
-                    .accessibilityValue(isEnabled ? String(localized: "On") : String(localized: "Off"))
-                    .accessibilityAddTraits(isEnabled ? .isSelected : [])
-                    .accessibilityHint(
-                        statusMessage ?? self.viewModel.composerToolOverrideMutationDisabledReason ?? "")
-                }
-            }
-        } label: {
-            chatActionLabel(Text("Skills"), systemImage: "book.closed")
+    private var composerSkillsDisclosure: some View {
+        ChatPopoverDisclosure(title: String(localized: "Skills"), systemImage: "book.closed") {
+            self.composerSkillRows
         }
         .accessibilityIdentifier("chat-composer-skills")
     }
 
-    private var composerConnectorsMenu: some View {
-        Menu {
-            if self.viewModel.composerCapabilitiesLoading {
-                Text("Loading connectors…")
-                    .font(OpenClawChatTypography.body)
-            } else if !self.viewModel.composerCapabilityCatalog.connectorsAvailable {
-                Text("Connectors unavailable")
-                    .font(OpenClawChatTypography.body)
-            } else if self.viewModel.composerCapabilityCatalog.connectors.isEmpty {
-                Text("No connectors configured")
-                    .font(OpenClawChatTypography.body)
-            } else {
-                ForEach(self.viewModel.composerCapabilityCatalog.connectors) { connector in
-                    self.composerConnectorMenu(connector)
-                }
+    @ViewBuilder
+    private var composerSkillRows: some View {
+        let catalog: OpenClawChatComposerCapabilityCatalog = self.viewModel.composerCapabilityCatalog
+        if self.viewModel.composerCapabilitiesLoading {
+            ChatPopoverNote(text: String(localized: "Loading skills…"))
+        } else if !catalog.skillsAvailable {
+            ChatPopoverNote(text: String(localized: "Skills unavailable"))
+        } else if catalog.skills.isEmpty {
+            ChatPopoverNote(text: String(localized: "No skills configured"))
+        } else {
+            ForEach(catalog.skills) { skill in
+                self.composerSkillRow(skill)
             }
-        } label: {
-            chatActionLabel(Text("Connectors"), systemImage: "puzzlepiece.extension")
+        }
+    }
+
+    private func composerSkillRow(_ skill: OpenClawChatComposerSkill) -> some View {
+        let isOn: Bool = self.viewModel.composerSkillEnabled(skill)
+        let status: String? = self.viewModel.composerSkillStatusMessage(skill)
+        let skillBlocked: Bool = !skill.baseEnabled || skill.missingDependencies || skill.blocked
+        let hint: String = status ?? self.viewModel.composerToolOverrideMutationDisabledReason ?? ""
+        return ChatPopoverRow(
+            title: skill.name,
+            detail: status,
+            isSelected: isOn,
+            isEnabled: !skillBlocked && !self.composerCapabilityBlocked,
+            closesPopover: false,
+            hint: hint)
+        {
+            self.viewModel.toggleComposerSkill(skill)
+        }
+    }
+
+    private var composerConnectorsDisclosure: some View {
+        ChatPopoverDisclosure(title: String(localized: "Connectors"), systemImage: "puzzlepiece.extension") {
+            self.composerConnectorRows
         }
         .accessibilityIdentifier("chat-composer-connectors")
     }
 
-    private func composerConnectorMenu(_ connector: OpenClawChatComposerConnector) -> some View {
-        let isEnabled = self.viewModel.composerConnectorEnabled(connector)
-        return Menu {
-            Button {
-                self.viewModel.toggleComposerConnector(connector)
-            } label: {
-                chatActionLabel(
-                    Text("Enabled for this session"),
-                    systemImage: isEnabled ? "checkmark.circle.fill" : "circle")
+    @ViewBuilder
+    private var composerConnectorRows: some View {
+        let catalog: OpenClawChatComposerCapabilityCatalog = self.viewModel.composerCapabilityCatalog
+        if self.viewModel.composerCapabilitiesLoading {
+            ChatPopoverNote(text: String(localized: "Loading connectors…"))
+        } else if !catalog.connectorsAvailable {
+            ChatPopoverNote(text: String(localized: "Connectors unavailable"))
+        } else if catalog.connectors.isEmpty {
+            ChatPopoverNote(text: String(localized: "No connectors configured"))
+        } else {
+            ForEach(catalog.connectors) { connector in
+                self.composerConnectorSection(connector)
             }
-            .disabled(
-                !self.viewModel.composerCapabilityCatalog.toolOverrideMutationAvailable ||
-                    self.viewModel.composerCapabilityMutationDisabled)
-            .accessibilityValue(isEnabled ? String(localized: "On") : String(localized: "Off"))
-            .accessibilityAddTraits(isEnabled ? .isSelected : [])
-            .accessibilityHint(self.viewModel.composerToolOverrideMutationDisabledReason ?? "")
-
-            if let notice = connector.notice {
-                Text(notice)
-                    .font(OpenClawChatTypography.caption)
-            }
-            if !connector.tools.isEmpty {
-                Divider()
-                Menu {
-                    ForEach(connector.tools) { tool in
-                        let toolIsEnabled = self.viewModel.composerToolEnabled(
-                            server: connector.name,
-                            tool: tool.name)
-                        Button {
-                            self.viewModel.toggleComposerTool(server: connector.name, tool: tool.name)
-                        } label: {
-                            chatActionLabel(
-                                Text(tool.label),
-                                systemImage: toolIsEnabled ? "checkmark.circle.fill" : "circle")
-                        }
-                        .disabled(
-                            !self.viewModel.composerCapabilityCatalog.toolAccessAvailable ||
-                                !self.viewModel.composerCapabilityCatalog.toolOverrideMutationAvailable ||
-                                self.viewModel.composerCapabilityMutationDisabled)
-                        .accessibilityValue(toolIsEnabled ? String(localized: "On") : String(localized: "Off"))
-                        .accessibilityAddTraits(toolIsEnabled ? .isSelected : [])
-                        .accessibilityHint(self.viewModel.composerToolOverrideMutationDisabledReason ?? "")
-                    }
-                } label: {
-                    chatActionLabel(Text("Tool Access"), systemImage: "wrench.and.screwdriver")
-                }
-            }
-        } label: {
-            chatActionLabel(Text(connector.name), systemImage: isEnabled ? "checkmark.circle.fill" : "circle")
         }
-        .accessibilityValue(isEnabled ? String(localized: "On") : String(localized: "Off"))
-        .accessibilityAddTraits(isEnabled ? .isSelected : [])
     }
 
-    @ViewBuilder
-    var composerCapabilityNoticeRow: some View {
-        if let notice = self.viewModel.composerCapabilityNotice {
-            HStack(alignment: .center, spacing: 8) {
-                Image(systemName: "info.circle.fill")
-                    .foregroundStyle(OpenClawChatTheme.accent)
-                    .accessibilityHidden(true)
-                Text(notice)
-                    .font(OpenClawChatTypography.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 4)
-                Button {
-                    self.viewModel.dismissComposerCapabilityNotice()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                        .frame(width: 28, height: 28)
-                }
-                .buttonStyle(.plain)
-                .frame(
-                    width: CleanChatComposerMetrics.controlTouchSize,
-                    height: CleanChatComposerMetrics.controlTouchSize)
-                .contentShape(Rectangle())
-                .accessibilityLabel("Dismiss capability notice")
-                .accessibilityIdentifier("chat-composer-dismiss-capability-notice")
+    private func composerConnectorSection(_ connector: OpenClawChatComposerConnector) -> some View {
+        let isOn: Bool = self.viewModel.composerConnectorEnabled(connector)
+        let reason: String = self.viewModel.composerToolOverrideMutationDisabledReason ?? ""
+        return ChatPopoverDisclosure(
+            title: connector.name,
+            systemImage: isOn ? "checkmark.circle.fill" : "circle")
+        {
+            ChatPopoverRow(
+                title: String(localized: "Enabled for this session"),
+                isSelected: isOn,
+                isEnabled: !self.composerCapabilityBlocked,
+                closesPopover: false,
+                hint: reason)
+            {
+                self.viewModel.toggleComposerConnector(connector)
             }
-            .padding(.horizontal, 8)
-            .padding(.top, 6)
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("chat-composer-capability-notice")
+            if let notice = connector.notice {
+                ChatPopoverNote(text: notice)
+            }
+            if !connector.tools.isEmpty {
+                ChatPopoverDisclosure(
+                    title: String(localized: "Tool Access"),
+                    systemImage: "wrench.and.screwdriver")
+                {
+                    ForEach(connector.tools) { tool in
+                        self.composerToolRow(connector: connector, tool: tool)
+                    }
+                }
+            }
+        }
+    }
+
+    private func composerToolRow(
+        connector: OpenClawChatComposerConnector,
+        tool: OpenClawChatComposerTool) -> some View
+    {
+        let isOn: Bool = self.viewModel.composerToolEnabled(server: connector.name, tool: tool.name)
+        let accessAvailable: Bool = self.viewModel.composerCapabilityCatalog.toolAccessAvailable
+        return ChatPopoverRow(
+            title: tool.label,
+            isSelected: isOn,
+            isEnabled: accessAvailable && !self.composerCapabilityBlocked,
+            closesPopover: false,
+            hint: self.viewModel.composerToolOverrideMutationDisabledReason ?? "")
+        {
+            self.viewModel.toggleComposerTool(server: connector.name, tool: tool.name)
         }
     }
 }
+
+#endif

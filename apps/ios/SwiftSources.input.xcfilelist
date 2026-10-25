@@ -15,10 +15,13 @@
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatComposer+CleanControls.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatComposer+Controls.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatComposerCapabilities.swift
+../shared/OpenClawKit/Sources/OpenClawChatUI/ChatComposerPopover.swift
+../shared/OpenClawKit/Sources/OpenClawChatUI/ChatComposerPopoverControls.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatComposerTextView.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatComposerTextViewIOS.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatContextUsage.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatCopyButton.swift
+../shared/OpenClawKit/Sources/OpenClawChatUI/ChatDraftStore.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatEffortControl.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatEventText.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatFileAttachment.swift
@@ -37,6 +40,7 @@
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatInlineWidgetSnapshotCapture.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatInlineWidgetView.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatInputHistory.swift
+../shared/OpenClawKit/Sources/OpenClawChatUI/ChatKeyboardDismissTap.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatLinkPreview.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatMarkdownBlockSegmenter.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatMarkdownBlockViews.swift
@@ -54,11 +58,13 @@
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatMermaidRenderer.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatMermaidRenderModel.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatMermaidResources.swift
+../shared/OpenClawKit/Sources/OpenClawChatUI/ChatMessageActionBar.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatMessageMetadata.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatMessageReactions.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatMessageSwipeActions.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatMessageViews.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatMessageVisibleText.swift
+../shared/OpenClawKit/Sources/OpenClawChatUI/ChatModelDisplayName.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatModelPickerStore.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatModels.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatModelSignIn.swift
@@ -67,14 +73,17 @@
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatPayloadDecoding.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatProgressCard.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatQuestionCard.swift
+../shared/OpenClawKit/Sources/OpenClawChatUI/ChatQueuedMessagesView.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatReactions.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatReply.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatReplyPreview.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatRichBlockRenderer.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatRunStartup.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatScrollCommand.swift
+../shared/OpenClawKit/Sources/OpenClawChatUI/ChatSelectableProse.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatSelectableTextSheet.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatSendOwnership.swift
+../shared/OpenClawKit/Sources/OpenClawChatUI/ChatSendQueue.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatSendStatus.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatSessionAttention.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatSessionColor.swift
@@ -128,9 +137,11 @@
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatSpeechController.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatStreamingReveal.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatSubagentHeader.swift
+../shared/OpenClawKit/Sources/OpenClawChatUI/ChatSubagentListState.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatSubagentWaitList.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatTalkActivityViews.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatTheme.swift
+../shared/OpenClawKit/Sources/OpenClawChatUI/ChatThinkingSlider.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatToolActivityViews.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatToolDiff.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatToolIcon.swift
@@ -150,6 +161,7 @@
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatViewModel+AgentNavigation.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatViewModel+Attachments.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatViewModel+ComposerCapabilities.swift
+../shared/OpenClawKit/Sources/OpenClawChatUI/ChatViewModel+Drafts.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatViewModel+HistoryReconciliation.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatViewModel+ModelControls.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatViewModel+Outbox.swift
@@ -327,6 +339,7 @@ ShareExtension/ShareComposeView.swift
 ShareExtension/ShareContentExtractor.swift
 ShareExtension/ShareDraftComposer.swift
 ShareExtension/ShareViewController.swift
+Sources/AgentsHub/AgentNewConversationScreen.swift
 Sources/AgentsHub/AgentsBoardScreen.swift
 Sources/AgentsHub/AgentsHubCreateAgentSheet.swift
 Sources/AgentsHub/AgentsHubModels.swift
@@ -429,6 +442,7 @@ Sources/Model/NodeAppModel+WatchNotifyNormalization.swift
 Sources/Model/WatchReplyCoordinator.swift
 Sources/Motion/MotionService.swift
 Sources/Motion/OpenClawMotionModifiers.swift
+Sources/Native/Activity/ActivityComponents.swift
 Sources/Native/Agents/AgentGlassTile.swift
 Sources/Native/Agents/AgentGlassTreeScreen.swift
 Sources/Native/Glass/GlassCopyActions.swift
@@ -460,6 +474,7 @@ Sources/NativeSettings/NativeAppearanceScreen.swift
 Sources/NativeSettings/NativeChannelDetailScreen.swift
 Sources/NativeSettings/NativeChannelPairingScreen.swift
 Sources/NativeSettings/NativeChannelsScreen.swift
+Sources/NativeSettings/NativeGatewayStatusScreen.swift
 Sources/NativeSettings/NativeNotificationsScreen.swift
 Sources/NativeSettings/NativePermissionsScreen.swift
 Sources/NativeSettings/NativeSettingsRouter.swift
@@ -467,6 +482,7 @@ Sources/NativeSettings/NativeSettingsSupport.swift
 Sources/NativeSettings/NativeSkillSecretsScreen.swift
 Sources/NativeSettings/NativeSkillsScreen.swift
 Sources/NativeSettings/NativeSkillsSearchScreen.swift
+Sources/NativeSettings/NativeTalkConfigWriter.swift
 Sources/NativeSettings/NativeTalkVoiceScreen.swift
 Sources/Node/NodeHostStatsReporter.swift
 Sources/Onboarding/GatewayOnboardingReset.swift

@@ -97,6 +97,20 @@ extension OpenClawChatViewModel {
             defaultProvider: defaultProvider)
     }
 
+    /// Same sections without "Recent": recent models fall back into their provider group,
+    /// so the picker shows one complete list.
+    public var modelPickerSectionsWithoutRecents: ChatModelPickerSections {
+        let defaults = self.modelPickerDefault
+        let defaultProvider: String? = ChatModelPickerStore.resolvedDefaultProvider(
+            provider: defaults.provider,
+            model: defaults.model)
+        return ChatModelPickerStore.sections(
+            choices: self.modelChoices,
+            favorites: self.modelPickerFavorites,
+            recents: [],
+            defaultProvider: defaultProvider)
+    }
+
     public var modelSelectionTargetDescription: String? {
         switch self.sessionDefaults?.modelSelectionTarget {
         case "session": String(localized: "Changes this session only")
@@ -281,14 +295,30 @@ extension OpenClawChatViewModel {
         self.fastModeProfile.isEnabled
     }
 
+    /// Readable model name for the composer button ("Sonnet 5.5"): no provider, no id, no "Claude" prefix.
     public var composerInlineModelLabel: String {
-        let selectionID = self.canonicalModelSelectionID
-        let label = if selectionID == Self.defaultModelSelectionID {
-            self.defaultModelLabel.replacingOccurrences(of: "Default: ", with: "")
-        } else {
-            self.modelChoices.first { $0.selectionID == selectionID }?.displayLabel ?? selectionID
+        let selectionID: String = self.canonicalModelSelectionID
+        if selectionID == Self.defaultModelSelectionID {
+            return self.composerDefaultModelName
         }
-        return label.split(separator: "/").last.map(String.init) ?? label
+        if let choice = self.modelChoices.first(where: { $0.selectionID == selectionID }) {
+            return choice.composerName
+        }
+        return ChatModelDisplayName.composerName(name: nil, modelID: selectionID)
+    }
+
+    private var composerDefaultModelName: String {
+        let defaults = self.modelPickerDefault
+        guard let defaultModelID = normalizedModelSelectionID(defaults.model, provider: defaults.provider) else {
+            return "Default"
+        }
+        let match: OpenClawChatModelChoice? = self.modelChoices.first(where: {
+            $0.selectionID == defaultModelID || $0.modelID == defaultModelID
+        })
+        if let match {
+            return match.composerName
+        }
+        return ChatModelDisplayName.composerName(name: nil, modelID: defaultModelID)
     }
 
     public var canonicalModelSelectionID: String {

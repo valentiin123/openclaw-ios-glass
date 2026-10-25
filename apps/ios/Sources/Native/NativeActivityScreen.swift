@@ -249,150 +249,155 @@ final class NativeActivityModel {
 
 // MARK: - Screen
 
+/// Activity feed. One column, nothing stacked: [shell header] -> [one filter line] -> [feed].
+/// The feed is a plain list grouped by day with sober rows (state glyph, title, detail, time).
+/// The summary and the charts sit at the top of the list, charts collapsed by default.
 struct NativeActivityScreen: View {
     @Environment(NodeAppModel.self) private var appModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var model = NativeActivityModel()
-    @State private var search = ""
+    @State private var model: NativeActivityModel = NativeActivityModel()
+    @State private var search: String = ""
     @State private var kindSelection: String = NGFilterID.all
     @State private var selected: NativeActivityEvent?
-    @State private var copiedTick = 0
-    @State private var showCopied = false
+    @State private var showInsights: Bool = false
+    @State private var toast: GlassToastModel = GlassToastModel()
     let title: String
     var headerSidebarAction: OpenClawSidebarHeaderAction?
 
-    private var filterItems: [NGFilterBar.Item] {
-        [
-            NGFilterBar.Item(id: NGFilterID.all, title: String(localized: "All"), systemImage: "square.grid.2x2"),
-            NGFilterBar.Item(id: "agent_run", title: String(localized: "Runs"), systemImage: "sparkles"),
-            NGFilterBar.Item(
-                id: "tool_action",
-                title: String(localized: "Tools"),
-                systemImage: "wrench.and.screwdriver"),
-            NGFilterBar.Item(id: "message", title: String(localized: "Messages"), systemImage: "bubble.left"),
-        ]
+    private var chipItems: [ActivityChipItem] {
+        let all: ActivityChipItem = ActivityChipItem(
+            id: NGFilterID.all,
+            title: String(localized: "All"),
+            count: nil,
+            systemImage: nil)
+        let runs: ActivityChipItem = ActivityChipItem(
+            id: "agent_run",
+            title: String(localized: "Runs"),
+            count: nil,
+            systemImage: nil)
+        let tools: ActivityChipItem = ActivityChipItem(
+            id: "tool_action",
+            title: String(localized: "Tools"),
+            count: nil,
+            systemImage: nil)
+        let messages: ActivityChipItem = ActivityChipItem(
+            id: "message",
+            title: String(localized: "Messages"),
+            count: nil,
+            systemImage: nil)
+        return [all, runs, tools, messages]
     }
 
     var body: some View {
         NavigationStack {
-            self.content
-                .safeAreaInset(edge: .top, spacing: 0) {
-                    if !self.model.unavailable {
-                        NGFilterBar(items: self.filterItems, selection: self.$kindSelection)
-                    }
-                }
-                .background { OpenClawProBackground() }
-                .nativeChrome(title: self.title, sidebar: self.headerSidebarAction)
-                .toolbar { self.filterToolbar }
-                .searchable(text: self.$search, prompt: Text("Search activity"))
-                .navigationDestination(item: self.$selected) { event in
+            self.page
+                .navigationDestination(item: self.$selected) { (event: NativeActivityEvent) in
                     NativeActivityDetailView(event: event)
                 }
-                .overlay(alignment: .bottom) { self.copiedToast }
         }
-        .task { await self.model.load(appModel: self.appModel, showSpinner: true) }
+        .task { await self.reload(spinner: true) }
         .onChange(of: self.kindSelection) { _, newValue in
             self.model.kind = (newValue == NGFilterID.all) ? nil : newValue
-            Task { await self.model.load(appModel: self.appModel, showSpinner: true) }
+            Task { await self.reload(spinner: true) }
         }
         .onChange(of: self.model.failedOnly) { _, _ in
-            Task { await self.model.load(appModel: self.appModel, showSpinner: true) }
+            Task { await self.reload(spinner: true) }
         }
         .sensoryFeedback(.selection, trigger: self.model.failedOnly)
-        .sensoryFeedback(.success, trigger: self.copiedTick)
+    }
+
+    private var page: some View {
+        VStack(spacing: 0) {
+            ActivityHeaderSlot()
+            self.filterLine
+            self.content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .background { OpenClawProBackground() }
+        .activityNavigationChrome(title: self.title, sidebar: self.headerSidebarAction)
+        .glassToastHost(self.toast)
+    }
+
+    // MARK: Filter line
+
+    @ViewBuilder
+    private var filterLine: some View {
+        if !self.model.unavailable {
+            VStack(spacing: 0) {
+                ActivityFilterRow(
+                    items: self.chipItems,
+                    selection: self.$kindSelection,
+                    failuresOnly: self.$model.failedOnly,
+                    search: self.$search,
+                    searchPrompt: "Search activity")
+                ActivityHairline()
+            }
+        }
     }
 
     // MARK: State
 
+    private func reload(spinner: Bool) async {
+        await self.model.load(appModel: self.appModel, showSpinner: spinner)
+    }
+
+    private func pullRefresh() async {
+        await self.reload(spinner: false)
+    }
+
     @ViewBuilder
     private var content: some View {
         if self.model.unavailable {
-            NGUnavailableState(
-                systemImage: "waveform.path.ecg",
-                title: String(localized: "Activity unavailable on this Gateway"),
-                message: String(localized: "This Gateway does not offer the activity feed."),
-                retry: { await self.model.load(appModel: self.appModel, showSpinner: true) })
+            self.unavailableState
         } else {
             switch self.model.state {
             case .idle, .loading:
-                NGSkeletonList()
+                ActivitySkeleton()
             case let .failed(message):
-                NGErrorState(
-                    message: message,
-                    retry: { await self.model.load(appModel: self.appModel, showSpinner: true) })
+                self.errorState(message)
             case let .loaded(events):
                 self.feed(events)
             }
         }
     }
 
-    private func filtered(_ events: [NativeActivityEvent]) -> [NativeActivityEvent] {
-        let query = self.search.trimmingCharacters(in: .whitespacesAndNewlines)
-        if query.isEmpty { return events }
-        return events.filter { $0.matches(query) }
+    private func actionButton(
+        _ title: LocalizedStringKey,
+        systemImage: String,
+        prominent: Bool,
+        action: @escaping () -> Void) -> some View
+    {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+        }
+        .buttonStyle(ActivityActionButtonStyle(prominent: prominent))
     }
 
-    @ViewBuilder
-    private func feed(_ events: [NativeActivityEvent]) -> some View {
-        let visible: [NativeActivityEvent] = self.filtered(events)
-        let days: [NativeActivityDay] = NativeActivityGrouping.days(visible)
-        List {
-            if !visible.isEmpty {
-                Section {
-                    NGSummaryHeader(items: self.metrics(visible))
-                        .openClawEntrance(index: 0)
-                        .ngCardRow()
-                    NativeActivityChart(days: days)
-                        .padding(12)
-                        .ngCardSurface()
-                        .openClawEntrance(index: 1)
-                        .ngCardRow()
-                    if NativeActivityAgentChart.hasData(visible) {
-                        NativeActivityAgentChart(events: visible)
-                            .openClawEntrance(index: 2)
-                            .ngCardRow()
-                    }
-                }
-            }
-            ForEach(days) { day in
-                Section {
-                    ForEach(day.events) { event in
-                        self.row(event, isLast: event.id == visible.last?.id)
-                    }
-                } header: {
-                    Text(verbatim: day.title)
-                        .font(OpenClawType.subheadSemiBold)
-                        .foregroundStyle(.secondary)
-                        .textCase(nil)
-                        .ngStickyHeader()
-                        .accessibilityAddTraits(.isHeader)
-                }
-            }
-            if self.model.isLoadingMore {
-                HStack {
-                    Spacer()
-                    ProgressView()
-                    Spacer()
-                }
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-                .accessibilityLabel(Text("Loading"))
+    private func retry() {
+        Task { await self.reload(spinner: true) }
+    }
+
+    private var unavailableState: some View {
+        let title: OpenClawTextValue = .verbatim(String(localized: "Activity unavailable on this Gateway"))
+        let message: OpenClawTextValue = .verbatim(String(localized: "This Gateway does not offer the activity feed."))
+        return ActivityPlaceholder(refresh: self.pullRefresh) {
+            OpenClawEmptyState(systemImage: "waveform.path.ecg", title: title, message: message) {
+                self.actionButton("Check again", systemImage: "arrow.clockwise", prominent: false, action: self.retry)
             }
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .ngTopScrollEdge()
-        .refreshable { await self.model.load(appModel: self.appModel, showSpinner: false) }
-        .openClawAnimation(value: visible.count)
-        .overlay {
-            if days.isEmpty {
-                self.emptyState
+    }
+
+    private func errorState(_ text: String) -> some View {
+        let message: OpenClawTextValue = .verbatim(text)
+        return ActivityPlaceholder(refresh: self.pullRefresh) {
+            OpenClawEmptyState(systemImage: "exclamationmark.triangle", title: "Could not load", message: message) {
+                self.actionButton("Retry", systemImage: "arrow.clockwise", prominent: true, action: self.retry)
             }
         }
     }
 
     @ViewBuilder
-    private var emptyState: some View {
+    private var emptyContent: some View {
         if !self.search.isEmpty {
             ContentUnavailableView.search(text: self.search)
         } else if self.model.failedOnly || self.kindSelection != NGFilterID.all {
@@ -401,12 +406,7 @@ struct NativeActivityScreen: View {
                 title: "Nothing matches these filters",
                 message: "Try another kind or include successful events.")
             {
-                Button {
-                    self.resetFilters()
-                } label: {
-                    Label("Clear filters", systemImage: "xmark.circle")
-                }
-                .nativeGlassButtonStyle()
+                self.actionButton("Clear filters", systemImage: "xmark.circle", prominent: false, action: self.resetFilters)
             }
         } else {
             OpenClawEmptyState(
@@ -416,55 +416,135 @@ struct NativeActivityScreen: View {
         }
     }
 
-    private func metrics(_ events: [NativeActivityEvent]) -> [NGMetricItem] {
+    private func resetFilters() {
+        OpenClawMotion.perform(reduceMotion: self.reduceMotion) {
+            self.kindSelection = NGFilterID.all
+            self.model.failedOnly = false
+            self.search = ""
+        }
+    }
+
+    // MARK: Feed
+
+    private func filtered(_ events: [NativeActivityEvent]) -> [NativeActivityEvent] {
+        let query: String = self.search.trimmingCharacters(in: .whitespacesAndNewlines)
+        if query.isEmpty { return events }
+        return events.filter { $0.matches(query) }
+    }
+
+    @ViewBuilder
+    private func feed(_ events: [NativeActivityEvent]) -> some View {
+        let visible: [NativeActivityEvent] = self.filtered(events)
+        if visible.isEmpty {
+            ActivityPlaceholder(refresh: self.pullRefresh) {
+                self.emptyContent
+            }
+        } else {
+            self.list(visible)
+        }
+    }
+
+    private func list(_ visible: [NativeActivityEvent]) -> some View {
+        let days: [NativeActivityDay] = NativeActivityGrouping.days(visible)
+        let lastID: String? = visible.last?.id
+        return List {
+            self.topBlocks(visible, days: days)
+            ForEach(days) { (day: NativeActivityDay) in
+                Section {
+                    ForEach(day.events) { (event: NativeActivityEvent) in
+                        self.row(event, lastID: lastID)
+                    }
+                } header: {
+                    ActivitySectionHeader(title: day.title, count: day.events.count)
+                }
+            }
+            self.loadingMoreRow
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .refreshable { await self.pullRefresh() }
+        .openClawAnimation(value: visible.count)
+        .openClawAnimation(value: self.showInsights)
+    }
+
+    @ViewBuilder
+    private func topBlocks(_ visible: [NativeActivityEvent], days: [NativeActivityDay]) -> some View {
+        ActivitySummaryStrip(stats: self.stats(visible))
+            .openClawEntrance(index: 0)
+            .activityBlockRow()
+        ActivityDisclosureRow(title: "Insights", systemImage: "chart.bar", isExpanded: self.$showInsights)
+            .activityBlockRow()
+        if self.showInsights {
+            NativeActivityChart(days: days)
+                .padding(12)
+                .activityTile()
+                .activityBlockRow()
+            if NativeActivityAgentChart.hasData(visible) {
+                NativeActivityAgentChart(events: visible)
+                    .activityBlockRow()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var loadingMoreRow: some View {
+        if self.model.isLoadingMore {
+            HStack {
+                Spacer()
+                ProgressView()
+                Spacer()
+            }
+            .frame(minHeight: ActivityMetric.minTarget)
+            .activityPlainRow()
+            .accessibilityLabel(Text("Loading"))
+        }
+    }
+
+    private func stats(_ events: [NativeActivityEvent]) -> [ActivityStat] {
         let failed: Int = events.filter { $0.isFailure }.count
         let ok: Int = events.filter { $0.status == "succeeded" }.count
         let running: Int = events.filter { $0.status == "started" }.count
-        return [
-            NGMetricItem(
-                id: "total",
-                value: events.count,
-                label: String(localized: "Events"),
-                systemImage: "waveform.path.ecg"),
-            NGMetricItem(
-                id: "ok",
-                value: ok,
-                label: String(localized: "Succeeded"),
-                systemImage: "checkmark.circle.fill",
-                tint: OpenClawBrand.ok),
-            NGMetricItem(
-                id: "failed",
-                value: failed,
-                label: String(localized: "Failed"),
-                systemImage: "xmark.circle.fill",
-                tint: failed > 0 ? OpenClawBrand.danger : Color.secondary),
-            NGMetricItem(
-                id: "running",
-                value: running,
-                label: String(localized: "In progress"),
-                systemImage: "play.circle.fill",
-                tint: OpenClawBrand.info),
-        ]
+        let muted: Color = OpenClawPalette.texteAtténué
+        let failedTint: Color = failed > 0 ? OpenClawBrand.danger : muted
+        var result: [ActivityStat] = []
+        result.append(ActivityStat(id: "total", value: events.count, label: String(localized: "Events"), tint: muted))
+        result.append(ActivityStat(id: "ok", value: ok, label: String(localized: "Succeeded"), tint: OpenClawBrand.ok))
+        result.append(ActivityStat(id: "failed", value: failed, label: String(localized: "Failed"), tint: failedTint))
+        result.append(ActivityStat(
+            id: "running",
+            value: running,
+            label: String(localized: "In progress"),
+            tint: OpenClawBrand.info))
+        return result
     }
 
     // MARK: Rows
 
-    private func row(_ event: NativeActivityEvent, isLast: Bool) -> some View {
+    private func open(_ event: NativeActivityEvent) {
+        self.selected = event
+    }
+
+    private func loadMoreIfLast(_ event: NativeActivityEvent, lastID: String?) {
+        guard event.id == lastID else { return }
+        Task { await self.model.loadMore(appModel: self.appModel) }
+    }
+
+    private func row(_ event: NativeActivityEvent, lastID: String?) -> some View {
         Button {
-            self.selected = event
+            self.open(event)
         } label: {
-            NativeActivityCard(event: event)
+            NativeActivityRow(event: event)
         }
-        .buttonStyle(.openClawPress)
-        .ngCardRow()
+        .buttonStyle(ActivityRowButtonStyle())
+        .activityPlainRow()
         .contextMenu { self.menu(for: event) }
         .swipeActions(edge: .leading, allowsFullSwipe: true) { self.copyAction(for: event) }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) { self.sessionAction(for: event) }
-        .onAppear {
-            if isLast {
-                Task { await self.model.loadMore(appModel: self.appModel) }
-            }
-        }
+        .onAppear { self.loadMoreIfLast(event, lastID: lastID) }
+    }
+
+    private func copy(_ value: String) {
+        GlassClipboard.copy(value, toast: self.toast)
     }
 
     @ViewBuilder
@@ -498,16 +578,9 @@ struct NativeActivityScreen: View {
             }
         }
         Button {
-            self.selected = event
+            self.open(event)
         } label: {
             Label("Details", systemImage: "info.circle")
-        }
-    }
-
-    private func resetFilters() {
-        OpenClawMotion.perform(reduceMotion: self.reduceMotion) {
-            self.kindSelection = NGFilterID.all
-            self.model.failedOnly = false
         }
     }
 
@@ -531,101 +604,72 @@ struct NativeActivityScreen: View {
             } label: {
                 Label("Copy session key", systemImage: "key")
             }
-            .tint(.indigo)
+            .tint(OpenClawPalette.accentSecondaire)
         }
-    }
-
-    private func copy(_ value: String) {
-        UIPasteboard.general.string = value
-        self.copiedTick += 1
-        OpenClawMotion.perform(reduceMotion: self.reduceMotion) { self.showCopied = true }
-        Task {
-            try? await Task.sleep(for: .seconds(1.4))
-            OpenClawMotion.perform(reduceMotion: self.reduceMotion) { self.showCopied = false }
-        }
-    }
-
-    @ViewBuilder
-    private var copiedToast: some View {
-        if self.showCopied {
-            Label("Copied", systemImage: "checkmark")
-                .font(OpenClawType.subheadSemiBold)
-                .padding(.horizontal, 16)
-                .frame(minHeight: 44)
-                .openClawGlassCapsule(tint: OpenClawBrand.ok.opacity(0.18))
-                .padding(.bottom, 24)
-                .transition(OpenClawMotion.edge(.bottom, reduceMotion: self.reduceMotion))
-                .accessibilityAddTraits(.updatesFrequently)
-        }
-    }
-
-    // MARK: Toolbar
-
-    @ToolbarContentBuilder
-    private var filterToolbar: some ToolbarContent {
-        ToolbarItem(placement: .topBarTrailing) {
-            Menu {
-                Toggle(isOn: self.$model.failedOnly) {
-                    Label("Failures only", systemImage: "exclamationmark.triangle")
-                }
-            } label: {
-                Image(systemName: self.filterSymbol)
-                    .nativeMinimumTapTarget()
-            }
-            .accessibilityLabel(Text("Filter"))
-        }
-    }
-
-    private var filterSymbol: String {
-        self.model.failedOnly
-            ? "line.3.horizontal.decrease.circle.fill"
-            : "line.3.horizontal.decrease.circle"
     }
 }
 
-// MARK: - Card
+// MARK: - Row
 
-private struct NativeActivityCard: View {
+/// One event: state glyph, title, detail line (kind, agent, channel, error code) and time.
+/// Failures also carry a flat tag, so the state never relies on color alone.
+private struct NativeActivityRow: View {
     let event: NativeActivityEvent
 
+    private var detail: String? {
+        NativeFormat.joined([self.event.kindLabel, self.event.agentId, self.event.channel, self.event.errorCode])
+    }
+
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            NGIconBadge(systemImage: self.event.symbol, tint: self.event.statusColor)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(verbatim: self.event.title)
-                    .font(OpenClawType.body)
-                    .foregroundStyle(.primary)
+        HStack(alignment: .top, spacing: OpenClawSpace.md) {
+            ActivityGlyph(systemImage: self.event.statusSymbol, tint: self.event.statusColor)
+            self.texts
+            Spacer(minLength: OpenClawSpace.sm)
+            self.trailing
+        }
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, minHeight: ActivityMetric.minTarget, alignment: .leading)
+        .overlay(alignment: .bottom) { ActivityHairline() }
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityValue(Text(verbatim: self.event.statusLabel))
+    }
+
+    private var texts: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(verbatim: self.event.title)
+                .font(OpenClawType.subheadMedium)
+                .foregroundStyle(OpenClawPalette.texteFort)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+            if let detail = self.detail {
+                Text(verbatim: detail)
+                    .font(OpenClawType.footnote)
+                    .foregroundStyle(OpenClawPalette.texteAtténué)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
-                if let subtitle = self.event.subtitle {
-                    Text(verbatim: subtitle)
-                        .font(OpenClawType.footnote)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
             }
-            Spacer(minLength: 8)
-            VStack(alignment: .trailing, spacing: 6) {
-                if let date = self.event.date {
-                    Text(date, format: .dateTime.hour().minute())
-                        .font(OpenClawType.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
-                NGPill(
+        }
+    }
+
+    private var trailing: some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            if let date = self.event.date {
+                Text(date, format: .dateTime.hour().minute())
+                    .font(OpenClawType.caption)
+                    .foregroundStyle(OpenClawPalette.texteAtténué)
+                    .monospacedDigit()
+            }
+            if self.event.isFailure {
+                ActivityStatusTag(
                     text: self.event.statusLabel,
                     systemImage: self.event.statusSymbol,
                     tint: self.event.statusColor)
             }
         }
-        .padding(12)
-        .frame(minHeight: 44)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .ngCardSurface()
-        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .accessibilityElement(children: .combine)
     }
 }
+
 
 // MARK: - Chart
 
@@ -810,105 +854,150 @@ private struct NativeActivityAgentChart: View {
     }
 }
 
+
 // MARK: - Detail
 
+/// Pushed detail of one event. Same language as the list: opaque tiles, hairlines, square glyph.
+/// It keeps its own navigation bar (the shell header is only drawn on the root of each section).
 struct NativeActivityDetailView: View {
+    @State private var toast: GlassToastModel = GlassToastModel()
     let event: NativeActivityEvent
-    @State private var copiedTick = 0
+
+    private struct Fact: Identifiable {
+        let id: Int
+        let label: LocalizedStringKey
+        let value: String
+    }
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 16) {
+            VStack(spacing: OpenClawSpace.md) {
                 self.header
-                self.group([
-                    ("Action", self.event.action),
-                    ("Kind", self.event.kindLabel),
-                    ("Time", NativeFormat.dateTime(ms: self.event.occurredAtMs)),
-                ])
-                self.group([
-                    ("Agent", self.event.agentId),
-                    ("Channel", self.event.channel),
-                    ("Direction", self.event.direction),
-                    ("Tool", self.event.toolName),
-                    ("Error code", self.event.errorCode),
-                ])
-                self.group([
-                    ("Run ID", self.event.runId),
-                    ("Session key", self.event.sessionKey),
-                ])
+                self.group(self.timingFacts)
+                self.group(self.originFacts)
+                self.group(self.referenceFacts)
             }
-            .padding(OpenClawProMetric.pagePadding)
+            .padding(.horizontal, OpenClawProMetric.pagePadding)
+            .padding(.vertical, OpenClawSpace.md)
         }
         .background { OpenClawProBackground() }
         .navigationTitle(self.event.title)
         .navigationBarTitleDisplayMode(.inline)
-        .sensoryFeedback(.success, trigger: self.copiedTick)
+        .glassToastHost(self.toast)
     }
 
+    // MARK: Header
+
     private var header: some View {
-        VStack(spacing: 12) {
-            NGIconBadge(systemImage: self.event.symbol, tint: self.event.statusColor, size: 64)
-            Text(verbatim: self.event.title)
-                .font(OpenClawType.headline)
-                .multilineTextAlignment(.center)
-            NGPill(
-                text: self.event.statusLabel,
-                systemImage: self.event.statusSymbol,
-                tint: self.event.statusColor)
-            if let relative = NativeFormat.relative(ms: self.event.occurredAtMs) {
-                Text(verbatim: relative)
-                    .font(OpenClawType.footnote)
-                    .foregroundStyle(.secondary)
+        HStack(alignment: .top, spacing: OpenClawSpace.md) {
+            ActivityGlyph(systemImage: self.event.statusSymbol, tint: self.event.statusColor)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(verbatim: self.event.title)
+                    .font(OpenClawType.headline)
+                    .foregroundStyle(OpenClawPalette.texteFort)
+                    .multilineTextAlignment(.leading)
+                ActivityStatusTag(
+                    text: self.event.statusLabel,
+                    systemImage: self.event.statusSymbol,
+                    tint: self.event.statusColor)
+                self.relativeLine
             }
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 20)
-        .ngCardSurface(radius: 20)
+        .padding(OpenClawSpace.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .activityTile()
         .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder
-    private func group(_ rows: [(LocalizedStringKey, String?)]) -> some View {
-        let present: [(LocalizedStringKey, String)] = rows.compactMap { item in
-            guard let value = item.1, !value.isEmpty else { return nil }
-            return (item.0, value)
-        }
-        if !present.isEmpty {
-            VStack(spacing: 0) {
-                ForEach(Array(present.enumerated()), id: \.offset) { index, item in
-                    self.detailRow(item.0, item.1)
-                    if index < present.count - 1 {
-                        Divider().padding(.leading, 14)
-                    }
-                }
-            }
-            .ngCardSurface()
+    private var relativeLine: some View {
+        if let relative = NativeFormat.relative(ms: self.event.occurredAtMs) {
+            Text(verbatim: relative)
+                .font(OpenClawType.footnote)
+                .foregroundStyle(OpenClawPalette.texteAtténué)
         }
     }
 
-    private func detailRow(_ label: LocalizedStringKey, _ value: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Text(label)
-                .font(OpenClawType.subhead)
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 8)
-            Text(verbatim: value)
-                .font(OpenClawType.subhead)
-                .multilineTextAlignment(.trailing)
-                .textSelection(.enabled)
+    // MARK: Facts
+
+    private var timingFacts: [Fact] {
+        let rows: [(LocalizedStringKey, String?)] = [
+            ("Action", self.event.action),
+            ("Kind", self.event.kindLabel),
+            ("Time", NativeFormat.dateTime(ms: self.event.occurredAtMs)),
+        ]
+        return self.facts(rows, offset: 0)
+    }
+
+    private var originFacts: [Fact] {
+        let rows: [(LocalizedStringKey, String?)] = [
+            ("Agent", self.event.agentId),
+            ("Channel", self.event.channel),
+            ("Direction", self.event.direction),
+            ("Tool", self.event.toolName),
+            ("Error code", self.event.errorCode),
+        ]
+        return self.facts(rows, offset: 100)
+    }
+
+    private var referenceFacts: [Fact] {
+        let rows: [(LocalizedStringKey, String?)] = [
+            ("Run ID", self.event.runId),
+            ("Session key", self.event.sessionKey),
+        ]
+        return self.facts(rows, offset: 200)
+    }
+
+    private func facts(_ rows: [(LocalizedStringKey, String?)], offset: Int) -> [Fact] {
+        var result: [Fact] = []
+        for (index, row) in rows.enumerated() {
+            guard let value = row.1, !value.isEmpty else { continue }
+            result.append(Fact(id: offset + index, label: row.0, value: value))
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .frame(minHeight: 44)
-        .contentShape(Rectangle())
-        .contextMenu {
-            Button {
-                UIPasteboard.general.string = value
-                self.copiedTick += 1
-            } label: {
-                Label("Copy", systemImage: "doc.on.doc")
+        return result
+    }
+
+    @ViewBuilder
+    private func group(_ facts: [Fact]) -> some View {
+        if !facts.isEmpty {
+            VStack(spacing: 0) {
+                ForEach(facts) { (fact: Fact) in
+                    self.factRow(fact, isFirst: fact.id == facts.first?.id)
+                }
             }
+            .activityTile()
         }
+    }
+
+    private func factRow(_ fact: Fact, isFirst: Bool) -> some View {
+        Button {
+            GlassClipboard.copy(fact.value, toast: self.toast)
+        } label: {
+            self.factLabel(fact)
+        }
+        .buttonStyle(.plain)
+        .overlay(alignment: .top) {
+            if !isFirst { ActivityHairline() }
+        }
+        .accessibilityHint(Text("Copies the value"))
+    }
+
+    private func factLabel(_ fact: Fact) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: OpenClawSpace.md) {
+            Text(fact.label)
+                .font(OpenClawType.subhead)
+                .foregroundStyle(OpenClawPalette.texteAtténué)
+            Spacer(minLength: OpenClawSpace.sm)
+            Text(verbatim: fact.value)
+                .font(OpenClawType.subhead)
+                .foregroundStyle(OpenClawPalette.texteFort)
+                .multilineTextAlignment(.trailing)
+        }
+        .padding(.horizontal, OpenClawSpace.md)
+        .padding(.vertical, OpenClawSpace.md)
+        .frame(maxWidth: .infinity, minHeight: ActivityMetric.minTarget, alignment: .leading)
+        .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
     }
 }

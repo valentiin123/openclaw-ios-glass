@@ -18,52 +18,58 @@ extension OpenClawChatComposer {
         .accessibilityLabel("Attachments")
         .accessibilityIdentifier("chat-attachment-picker")
         .disabled(!self.isAttachmentInputEnabled)
-        #else
-        Menu {
-            Button {
-                self.photoPickerPresentation.wrappedValue = true
-            } label: {
-                chatActionLabel(Text("Photo Library"), systemImage: "photo.on.rectangle")
-            }
-            .disabled(!self.isAttachmentInputEnabled)
-
-            #if canImport(UIKit)
-            Button {
-                self.cameraPickerPresentation.wrappedValue = true
-            } label: {
-                chatActionLabel(Text("Camera"), systemImage: "camera")
-            }
-            .disabled(
-                !self.isAttachmentInputEnabled ||
-                    !UIImagePickerController.isSourceTypeAvailable(.camera))
-            #endif
-
-            Button {
-                self.fileImporterPresentation.wrappedValue = true
-            } label: {
-                chatActionLabel(Text("File"), systemImage: "folder")
-            }
-            .disabled(!self.isAttachmentInputEnabled)
-
-            Divider()
-            if self.viewModel.sessionBranches.count > 1 {
-                self.branchMenu
-            }
-            self.verbosityPicker
-                .disabled(!self.viewModel.composerEffortMutationAvailable)
-            self.cleanComposerCapabilityItems
+        #elseif os(iOS)
+        ChatPopoverButton {
+            self.attachmentPopoverContent
         } label: {
             CompactChatAttachmentLabel()
         }
         .help("Composer options")
         .accessibilityLabel("Composer options")
         .accessibilityIdentifier("chat-attachment-picker")
-        .buttonStyle(.plain)
         .task(id: self.viewModel.composerCapabilityOwnerID) {
             await self.viewModel.loadComposerCapabilities()
         }
+        #else
+        EmptyView()
         #endif
     }
+
+    #if os(iOS)
+    /// Attachments and tool toggles only. Verbosity and branch switching no longer live here.
+    private var attachmentPopoverContent: some View {
+        let cameraAvailable: Bool = UIImagePickerController.isSourceTypeAvailable(.camera)
+        let inputEnabled: Bool = self.isAttachmentInputEnabled
+        return VStack(spacing: 0) {
+            ChatPopoverRow(
+                title: String(localized: "Photo Library"),
+                systemImage: "photo.on.rectangle",
+                isEnabled: inputEnabled,
+                closesBeforeAction: true)
+            {
+                self.photoPickerPresentation.wrappedValue = true
+            }
+            ChatPopoverRow(
+                title: String(localized: "Camera"),
+                systemImage: "camera",
+                isEnabled: inputEnabled && cameraAvailable,
+                closesBeforeAction: true)
+            {
+                self.cameraPickerPresentation.wrappedValue = true
+            }
+            ChatPopoverRow(
+                title: String(localized: "File"),
+                systemImage: "folder",
+                isEnabled: inputEnabled,
+                closesBeforeAction: true)
+            {
+                self.fileImporterPresentation.wrappedValue = true
+            }
+            self.cleanComposerCapabilityItems
+        }
+        .padding(.vertical, 4)
+    }
+    #endif
 
     #if os(iOS)
     var cleanDraftRow: some View {
@@ -146,15 +152,10 @@ extension OpenClawChatComposer {
         }
     }
 
+    #if os(macOS)
     private func cleanInlineModelPicker(compact: Bool) -> some View {
-        let sections = self.viewModel.modelPickerSections
+        let sections: ChatModelPickerSections = self.viewModel.modelPickerSectionsWithoutRecents
         return Menu {
-            if let target = self.viewModel.modelSelectionTargetDescription {
-                Text(target)
-                    .font(OpenClawChatTypography.caption)
-                    .accessibilityIdentifier("chat-composer-model-selection-target")
-                Divider()
-            }
             Group {
                 if self.viewModel.canSelectDefaultModel {
                     self.modelMenuOption(
@@ -164,11 +165,6 @@ extension OpenClawChatComposer {
                 if !sections.pinned.isEmpty {
                     Section("Pinned") {
                         self.modelOptions(sections.pinned, showsDefaultBadge: false)
-                    }
-                }
-                if !sections.recent.isEmpty {
-                    Section("Recent") {
-                        self.modelOptions(sections.recent, showsDefaultBadge: false)
                     }
                 }
                 ForEach(sections.providers) { provider in
@@ -221,6 +217,70 @@ extension OpenClawChatComposer {
         .accessibilityIdentifier("chat-composer-inline-model")
         .layoutPriority(1)
     }
+    #elseif os(iOS)
+    private func cleanInlineModelPicker(compact: Bool) -> some View {
+        ChatPopoverButton {
+            self.modelPopoverContent
+        } label: {
+            self.cleanInlineModelLabel(compact: compact)
+        }
+        .help(self.cleanInlineModelDisabledHint ?? self.viewModel.composerInlineModelLabel)
+        .accessibilityLabel("Model")
+        .accessibilityValue(self.viewModel.composerInlineModelLabel)
+        .accessibilityHint(self.cleanInlineModelDisabledHint ?? "")
+        .accessibilityIdentifier("chat-composer-inline-model")
+        .layoutPriority(1)
+    }
+
+    /// Readable model names only: no provider prefix, no id, no "this session only" caption.
+    private var modelPopoverContent: some View {
+        let sections: ChatModelPickerSections = self.viewModel.modelPickerSectionsWithoutRecents
+        let choicesDisabled: Bool = self.cleanModelChoicesDisabled
+        let showsHeaders: Bool = sections.providers.count > 1 || !sections.pinned.isEmpty
+        return VStack(spacing: 0) {
+            if !sections.pinned.isEmpty {
+                ChatPopoverSectionHeader(title: String(localized: "Pinned"))
+                self.modelPopoverRows(sections.pinned, disabled: choicesDisabled)
+            }
+            ForEach(sections.providers) { provider in
+                if showsHeaders {
+                    ChatPopoverSectionHeader(title: provider.displayName)
+                }
+                self.modelPopoverRows(provider.models, disabled: choicesDisabled)
+            }
+            ChatPopoverDivider()
+            ChatPopoverRow(
+                title: String(localized: "Model sign-in"),
+                systemImage: "key",
+                isEnabled: self.modelSignInAction == nil,
+                closesBeforeAction: true)
+            {
+                self.performModelSignInAction(.open)
+            }
+            .accessibilityIdentifier("chat-model-sign-in")
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func modelPopoverRows(_ models: [OpenClawChatModelChoice], disabled: Bool) -> some View {
+        ForEach(models) { model in
+            let unavailable: String? = self.viewModel.modelUnavailableDescription(model)
+            ChatPopoverRow(
+                title: model.pickerName,
+                detail: unavailable,
+                isSelected: self.viewModel.isSelectedModel(model.selectionID),
+                isEnabled: !disabled && unavailable == nil,
+                hint: unavailable ?? "")
+            {
+                self.viewModel.selectModel(model.selectionID)
+            }
+        }
+    }
+    #else
+    private func cleanInlineModelPicker(compact _: Bool) -> some View {
+        EmptyView()
+    }
+    #endif
 
     @ViewBuilder
     private func cleanInlineModelLabel(compact: Bool) -> some View {
@@ -285,14 +345,9 @@ extension OpenClawChatComposer {
             .help(self.cleanInlineEffortDisabledHint ?? self.viewModel.composerInlineEffortLabel)
             .accessibilityHint(self.cleanInlineEffortDisabledHint ?? "")
             .fixedSize()
-        #else
-        Menu {
-            if self.viewModel.showsThinkingPicker {
-                self.thinkingPicker
-            }
-            if self.viewModel.showsFastModeControls {
-                self.fastModeToggle
-            }
+        #elseif os(iOS)
+        ChatPopoverButton(width: ChatPopoverMetrics.wideWidth, blursBackground: true) {
+            ChatThinkingPopoverContent(viewModel: self.viewModel)
         } label: {
             ZStack(alignment: .topTrailing) {
                 ZStack {
@@ -319,17 +374,16 @@ extension OpenClawChatComposer {
                 height: self.cleanControlHeight)
             .contentShape(Rectangle())
         }
-        .menuIndicator(.hidden)
-        .tint(OpenClawChatTheme.muted)
         .disabled(
             !self.viewModel.composerEffortMutationAvailable ||
                 self.viewModel.isUpdatingSessionSettings)
-        .disabled(self.viewModel.hasActiveRunForComposerSettings)
         .help(self.cleanInlineEffortDisabledHint ?? self.viewModel.composerInlineEffortLabel)
         .accessibilityLabel("Effort")
         .accessibilityValue(self.viewModel.composerInlineEffortLabel)
         .accessibilityHint(self.cleanInlineEffortDisabledHint ?? "")
         .accessibilityIdentifier("chat-composer-inline-effort")
+        #else
+        EmptyView()
         #endif
     }
 
@@ -370,11 +424,6 @@ extension OpenClawChatComposer {
     }
 
     private var cleanInlineEffortDisabledHint: String? {
-        #if os(iOS)
-        if self.viewModel.hasActiveRunForComposerSettings {
-            return String(localized: "Available after the current response finishes.")
-        }
-        #endif
         if !self.viewModel.composerEffortMutationAvailable {
             return String(localized: "Thinking and Fast controls require operator.admin access.")
         }

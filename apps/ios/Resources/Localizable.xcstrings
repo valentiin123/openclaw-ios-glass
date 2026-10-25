@@ -1,6 +1,15 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Gateway status": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Gateway status"}},"fr":{"stringUnit":{"state":"translated","value":"État du Gateway"}}}},
+    "Health": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Health"}},"fr":{"stringUnit":{"state":"translated","value":"Santé"}}}},
+    "Node.js": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Node.js"}},"fr":{"stringUnit":{"state":"translated","value":"Node.js"}}}},
+    "Uptime": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Uptime"}},"fr":{"stringUnit":{"state":"translated","value":"Disponibilité"}}}},
+    "CPU cores": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"CPU cores"}},"fr":{"stringUnit":{"state":"translated","value":"Cœurs CPU"}}}},
+    "Memory": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Memory"}},"fr":{"stringUnit":{"state":"translated","value":"Mémoire"}}}},
+    "Disk": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Disk"}},"fr":{"stringUnit":{"state":"translated","value":"Disque"}}}},
+    "Heartbeat": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Heartbeat"}},"fr":{"stringUnit":{"state":"translated","value":"Pulsation"}}}},
+    "Values are read from the Gateway host. Pull to refresh.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Values are read from the Gateway host. Pull to refresh."}},"fr":{"stringUnit":{"state":"translated","value":"Valeurs lues depuis l'hôte du Gateway. Tirez pour actualiser."}}}},
     "%lld events, %lld failed": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"%lld events, %lld failed"}},"fr":{"stringUnit":{"state":"translated","value":"%lld événements, %lld en échec"}}}},
     "Activity per day": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Activity per day"}},"fr":{"stringUnit":{"state":"translated","value":"Activité par jour"}}}},
     "Activity unavailable on this Gateway": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Activity unavailable on this Gateway"}},"fr":{"stringUnit":{"state":"translated","value":"Activité indisponible sur cette Gateway"}}}},

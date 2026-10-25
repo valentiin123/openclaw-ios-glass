@@ -76,6 +76,13 @@ private struct CleanComposerRestingHeight: ViewModifier {
     }
 }
 
+/// The bar is applied last on iOS, so the gap sits between the squircle and the keyboard / safe area.
+private struct CleanComposerSurfaceInset: ViewModifier {
+    func body(content: Content) -> some View {
+        content.padding(.bottom, CleanChatComposerMetrics.keyboardGap)
+    }
+}
+
 /// Evaluates part of the composer in its own body. Debug builds keep every nested `some View` temporary on
 /// the stack, and the whole composer evaluated in one body nearly fills the 1 MB main-thread stack of a device.
 struct ChatComposerSection<Content: View>: View {
@@ -131,7 +138,10 @@ struct OpenClawChatComposer: View {
     @State private var isSlashPopoverPresented = false
     @State private var suppressNextSlashPopoverUpdate = false
     @State private var slashPanelHeight: CGFloat = 0
+    /// Global Y of the editor top, used to size the slash panel to the room above it (keyboard included).
+    @State private var slashSpaceAbove: CGFloat = 10_000
     @State private var slashHighlightIndex = 0
+    @State private var sendQueue: ChatSendQueue = ChatSendQueue()
     @State var dictationTask: Task<Void, Never>?
     @State private var signInContext: OpenClawChatModelSignInContext?
     @State private var modelSignInRequest: ModelSignInRequest?
@@ -381,6 +391,14 @@ struct OpenClawChatComposer: View {
         self.recorderLifecycleComposer
             .onChange(of: ObjectIdentifier(self.viewModel)) { _, _ in
                 self.viewModel.loadSlashCommandsIfNeeded()
+                self.sendQueue.removeAll()
+            }
+            .onChange(of: self.viewModel.isReadyForQueuedSend) { _, isReady in
+                guard isReady else { return }
+                self.dispatchQueuedMessages()
+            }
+            .onChange(of: self.sendQueue.items.count) { _, _ in
+                self.dispatchQueuedMessages()
             }
             .onChange(of: self.presentationOwner) { _, _ in
                 ChatDictationActions.cancel(task: self.$dictationTask, control: self.dictationControl)
@@ -429,6 +447,8 @@ struct OpenClawChatComposer: View {
 
     @ViewBuilder
     private var composerContextRows: some View {
+        ChatQueuedMessagesView(queue: self.sendQueue)
+
         if let replyTarget = self.viewModel.replyTarget {
             ChatReplyPreview(target: replyTarget) {
                 self.inputModel?.clearReplyTarget()
@@ -456,10 +476,6 @@ struct OpenClawChatComposer: View {
             ChatAttachmentActivityRow(title: "Preparing message…")
         }
         #endif
-
-        if self.composerChrome == .clean {
-            self.composerCapabilityNoticeRow
-        }
     }
 
     private var presentationOwner: OpenClawChatComposerPresentationOwner {
@@ -651,6 +667,9 @@ struct OpenClawChatComposer: View {
             .onPreferenceChange(SlashPanelHeightKey.self) { newHeight in
                 self.slashPanelHeight = newHeight
             }
+            .onGeometryChange(for: CGFloat.self, of: { $0.frame(in: .global).minY }, action: { minY in
+                self.slashSpaceAbove = minY
+            })
     }
 
     @ViewBuilder
@@ -740,6 +759,9 @@ struct OpenClawChatComposer: View {
         .modifier(CleanChatComposerSurface(cornerRadius: self.cleanCornerRadius))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("chat-composer-surface")
+        #if os(iOS)
+        .modifier(CleanComposerSurfaceInset())
+        #endif
     }
 
     @ViewBuilder
@@ -979,6 +1001,29 @@ extension OpenClawChatComposer {
         return body
     }
 
+    /// Preferred panel height, shrunk to the room between the top chrome and the editor so it is never clipped.
+    /// The composer already sits above the keyboard, so the editor's global minY follows the keyboard height.
+    private var slashPanelHeightLimit: CGFloat {
+        let preferred: CGFloat = 340
+        let minimum: CGFloat = 96
+        let gap: CGFloat = 8
+        let topReserve: CGFloat = self.slashTopReserve
+        let available: CGFloat = self.slashSpaceAbove - topReserve - gap * 2
+        return min(preferred, max(available, minimum))
+    }
+
+    /// Space kept free at the top for the status bar and the chat header.
+    private var slashTopReserve: CGFloat {
+        #if os(iOS)
+        let scenes: [UIWindowScene] = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let window: UIWindow? = scenes.flatMap(\.windows).first(where: { $0.isKeyWindow })
+        let safeTop: CGFloat = window?.safeAreaInsets.top ?? 0
+        return safeTop + 56
+        #else
+        return 8
+        #endif
+    }
+
     private var slashCommandPanel: some View {
         let query = self.slashQuery ?? ""
         let matches = self.viewModel.slashCommandMatches(
@@ -1056,7 +1101,7 @@ extension OpenClawChatComposer {
                 }
             }
         }
-        .frame(height: 340)
+        .frame(height: self.slashPanelHeightLimit)
         // Floating control surface: shared glass (material before iOS 26 and on macOS).
         .openClawChatGlass(cornerRadius: 16)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -1367,7 +1412,7 @@ extension OpenClawChatComposer {
         #if os(macOS)
         self.isDesktopLayout ? CleanChatComposerMetrics.surfaceCornerRadius : 24
         #else
-        CleanChatComposerMetrics.surfaceCornerRadius
+        CleanChatComposerMetrics.squircleCornerRadius
         #endif
     }
 
@@ -1412,7 +1457,7 @@ extension OpenClawChatComposer {
             // would split one draft across two messages.
             && self.dictationTask == nil
             && self.voiceNoteControl?.recorder.ownsPendingChatAttachment != true
-            && inputModel.canSend
+            && (inputModel.canSend || inputModel.canQueueSend)
             && (self.isAttachmentInputEnabled || inputModel.attachments.isEmpty)
     }
 
@@ -1627,7 +1672,21 @@ extension OpenClawChatComposer {
     }
 
     private func sendDraftIfEnabled() {
-        guard self.canSendMessage else { return }
-        self.inputModel?.send()
+        guard self.canSendMessage, let model = self.inputModel else { return }
+        if model.canSend {
+            model.send()
+        } else {
+            // A response is running: park the draft in the queue, it goes out when the response ends.
+            self.sendQueue.enqueueCurrentDraft(of: model)
+        }
+    }
+
+    /// Sends the oldest queued message once the previous response is done, then checks again.
+    private func dispatchQueuedMessages() {
+        guard !self.sendQueue.items.isEmpty, let model = self.inputModel else { return }
+        let queue: ChatSendQueue = self.sendQueue
+        Task { @MainActor in
+            await queue.dispatchNextIfReady(viewModel: model)
+        }
     }
 }
