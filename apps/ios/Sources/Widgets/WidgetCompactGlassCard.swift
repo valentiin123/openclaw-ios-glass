@@ -127,6 +127,7 @@ struct WidgetCompactGlassCard: View {
     private var sparkline: some View {
         let samples: [WidgetGlassSummary.Sample] = self.summary.samples
         let tint: Color = self.deltaTint
+        let lastID: Int = samples.last?.id ?? -1
         return Chart(samples) { (sample: WidgetGlassSummary.Sample) in
             AreaMark(
                 x: .value("Index", sample.id),
@@ -138,6 +139,13 @@ struct WidgetCompactGlassCard: View {
                 y: .value("Value", sample.value))
                 .interpolationMethod(.monotone)
                 .foregroundStyle(tint)
+            if sample.id == lastID {
+                PointMark(
+                    x: .value("Index", sample.id),
+                    y: .value("Value", sample.value))
+                    .symbolSize(36)
+                    .foregroundStyle(tint)
+            }
         }
         .chartXAxis(.hidden)
         .chartYAxis(.hidden)

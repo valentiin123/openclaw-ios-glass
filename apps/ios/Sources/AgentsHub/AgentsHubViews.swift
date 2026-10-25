@@ -378,6 +378,7 @@ private struct SubagentRowView: View {
         .accessibilityAddTraits(.isButton)
         .contextMenu { menuItems }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) { stopSwipe }
+        .swipeActions(edge: .leading, allowsFullSwipe: false) { toggleSwipe }
         .accessibilityAction(named: Text("View details"), onResult)
         .accessibilityAction(named: Text("Stop"), stopIfAllowed)
     }
@@ -388,7 +389,8 @@ private struct SubagentRowView: View {
     private var disclosure: some View {
         if hasChildren {
             Button(action: onToggle) {
-                Image(systemName: row.isExpanded ? "chevron.down" : "chevron.right")
+                Image(systemName: "chevron.right")
+                    .rotationEffect(.degrees(row.isExpanded ? 90 : 0))
                     .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
@@ -460,6 +462,25 @@ private struct SubagentRowView: View {
                 Label("Stop", systemImage: "stop.circle")
             }
             .disabled(!canStop)
+        }
+    }
+
+    @ViewBuilder
+    private var toggleSwipe: some View {
+        if hasChildren {
+            Button(action: onToggle) {
+                toggleSwipeLabel
+            }
+            .tint(.accentColor)
+        }
+    }
+
+    @ViewBuilder
+    private var toggleSwipeLabel: some View {
+        if row.isExpanded {
+            Label("Collapse", systemImage: "chevron.up")
+        } else {
+            Label("Expand", systemImage: "chevron.down")
         }
     }
 
