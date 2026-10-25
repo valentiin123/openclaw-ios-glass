@@ -707,6 +707,7 @@ private struct NativeActivityChart: View {
             .frame(minHeight: 150)
             .openClawChartReveal()
             .openClawAnimation(value: self.selectedDate)
+            .sensoryFeedback(.selection, trigger: self.selectedDay?.id)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text("Activity per day"))

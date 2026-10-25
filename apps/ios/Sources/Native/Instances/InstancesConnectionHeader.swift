@@ -86,6 +86,7 @@ struct InstancesConnectionHeader: View {
             }
         }
         .accessibilityElement(children: .combine)
+        .glassCopyMenu(status.detail ?? status.name)
     }
 
     private func icon(_ status: InstancesConnectionStatus) -> some View {

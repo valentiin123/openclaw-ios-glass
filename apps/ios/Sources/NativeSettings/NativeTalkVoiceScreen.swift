@@ -118,6 +118,7 @@ struct NativeTalkVoiceScreen: View {
                 }
             }
             .frame(minHeight: OpenClawHitTarget.minimum)
+            .openClawEntrance(index: 0)
             Toggle(isOn: self.voiceWakeBinding) {
                 Label {
                     Text("Voice Wake")
@@ -127,6 +128,7 @@ struct NativeTalkVoiceScreen: View {
                 }
             }
             .frame(minHeight: OpenClawHitTarget.minimum)
+            .openClawEntrance(index: 1)
         } header: {
             NativeSettingsHeader("This device")
         } footer: {
@@ -161,20 +163,38 @@ struct NativeTalkVoiceScreen: View {
         let silenceValue: String = Self.silenceText(summary.silenceTimeoutMs, fallback: notSet)
         let interruptValue: String = Self.interruptText(summary.interruptOnSpeech, fallback: notSet)
 
-        self.valueRow(title: String(localized: "Provider"), value: providerValue, systemImage: "speaker.wave.2")
-        self.valueRow(title: String(localized: "Speech language"), value: localeValue, systemImage: "globe")
-        self.valueRow(title: String(localized: "Silence timeout"), value: silenceValue, systemImage: "timer")
+        self.valueRow(
+            title: String(localized: "Provider"),
+            value: providerValue,
+            systemImage: "speaker.wave.2",
+            index: 0)
+        self.valueRow(
+            title: String(localized: "Speech language"),
+            value: localeValue,
+            systemImage: "globe",
+            index: 1)
+        self.valueRow(
+            title: String(localized: "Silence timeout"),
+            value: silenceValue,
+            systemImage: "timer",
+            index: 2)
         self.valueRow(
             title: String(localized: "Interrupt on speech"),
             value: interruptValue,
-            systemImage: "hand.raised")
-        self.valueRow(title: String(localized: "Wake words"), value: triggersValue, systemImage: "text.bubble")
+            systemImage: "hand.raised",
+            index: 3)
+        self.valueRow(
+            title: String(localized: "Wake words"),
+            value: triggersValue,
+            systemImage: "text.bubble",
+            index: 4)
     }
 
-    private func valueRow(title: String, value: String, systemImage: String) -> some View {
+    private func valueRow(title: String, value: String, systemImage: String, index: Int) -> some View {
         NativeSettingsRow(title: title, detail: value, systemImage: systemImage)
             .nativeSettingsCopyMenu(value)
             .nativeSettingsCopySwipe(value)
+            .openClawEntrance(index: index)
     }
 
     private static func silenceText(_ milliseconds: Int?, fallback: String) -> String {

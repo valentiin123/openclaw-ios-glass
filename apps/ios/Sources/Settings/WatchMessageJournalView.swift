@@ -40,9 +40,14 @@ struct WatchMessageJournalView: View {
                     .font(OpenClawType.body)
                     .foregroundStyle(.secondary)
             }
-            ForEach(self.entries) { entry in
+            ForEach(Array(self.entries.enumerated()), id: \.element.id) { index, entry in
                 Section {
                     self.message(entry)
+                        .openClawEntrance(index: index)
+                        .glassCopyMenu(entry.displayText)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            self.swipeAction(entry)
+                        }
                 }
             }
             Section {
@@ -52,6 +57,11 @@ struct WatchMessageJournalView: View {
                     .foregroundStyle(.secondary)
             }
         }
+        .scrollContentBackground(.hidden)
+        .background { OpenClawProBackground() }
+        .openClawAnimation(value: self.entries.map(\.id))
+        .openClawAnimation(value: self.notice)
+        .openClawHaptic(.warning, trigger: self.pendingDiscard != nil)
         .navigationTitle("Message Delivery")
         .task(id: self.refreshID) { await self.observeMessages() }
         .confirmationDialog(
@@ -70,6 +80,26 @@ struct WatchMessageJournalView: View {
         } message: { _ in
             Text("This deletes the saved Needs review message from iPhone.")
                 .font(OpenClawType.body)
+        }
+    }
+
+    @ViewBuilder
+    private func swipeAction(_ entry: OpenClawWatchMessageEntry) -> some View {
+        if entry.phase == .needsReview {
+            Button(role: .destructive) {
+                self.pendingDiscard = entry
+            } label: {
+                Label("Discard…", systemImage: "trash")
+            }
+            .disabled(self.isUpdating)
+        } else if entry.receipt?.terminal != nil {
+            Button {
+                Task { await self.remove(entry) }
+            } label: {
+                Label("Dismiss", systemImage: "xmark")
+            }
+            .tint(Color.gray)
+            .disabled(self.isUpdating)
         }
     }
 

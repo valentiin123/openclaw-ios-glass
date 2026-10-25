@@ -18,6 +18,7 @@ struct OnboardingModeSelectionSections: View {
             {
                 self.onSelectMode(.homeNetwork)
             }
+            .openClawEntrance(index: 0)
 
             OnboardingModeRow(
                 title: "Remote Domain",
@@ -27,6 +28,7 @@ struct OnboardingModeSelectionSections: View {
             {
                 self.onSelectMode(.remoteDomain)
             }
+            .openClawEntrance(index: 1)
 
             if self.developerModeEnabled.wrappedValue {
                 self.developerModeToggleRow
@@ -39,6 +41,7 @@ struct OnboardingModeSelectionSections: View {
                 {
                     self.onSelectMode(.developerLocal)
                 }
+                .openClawEntrance(index: 2)
             }
         } header: {
             Text("Manual Connection")
@@ -88,6 +91,7 @@ struct OnboardingModeSelectionSections: View {
 }
 
 struct OnboardingConnectPhaseView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let phase: OnboardingConnectPhase
     let primaryActionTitle: (GatewayConnectionProblem) -> String?
     let onHandleProblem: (GatewayConnectionProblem) -> Void
@@ -109,6 +113,7 @@ struct OnboardingConnectPhaseView: View {
                 }
             }
             .accessibilityElement(children: .combine)
+            .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
         case let .failed(problem):
             let actionTitle = self.primaryActionTitle(problem)
             GatewayProblemBanner(
@@ -133,6 +138,18 @@ struct OnboardingConnectPhaseView: View {
                 onPrimaryAction: allowsRetry ? self.onRetry : nil)
         case .ready:
             OpenClawStatusBadge(label: "Ready to Connect", tone: .muted)
+        }
+    }
+}
+
+extension OnboardingConnectPhaseView {
+    /// Coarse identity of the phase, used to drive the shared animation without requiring Equatable.
+    var phaseKey: String {
+        switch self.phase {
+        case .connecting: return "connecting"
+        case .failed: return "failed"
+        case .failedStatus: return "failedStatus"
+        case .ready: return "ready"
         }
     }
 }
@@ -165,15 +182,21 @@ struct OnboardingStagedGatewaySetupSection: View {
                         .font(OpenClawType.subheadSemiBold)
                 }
             }
-            .font(OpenClawType.subheadSemiBold)
+            .buttonStyle(.openClawGlassAction(.prominent))
             .disabled(self.isBusy)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .openClawEntrance(index: 3)
 
             Button(action: self.onUseManualSetup) {
                 Text("Use Manual Setup")
                     .font(OpenClawType.subheadSemiBold)
             }
-            .font(OpenClawType.subheadSemiBold)
+            .buttonStyle(.openClawGlassAction())
             .disabled(self.isBusy)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .openClawEntrance(index: 4)
         } header: {
             Text("Setup Link")
                 .font(OpenClawType.footnoteSemiBold)

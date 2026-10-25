@@ -81,6 +81,7 @@ struct NativeUsageShareChart: View {
         .frame(height: 200)
         .openClawChartReveal()
         .openClawAnimation(value: self.selectedTitle)
+        .sensoryFeedback(.selection, trigger: self.selectedTitle)
         .onChange(of: self.selectedAngle) { _, angle in
             self.selectedTitle = self.item(at: angle)?.title
         }

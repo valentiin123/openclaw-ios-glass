@@ -1014,8 +1014,15 @@ struct NativeAutomationDetailView: View {
 private struct NativeCronRunsChart: View {
     let runs: [NativeCronRun]
 
+    @State private var selectedID: String?
+
     private var timed: [NativeCronRun] {
         Array(self.runs.filter { ($0.durationMs ?? 0) > 0 }.prefix(20).reversed())
+    }
+
+    private func selectedRun(in points: [NativeCronRun]) -> NativeCronRun? {
+        guard let id = self.selectedID else { return nil }
+        return points.first { $0.id == id }
     }
 
     var body: some View {
@@ -1025,16 +1032,36 @@ private struct NativeCronRunsChart: View {
                 Text("Run duration")
                     .font(OpenClawType.subheadSemiBold)
                     .accessibilityAddTraits(.isHeader)
-                Chart(points) { run in
-                    BarMark(
-                        x: .value("Run", run.id),
-                        y: .value("Seconds", Double(run.durationMs ?? 0) / 1000))
-                        .foregroundStyle(run.tint)
-                        .cornerRadius(3)
+                let selected: NativeCronRun? = self.selectedRun(in: points)
+                Chart {
+                    ForEach(points) { run in
+                        BarMark(
+                            x: .value("Run", run.id),
+                            y: .value("Seconds", Double(run.durationMs ?? 0) / 1000))
+                            .foregroundStyle(run.tint.opacity(selected == nil || selected?.id == run.id ? 1 : 0.4))
+                            .cornerRadius(3)
+                    }
+                    if let selected {
+                        RuleMark(x: .value("Run", selected.id))
+                            .foregroundStyle(Color.secondary.opacity(0.35))
+                            .lineStyle(StrokeStyle(lineWidth: 1))
+                            .annotation(
+                                position: .top,
+                                spacing: 4,
+                                overflowResolution: AnnotationOverflowResolution(x: .fit(to: .chart), y: .disabled))
+                            {
+                                ChartSelectionTooltip(
+                                    title: selected.statusLabel,
+                                    value: NativeFormat.duration(ms: selected.durationMs ?? 0))
+                            }
+                    }
                 }
+                .chartXSelection(value: self.$selectedID)
                 .chartXAxis(.hidden)
                 .frame(height: 110)
                 .openClawChartReveal()
+                .openClawAnimation(value: self.selectedID)
+                .sensoryFeedback(.selection, trigger: self.selectedID)
             }
             .padding(12)
             .ngCardSurface()

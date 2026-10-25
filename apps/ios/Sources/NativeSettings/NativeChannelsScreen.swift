@@ -175,16 +175,16 @@ struct NativeChannelsScreen: View {
         return List {
             if !groups.attention.isEmpty {
                 Section {
-                    ForEach(groups.attention) { (item: NativeChannelItem) in
-                        self.row(item)
+                    ForEach(Array(groups.attention.enumerated()), id: \.element.id) { (offset: Int, item: NativeChannelItem) in
+                        self.row(item, index: offset)
                     }
                 } header: {
                     NativeSettingsHeader("Needs attention")
                 }
             }
             Section {
-                ForEach(groups.others) { (item: NativeChannelItem) in
-                    self.row(item)
+                ForEach(Array(groups.others.enumerated()), id: \.element.id) { (offset: Int, item: NativeChannelItem) in
+                    self.row(item, index: offset + groups.attention.count)
                 }
             } header: {
                 if !groups.attention.isEmpty {
@@ -198,7 +198,7 @@ struct NativeChannelsScreen: View {
         .refreshable { await self.loader.refresh(appModel: self.appModel, showSpinner: false) }
     }
 
-    private func row(_ item: NativeChannelItem) -> some View {
+    private func row(_ item: NativeChannelItem, index: Int) -> some View {
         let pill: NativeSettingsPill = NativeChannelsPresentation.pill(item)
         let detail: String? = NativeChannelsPresentation.detail(item)
         let copyValue: String = detail ?? item.id
@@ -210,5 +210,6 @@ struct NativeChannelsScreen: View {
             pill: pill)
             .nativeSettingsCopyMenu(copyValue)
             .nativeSettingsCopySwipe(copyValue)
+            .openClawEntrance(index: index)
     }
 }

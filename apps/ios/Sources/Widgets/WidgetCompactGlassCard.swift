@@ -85,6 +85,7 @@ struct WidgetCompactGlassCard: View {
             self.card
         }
         .buttonStyle(.openClawPress)
+        .sensoryFeedback(.impact(weight: .light), trigger: self.summary.latest)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(verbatim: self.accessibilityText))
         .accessibilityHint(Text("Opens full screen"))
@@ -133,11 +134,16 @@ struct WidgetCompactGlassCard: View {
                 x: .value("Index", sample.id),
                 y: .value("Value", sample.value))
                 .interpolationMethod(.monotone)
-                .foregroundStyle(tint.opacity(0.18))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [tint.opacity(0.28), tint.opacity(0.0)],
+                        startPoint: .top,
+                        endPoint: .bottom))
             LineMark(
                 x: .value("Index", sample.id),
                 y: .value("Value", sample.value))
                 .interpolationMethod(.monotone)
+                .lineStyle(StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
                 .foregroundStyle(tint)
             if sample.id == lastID {
                 PointMark(

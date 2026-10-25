@@ -70,6 +70,7 @@ final class InstancesGatewayStore {
 /// One saved Gateway. Status is a symbol + label, never color alone.
 struct InstanceGatewayRow: View {
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let entry: GatewaySettingsStore.GatewayRegistryEntry
     let isActive: Bool
     let isLive: Bool
@@ -107,10 +108,15 @@ struct InstanceGatewayRow: View {
             if self.isBusy {
                 ProgressView()
                     .accessibilityLabel(Text("Working"))
+                    .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
             }
         }
         .frame(minHeight: OpenClawHitTarget.minimum)
         .contentShape(Rectangle())
+        .openClawAnimation(value: self.isBusy)
+        .openClawAnimation(value: self.isLive)
+        .openClawAnimation(value: self.isActive)
+        .openClawHaptic(.selection, trigger: self.isLive)
         .accessibilityElement(children: .combine)
         .accessibilityAction(named: Text(self.isLive ? "Disconnect" : "Connect")) {
             self.onToggleLive(!self.isLive)

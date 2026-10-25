@@ -39,10 +39,20 @@ struct NativeSparkline: View {
         let list: [Sample] = self.samples
         let color: Color = self.tint
         return Chart(list) { (sample: Sample) in
+            AreaMark(
+                x: .value("Index", sample.id),
+                y: .value("Value", sample.value))
+                .interpolationMethod(.monotone)
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [color.opacity(0.28), color.opacity(0.0)],
+                        startPoint: .top,
+                        endPoint: .bottom))
             LineMark(
                 x: .value("Index", sample.id),
                 y: .value("Value", sample.value))
                 .interpolationMethod(.monotone)
+                .lineStyle(StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
                 .foregroundStyle(color)
         }
         .chartXAxis(.hidden)
@@ -103,6 +113,7 @@ struct NativeUsageTileGrid: View {
 
 /// One day / model / agent: title, figure, and a thin share bar relative to the largest row.
 struct NativeUsageRow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let title: String
     var subtitle: String?
     let value: String
@@ -154,6 +165,7 @@ struct NativeUsageRow: View {
                 Capsule()
                     .fill(OpenClawBrand.accent.opacity(0.75))
                     .frame(width: clamped > 0 ? max(4, proxy.size.width * clamped) : 0)
+                    .animation(OpenClawMotion.animation(reduceMotion: self.reduceMotion), value: clamped)
             }
         }
         .frame(height: 4)
@@ -243,6 +255,7 @@ struct NativeUsageDayChart: View {
             .frame(minHeight: 200)
             .openClawChartReveal()
             .openClawAnimation(value: self.selectedDate)
+            .sensoryFeedback(.selection, trigger: self.selectedDay?.id)
             .accessibilityLabel(Text("Daily usage chart"))
             .accessibilityValue(Text(verbatim: self.summary))
         }
@@ -355,6 +368,7 @@ struct NativeUsageBreakdownChart: View {
             .frame(height: CGFloat(max(self.items.count, 1)) * 36 + 28)
             .openClawChartReveal()
             .openClawAnimation(value: self.selectedTitle)
+            .sensoryFeedback(.selection, trigger: self.selectedTitle)
     }
 
     private func value(_ item: NativeUsageBreakdownItem) -> Double {

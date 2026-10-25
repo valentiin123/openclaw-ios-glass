@@ -96,7 +96,8 @@ public struct WidgetCardView: View {
                 Image(systemName: "ellipsis")
                     .foregroundStyle(.secondary)
                     .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
+                    .contentShape(Circle())
+                    .openClawGlass(in: Circle(), interactive: true)
             }
             .accessibilityLabel(String(localized: "Widget actions"))
         }

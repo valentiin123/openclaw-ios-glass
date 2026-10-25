@@ -204,8 +204,9 @@ struct NativeSkillsScreen: View {
                 }
             }
             Section {
-                ForEach(visible) { (item: NativeSkillItem) in
+                ForEach(Array(visible.enumerated()), id: \.element.id) { (offset: Int, item: NativeSkillItem) in
                     self.row(item)
+                        .openClawEntrance(index: offset)
                 }
             } footer: {
                 if !canEdit {

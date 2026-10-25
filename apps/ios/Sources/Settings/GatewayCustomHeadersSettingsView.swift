@@ -11,6 +11,7 @@ struct GatewayCustomHeadersSettingsView: View {
     @State private var newName = ""
     @State private var newValue = ""
     @State private var loaded = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private struct HeaderEntry: Identifiable, Equatable {
         let id = UUID()
@@ -28,6 +29,11 @@ struct GatewayCustomHeadersSettingsView: View {
                                 .font(OpenClawType.subheadSemiBold)
                             self.headerValueField("Value", text: $entry.value)
                         }
+                        .frame(minHeight: OpenClawHitTarget.minimum)
+                        // Long press copies the header NAME only; values are credentials and stay masked.
+                        .glassCopyMenu(entry.name)
+                        .openClawEntrance(index: self.entries.firstIndex(of: entry) ?? 0)
+                        .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
                     }
                     .onDelete { self.entries.remove(atOffsets: $0) }
                 } header: {
@@ -59,12 +65,15 @@ struct GatewayCustomHeadersSettingsView: View {
                 } label: {
                     Label {
                         Text("Add Header")
-                            .font(OpenClawType.subheadSemiBold)
                     } icon: {
                         Image(systemName: "plus")
                     }
+                    .frame(maxWidth: .infinity)
                 }
+                .buttonStyle(.openClawGlassAction(.prominent))
                 .disabled(!self.canAddEntry)
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets())
             } header: {
                 Text("Add Header")
                     .font(OpenClawType.captionSemiBold)
@@ -73,6 +82,10 @@ struct GatewayCustomHeadersSettingsView: View {
                     .font(OpenClawType.caption)
             }
         }
+        .scrollContentBackground(.hidden)
+        .background { OpenClawProBackground() }
+        .openClawAnimation(value: self.entries.count)
+        .openClawHaptic(.success, trigger: self.entries.count)
         .navigationTitle("Custom Headers")
         .toolbar {
             EditButton()

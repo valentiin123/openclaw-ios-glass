@@ -126,17 +126,22 @@ struct NativeNotificationsScreen: View {
                 systemImage: "bell.badge",
                 tint: OpenClawBrand.accent,
                 pill: pill)
+                .openClawEntrance(index: 0)
             if state.status == .notDetermined {
-                Button {
+                OpenClawGlassButton(
+                    title: "Allow notifications",
+                    systemImage: "bell.badge",
+                    kind: .prominent)
+                {
                     Task { await self.model.requestAuthorization() }
-                } label: {
-                    Text("Allow notifications")
-                        .font(OpenClawType.subheadSemiBold)
-                        .frame(maxWidth: .infinity, minHeight: OpenClawHitTarget.minimum, alignment: .leading)
-                        .contentShape(Rectangle())
                 }
+                .frame(maxWidth: .infinity)
+                .listRowBackground(Color.clear)
+                .openClawEntrance(index: 1)
+                .accessibilityIdentifier("NativeSettings.Notifications.Allow")
             } else {
                 NativeSettingsSystemSettingsButton()
+                    .openClawEntrance(index: 1)
             }
         } footer: {
             NativeSettingsFooter("Approval requests and agent replies can reach you as notifications. Change the delivery style in iOS Settings.")
@@ -153,14 +158,17 @@ struct NativeNotificationsScreen: View {
                 title: String(localized: "Alerts"),
                 systemImage: "text.bubble",
                 pill: alertPill)
+                .openClawEntrance(index: 0)
             NativeSettingsRow(
                 title: String(localized: "Sounds"),
                 systemImage: "speaker.wave.2",
                 pill: soundPill)
+                .openClawEntrance(index: 1)
             NativeSettingsRow(
                 title: String(localized: "Badges"),
                 systemImage: "app.badge",
                 pill: badgePill)
+                .openClawEntrance(index: 2)
         } header: {
             NativeSettingsHeader("Delivery")
         }

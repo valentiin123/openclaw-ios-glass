@@ -64,11 +64,39 @@ struct NativeAppearanceScreen: View {
                 OpenClawGlassSegmented(selection: self.selection, options: self.options)
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets())
+                    .openClawEntrance(index: 0)
                     .accessibilityIdentifier("NativeSettings.Appearance.Picker")
             } footer: {
                 NativeSettingsFooter("System follows the appearance chosen in iOS Settings.")
             }
+            Section {
+                self.previewRow
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets())
+                    .openClawEntrance(index: 1)
+            }
         }
-        .sensoryFeedback(.selection, trigger: self.appearanceModel.preference)
+        .openClawHaptic(.selection, trigger: self.appearanceModel.preference)
+        .openClawAnimation(value: self.appearanceModel.preference)
+    }
+
+    /// Small preview of the chosen appearance. Content surface (opaque), the glyph morphs with the choice.
+    private var previewRow: some View {
+        let preference: AppAppearancePreference = self.appearanceModel.preference
+        return OpenClawGlassCard(tint: OpenClawBrand.accent.opacity(0.06)) {
+            HStack(spacing: OpenClawSpace.md) {
+                Image(systemName: NativeAppearancePresentation.icon(preference))
+                    .font(OpenClawType.title2SemiBold)
+                    .foregroundStyle(OpenClawBrand.accent)
+                    .contentTransition(.symbolEffect(.replace))
+                    .frame(width: 44, height: 44)
+                    .accessibilityHidden(true)
+                Text(verbatim: NativeAppearancePresentation.title(preference))
+                    .font(OpenClawType.headline)
+                    .contentTransition(.opacity)
+                Spacer(minLength: OpenClawSpace.sm)
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 }

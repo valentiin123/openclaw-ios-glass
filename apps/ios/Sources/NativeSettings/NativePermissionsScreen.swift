@@ -148,8 +148,9 @@ struct NativePermissionsScreen: View {
     private var list: some View {
         List {
             Section {
-                ForEach(self.model.items) { item in
+                ForEach(Array(self.model.items.enumerated()), id: \.element.id) { (index: Int, item: NativePermissionItem) in
                     self.row(item)
+                        .openClawEntrance(index: index)
                 }
             } footer: {
                 NativeSettingsFooter("Denied permissions can only be changed in iOS Settings.")
@@ -190,7 +191,7 @@ struct NativePermissionsScreen: View {
                         .font(OpenClawType.subheadSemiBold)
                         .frame(minWidth: OpenClawHitTarget.minimum, minHeight: OpenClawHitTarget.minimum)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.openClawGlassAction(.regular, tint: OpenClawBrand.accent))
                 .disabled(busy)
             }
         }
