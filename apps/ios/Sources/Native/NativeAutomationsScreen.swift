@@ -716,6 +716,7 @@ private struct NativeAutomationCard: View {
 struct NativeAutomationDetailView: View {
     @Environment(NodeAppModel.self) private var appModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var confirmDelete = false
     let jobId: String
     let model: NativeAutomationsModel
@@ -913,7 +914,7 @@ struct NativeAutomationDetailView: View {
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
             .ngCardSurface()
-            .transition(OpenClawMotion.appear(reduceMotion: false))
+            .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
         }
     }
 

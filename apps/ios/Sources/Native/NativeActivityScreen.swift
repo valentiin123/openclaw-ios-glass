@@ -251,6 +251,7 @@ final class NativeActivityModel {
 
 struct NativeActivityScreen: View {
     @Environment(NodeAppModel.self) private var appModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var model = NativeActivityModel()
     @State private var search = ""
     @State private var kindSelection: String = NGFilterID.all
@@ -494,10 +495,10 @@ struct NativeActivityScreen: View {
     private func copy(_ value: String) {
         UIPasteboard.general.string = value
         self.copiedTick += 1
-        withAnimation(OpenClawMotion.spring) { self.showCopied = true }
+        OpenClawMotion.perform(reduceMotion: self.reduceMotion) { self.showCopied = true }
         Task {
             try? await Task.sleep(for: .seconds(1.4))
-            withAnimation(OpenClawMotion.spring) { self.showCopied = false }
+            OpenClawMotion.perform(reduceMotion: self.reduceMotion) { self.showCopied = false }
         }
     }
 

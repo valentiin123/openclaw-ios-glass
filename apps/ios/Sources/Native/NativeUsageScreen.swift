@@ -8,6 +8,7 @@ import UIKit
 /// Gestures: pull to refresh, touch-and-hold scrubbing on charts, swipe and long press to copy a figure.
 struct NativeUsageScreen: View {
     @Environment(NodeAppModel.self) private var appModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var model = NativeUsageModel()
     @State private var selectedDate: Date?
     @State private var selectedTitle: String?
@@ -192,11 +193,11 @@ struct NativeUsageScreen: View {
 
     private func setGrouping(_ value: NativeUsageGrouping) {
         guard value != self.grouping else { return }
-        withAnimation(OpenClawMotion.spring) { self.grouping = value }
+        OpenClawMotion.perform(reduceMotion: self.reduceMotion) { self.grouping = value }
     }
 
     private func toggleMetric() {
-        withAnimation(OpenClawMotion.spring) {
+        OpenClawMotion.perform(reduceMotion: self.reduceMotion) {
             self.metric = self.metric == .cost ? .tokens : .cost
         }
     }
