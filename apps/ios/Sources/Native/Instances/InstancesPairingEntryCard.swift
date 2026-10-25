@@ -25,6 +25,7 @@ struct InstancesPairingEntryCard: View {
         OpenClawGlassCard {
             VStack(alignment: .leading, spacing: OpenClawSpace.md) {
                 self.titleRow
+                self.stateRow
                 self.stepsList
                 self.field
                 self.actions
@@ -55,6 +56,20 @@ struct InstancesPairingEntryCard: View {
         .accessibilityElement(children: .combine)
     }
 
+    /// Current connection state (connected, waiting for approval, offline) as symbol + label, never color alone.
+    private var stateRow: some View {
+        let status: InstancesConnectionStatus = InstancesConnectionStatus(appModel: self.appModel)
+        return HStack(spacing: OpenClawSpace.sm) {
+            OpenClawStatusPill(
+                label: OpenClawTextValue.verbatim(status.label),
+                tone: status.tone,
+                systemImage: status.symbol)
+            Spacer(minLength: 0)
+        }
+        .openClawAnimation(value: status)
+        .accessibilityIdentifier("Instances.PairingState")
+    }
+
     /// The pairing flow in three short steps, so the person always knows what comes next.
     private var stepsList: some View {
         VStack(alignment: .leading, spacing: OpenClawSpace.sm) {
@@ -79,6 +94,7 @@ struct InstancesPairingEntryCard: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
+        .openClawEntrance(index: number)
     }
 
     private var field: some View {
@@ -196,6 +212,7 @@ struct InstancesPairingEntryCard: View {
                     }
                 }
         }
+        .presentationDragIndicator(.visible)
     }
 
     // MARK: - Logic

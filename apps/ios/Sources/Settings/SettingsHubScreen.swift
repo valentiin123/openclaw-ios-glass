@@ -75,6 +75,7 @@ struct SettingsHubScreen: View {
             }
             .glassCopyMenu(self.gatewayDetail)
             .glassCopySwipe(self.gatewayDetail)
+            .openClawEntrance(index: 1)
             .accessibilityIdentifier("SettingsHub.Gateway")
             NavigationLink(value: SettingsRoute.approvals) {
                 NativeSettingsRow(
@@ -83,6 +84,7 @@ struct SettingsHubScreen: View {
                     tint: OpenClawBrand.accent,
                     pill: self.approvalsPill)
             }
+            .openClawEntrance(index: 2)
             .accessibilityIdentifier("SettingsHub.Approvals")
         } header: {
             NativeSettingsHeader("Connection")
@@ -91,10 +93,10 @@ struct SettingsHubScreen: View {
 
     private var agentVoiceSection: some View {
         Section {
-            self.nativeLink(.talkVoice)
+            self.nativeLink(.talkVoice, index: 0)
             if self.appModel.isOperatorGatewayConnected {
-                self.nativeLink(.channels)
-                self.nativeLink(.skills)
+                self.nativeLink(.channels, index: 1)
+                self.nativeLink(.skills, index: 2)
             }
         } header: {
             NativeSettingsHeader("Agents")
@@ -103,8 +105,8 @@ struct SettingsHubScreen: View {
 
     private var notificationsSection: some View {
         Section {
-            self.nativeLink(.notifications)
-            self.nativeLink(.permissions)
+            self.nativeLink(.notifications, index: 0)
+            self.nativeLink(.permissions, index: 1)
         } header: {
             NativeSettingsHeader("Notifications")
         }
@@ -140,7 +142,7 @@ struct SettingsHubScreen: View {
 
     // MARK: - Rows
 
-    private func nativeLink(_ destination: NativeSettingsDestination) -> some View {
+    private func nativeLink(_ destination: NativeSettingsDestination, index: Int = 0) -> some View {
         NavigationLink {
             NativeSettingsRouter(destination: destination, embedded: true)
         } label: {
@@ -149,6 +151,7 @@ struct SettingsHubScreen: View {
                 systemImage: destination.systemImage,
                 tint: OpenClawBrand.accent)
         }
+        .openClawEntrance(index: index)
         .accessibilityIdentifier("SettingsHub.\(destination.rawValue)")
     }
 

@@ -228,9 +228,14 @@ struct NativeInstancesScreen: View {
     private func failureSection(_ message: String) -> some View {
         Section {
             NativeInlineNotice(message: message)
-            OpenClawGlassButton(title: "Retry", systemImage: "arrow.clockwise") {
-                Task { await self.refreshAll(showSpinner: true) }
+                .accessibilityIdentifier("Instances.LoadError")
+            OpenClawGlassControlGroup {
+                OpenClawGlassButton(title: "Retry", systemImage: "arrow.clockwise", kind: .prominent) {
+                    Task { await self.refreshAll(showSpinner: true) }
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
             }
+            .openClawEntrance(index: 0)
         }
     }
 
@@ -258,6 +263,7 @@ struct NativeInstancesScreen: View {
             Section {
                 ForEach(snapshot.pending) { request in
                     InstancePendingRow(model: self.model, request: request, appModel: self.appModel)
+                        .openClawEntrance(index: 0)
                         .swipeActions(edge: .leading, allowsFullSwipe: false) {
                             self.approveSwipe(request)
                         }

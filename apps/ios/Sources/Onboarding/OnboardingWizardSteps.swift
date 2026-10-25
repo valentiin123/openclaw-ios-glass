@@ -232,6 +232,7 @@ struct OnboardingIntroStep: View {
                 OnboardingHeroHeader(
                     title: "OpenClaw",
                     subtitle: "Your agent, in your pocket. Pair this iPhone with your gateway to get started.")
+                    .openClawEntrance(index: 0)
                     .padding(.top, 18)
 
                 OnboardingIntroPanel {
@@ -247,9 +248,11 @@ struct OnboardingIntroStep: View {
                             title: "Chat, talk, and approve actions from anywhere")
                     }
                 }
+                .openClawEntrance(index: 1)
                 .padding(.top, 44)
 
                 OnboardingSecurityNotice()
+                    .openClawEntrance(index: 2)
                     .padding(.top, 18)
 
                 Spacer(minLength: 40)
@@ -263,6 +266,7 @@ struct OnboardingIntroStep: View {
                     }
                     .buttonStyle(OpenClawPrimaryActionButtonStyle())
                 }
+                .openClawEntrance(index: 3)
             }
         }
     }
@@ -284,6 +288,7 @@ struct OnboardingWelcomeStep: View {
                     title: "Connect Gateway",
                     subtitle: nil,
                     mood: self.isConnecting ? .working : .idle)
+                    .openClawEntrance(index: 0)
                     .padding(.top, 18)
 
                 VStack(spacing: 36) {
@@ -321,6 +326,7 @@ struct OnboardingWelcomeStep: View {
                         .disabled(self.isConnecting)
                     }
                 }
+                .openClawEntrance(index: 1)
                 .padding(.top, 46)
 
                 if !statusText.isEmpty {
@@ -398,6 +404,7 @@ struct OnboardingSuccessStep: View {
                         .font(OpenClawType.subheadSemiBold)
                 }
                 .buttonStyle(OpenClawPrimaryActionButtonStyle())
+                .openClawEntrance(index: 2)
             }
         }
     }
@@ -459,5 +466,7 @@ struct OnboardingModeRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(self.selected ? .isSelected : [])
+        .openClawAnimation(value: self.selected)
     }
 }
