@@ -426,6 +426,7 @@ Sources/Model/NodeAppModel+WatchNotifyNormalization.swift
 Sources/Model/WatchReplyCoordinator.swift
 Sources/Motion/MotionService.swift
 Sources/Motion/OpenClawMotionModifiers.swift
+Sources/Native/Glass/GlassStatusBadge.swift
 Sources/Native/Instances/InstancesConnectionHeader.swift
 Sources/Native/Instances/InstancesGatewayList.swift
 Sources/Native/Instances/InstancesModels.swift
@@ -534,6 +535,7 @@ Sources/Web/ControlUIHubScreen.swift
 Sources/Widgets/WidgetCardView.swift
 Sources/Widgets/WidgetChartStateView.swift
 Sources/Widgets/WidgetChartView.swift
+Sources/Widgets/WidgetCompactGlassCard.swift
 Sources/Widgets/WidgetDocument.swift
 Sources/Widgets/WidgetFullScreenView.swift
 Sources/Widgets/WidgetModels.swift

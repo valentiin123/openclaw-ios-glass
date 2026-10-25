@@ -108,6 +108,8 @@ private extension View {
 // MARK: - Row
 
 private struct AgentGlassTreeRow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     let row: FlatSubagentRow
     let item: AgentTileItem
     let canStop: Bool
@@ -138,6 +140,12 @@ private struct AgentGlassTreeRow: View {
             self.disclosure
         }
         .padding(.leading, self.indent)
+        .transition(OpenClawMotion.edge(.top, reduceMotion: self.reduceMotion))
+        .sensoryFeedback(.selection, trigger: self.row.isExpanded)
+    }
+
+    private var chevronDegrees: Double {
+        self.row.isExpanded ? 90 : 0
     }
 
     private var tile: some View {
@@ -169,9 +177,11 @@ private struct AgentGlassTreeRow: View {
     private var disclosure: some View {
         if self.hasChildren {
             Button(action: self.toggle) {
-                Image(systemName: self.row.isExpanded ? "chevron.down" : "chevron.right")
+                Image(systemName: "chevron.right")
                     .font(OpenClawType.captionSemiBold)
                     .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(self.chevronDegrees))
+                    .animation(OpenClawMotion.animation(reduceMotion: self.reduceMotion), value: self.row.isExpanded)
                     .frame(width: OpenClawHitTarget.minimum, height: OpenClawHitTarget.minimum)
             }
             .buttonStyle(.plain)

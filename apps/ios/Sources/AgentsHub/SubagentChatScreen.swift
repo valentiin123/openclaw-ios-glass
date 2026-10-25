@@ -264,6 +264,7 @@ struct SubagentChatScreen: View {
 
     @State private var viewModel: OpenClawChatViewModel?
     @State private var confirmsStop: Bool = false
+    @State private var openedChildCount: Int = 0
 
     // MARK: Derived
 
@@ -302,6 +303,9 @@ struct SubagentChatScreen: View {
             .background(OpenClawBrand.void.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
             .appShellSwipeBack()
+            .chatPullToDismiss(onDismiss: self.goBack)
+            .sensoryFeedback(.selection, trigger: self.openedChildCount)
+            .sensoryFeedback(.warning, trigger: self.confirmsStop) { _, isPresented in isPresented }
             .environment(\.openClawChatOpenSubagent, self.openHook)
             .environment(\.openClawChatSubagentHeaderHidden, true)
             .confirmationDialog(
@@ -314,13 +318,18 @@ struct SubagentChatScreen: View {
 
     @ViewBuilder
     private var content: some View {
-        if let viewModel {
-            self.chat(viewModel)
-        } else {
-            ProgressView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .safeAreaInset(edge: .top, spacing: 0) { self.headerStack }
+        Group {
+            if let viewModel {
+                self.chat(viewModel)
+                    .transition(.opacity)
+            } else {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .safeAreaInset(edge: .top, spacing: 0) { self.headerStack }
+                    .transition(.opacity)
+            }
         }
+        .openClawAnimation(value: self.viewModel != nil)
     }
 
     private func chat(_ model: OpenClawChatViewModel) -> some View {
@@ -374,6 +383,7 @@ struct SubagentChatScreen: View {
     }
 
     private func openChild(_ key: String) {
+        self.openedChildCount += 1
         self.stack.open(key)
     }
 

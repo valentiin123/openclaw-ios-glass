@@ -119,10 +119,17 @@ public struct WidgetCardView: View {
         }
     }
 
+    @ViewBuilder
     private func chartContent(_ spec: WidgetChartSpec) -> some View {
-        WidgetChartStateView(state: .ready(spec), height: spec.kind == .sparkline ? 56 : 240)
-            .padding(12)
-            .onAppear { state = .loaded }
+        if spec.kind == .sparkline, let summary = WidgetGlassSummary(spec: spec) {
+            WidgetCompactGlassCard(summary: summary, onOpen: { showFullScreen = true })
+                .padding(8)
+                .onAppear { state = .loaded }
+        } else {
+            WidgetChartStateView(state: .ready(spec), height: spec.kind == .sparkline ? 56 : 240)
+                .padding(12)
+                .onAppear { state = .loaded }
+        }
     }
 
     @ViewBuilder

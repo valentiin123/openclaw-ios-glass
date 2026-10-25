@@ -101,6 +101,7 @@ struct AgentGlassTile: View {
                 .foregroundStyle(.primary)
                 .lineLimit(1)
             self.stateLine
+            self.progressLine
             self.toolLine
             Spacer(minLength: 0)
         }
@@ -143,6 +144,7 @@ struct AgentGlassTile: View {
 
     private var stateLine: some View {
         HStack(spacing: 6) {
+            AgentGlassStatusBadge(state: self.item.state, size: 18)
             Text(verbatim: self.item.state.label)
                 .font(OpenClawType.captionSemiBold)
                 .foregroundStyle(self.item.state.tint)
@@ -150,6 +152,14 @@ struct AgentGlassTile: View {
             AgentGlassTileClock(item: self.item)
         }
         .openClawAnimation(value: self.item.state)
+    }
+
+    @ViewBuilder
+    private var progressLine: some View {
+        if let progress = self.item.progress, self.item.state.isActive {
+            AgentGlassProgressBar(progress: progress, tint: self.item.state.tint)
+                .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
+        }
     }
 
     @ViewBuilder
