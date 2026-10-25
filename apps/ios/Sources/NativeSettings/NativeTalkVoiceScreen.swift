@@ -90,7 +90,12 @@ struct NativeTalkVoiceScreen: View {
         .refreshable { await self.loader.refresh(appModel: self.appModel, showSpinner: false) }
         .openClawHaptic(.selection, trigger: self.appModel.talkMode.isEnabled)
         .openClawHaptic(.selection, trigger: self.voiceWakeEnabled)
-        .openClawAnimation(value: self.loader.state.summary)
+        .openClawAnimation(value: self.loadedSummary)
+    }
+
+    private var loadedSummary: NativeTalkVoiceSummary? {
+        if case let .loaded(value) = self.loader.state { return value }
+        return nil
     }
 
     private var talkBinding: Binding<Bool> {
