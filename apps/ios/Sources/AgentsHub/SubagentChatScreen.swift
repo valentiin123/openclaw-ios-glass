@@ -5,7 +5,8 @@ import SwiftUI
 // Clean subagent chat: compact header (sprite, simple name, playful state, duration, discreet Stop),
 // a list of running child subagents, then the existing `OpenClawChatView` (full-width assistant text,
 // composer as a bottom safe-area inset above the keyboard). Presented inside a full-screen cover,
-// so no tab bar is underneath. Glass only on header controls; content surfaces are opaque.
+// so no tab bar is underneath. Glass on header controls and the running-children list; message
+// content surfaces stay opaque.
 // Compiler hygiene: typed constants, small @ViewBuilder properties, no nested trailing closures.
 
 // MARK: - Children
@@ -195,12 +196,10 @@ private struct SubagentChatChildrenList: View {
             }
             self.moreRow
         }
-        .background(
-            OpenClawBrand.surfaceCard,
-            in: RoundedRectangle(cornerRadius: OpenClawProMetric.cardRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: OpenClawProMetric.cardRadius, style: .continuous)
-                .strokeBorder(OpenClawBrand.hairlineBorder, lineWidth: 0.5))
+        .clipShape(RoundedRectangle(cornerRadius: OpenClawProMetric.cardRadius, style: .continuous))
+        .openClawGlass(
+            in: RoundedRectangle(cornerRadius: OpenClawProMetric.cardRadius, style: .continuous),
+            interactive: false)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .accessibilityElement(children: .contain)
@@ -234,7 +233,7 @@ private struct SubagentChatChildrenList: View {
             .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(OpenClawPressButtonStyle())
         .accessibilityHint(Text("Opens the subagent chat"))
         .accessibilityIdentifier("subagent-chat-child")
     }
