@@ -1,8 +1,10 @@
 import OpenClawKit
 import SwiftUI
+import UIKit
 
 /// Native Settings hub. No web content: every row pushes a SwiftUI screen.
-/// Four quiet groups: Connection, Agent & Voice, Device, About.
+/// Five groups: Connection (live status header), Agents, Notifications, Appearance, Advanced.
+/// Pull to refresh re-reads the Gateway overview and the approval inbox.
 /// `SettingsRoute` rows go through the typed `navigationPath`; native Dashboard replacements
 /// (`NativeSettingsDestination`) use destination links so the typed path stays `[SettingsRoute]`.
 struct SettingsHubScreen: View {
@@ -26,10 +28,17 @@ struct SettingsHubScreen: View {
         List {
             self.connectionSection
             self.agentVoiceSection
-            self.deviceSection
-            self.aboutSection
+            self.notificationsSection
+            self.appearanceSection
+            self.advancedSection
         }
         .font(OpenClawType.body)
+        .scrollContentBackground(.hidden)
+        .background { OpenClawProBackground() }
+        .refreshable {
+            await self.appModel.refreshGatewayOverviewIfConnected()
+            await self.appModel.refreshPendingApprovalInbox()
+        }
         .accessibilityIdentifier("SettingsHub.Fallback")
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
@@ -44,6 +53,12 @@ struct SettingsHubScreen: View {
 
     private var connectionSection: some View {
         Section {
+            SettingsConnectionHeader(
+                status: InstancesConnectionStatus(appModel: self.appModel),
+                pendingApprovals: self.appModel.pendingExecApprovalCount,
+                openGateway: { self.navigationPath.append(.gateway) },
+                openApprovals: { self.navigationPath.append(.approvals) })
+                .ngCardRow()
             NavigationLink(value: SettingsRoute.gateway) {
                 NativeSettingsRow(
                     title: String(localized: "Gateway"),
@@ -53,6 +68,16 @@ struct SettingsHubScreen: View {
                     pill: self.gatewayPill)
             }
             .nativeSettingsCopyMenu(self.gatewayDetail)
+            .swipeActions(edge: .trailing) {
+                if let detail = self.gatewayDetail {
+                    Button {
+                        UIPasteboard.general.string = detail
+                    } label: {
+                        Label("Copy", systemImage: "doc.on.doc")
+                    }
+                    .tint(OpenClawBrand.info)
+                }
+            }
             .accessibilityIdentifier("SettingsHub.Gateway")
             NavigationLink(value: SettingsRoute.approvals) {
                 NativeSettingsRow(
@@ -75,26 +100,33 @@ struct SettingsHubScreen: View {
                 self.nativeLink(.skills)
             }
         } header: {
-            NativeSettingsHeader("Agent & Voice")
+            NativeSettingsHeader("Agents")
         }
     }
 
-    private var deviceSection: some View {
+    private var notificationsSection: some View {
         Section {
             self.nativeLink(.notifications)
-            self.nativeLink(.appearance)
             self.nativeLink(.permissions)
+        } header: {
+            NativeSettingsHeader("Notifications")
+        }
+    }
+
+    private var appearanceSection: some View {
+        Section {
+            self.nativeLink(.appearance)
+        } header: {
+            NativeSettingsHeader("Appearance")
+        }
+    }
+
+    private var advancedSection: some View {
+        Section {
             self.routeLink(
                 .diagnostics,
                 title: String(localized: "Diagnostics"),
                 systemImage: "stethoscope")
-        } header: {
-            NativeSettingsHeader("Device")
-        }
-    }
-
-    private var aboutSection: some View {
-        Section {
             self.routeLink(
                 .licenses,
                 title: String(localized: "Licenses"),
@@ -105,7 +137,7 @@ struct SettingsHubScreen: View {
                 title: String(localized: "About"),
                 systemImage: "info.circle")
         } header: {
-            NativeSettingsHeader("About")
+            NativeSettingsHeader("Advanced")
         }
     }
 

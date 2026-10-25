@@ -206,22 +206,26 @@ struct WidgetChartView: View {
         let xKey: Text = self.xAxisKey
         let yKey: Text = self.yAxisKey
         let sKey: Text = self.seriesKey
-        return Chart(data) { (point: FlatPoint) in
-            AreaMark(
-                x: .value(xKey, point.x),
-                y: .value(yKey, point.y))
-                .foregroundStyle(by: .value(sKey, point.series))
-                .interpolationMethod(.monotone)
-                .opacity(0.35)
-                .accessibilityLabel(point.x)
-                .accessibilityValue(point.accessibilityValue)
-            LineMark(
-                x: .value(xKey, point.x),
-                y: .value(yKey, point.y))
-                .foregroundStyle(by: .value(sKey, point.series))
-                .interpolationMethod(.monotone)
-                .accessibilityHidden(true)
+        return Chart {
+            ForEach(data) { (point: FlatPoint) in
+                AreaMark(
+                    x: .value(xKey, point.x),
+                    y: .value(yKey, point.y))
+                    .foregroundStyle(by: .value(sKey, point.series))
+                    .interpolationMethod(.monotone)
+                    .opacity(0.35)
+                    .accessibilityLabel(point.x)
+                    .accessibilityValue(point.accessibilityValue)
+                LineMark(
+                    x: .value(xKey, point.x),
+                    y: .value(yKey, point.y))
+                    .foregroundStyle(by: .value(sKey, point.series))
+                    .interpolationMethod(.monotone)
+                    .accessibilityHidden(true)
+            }
+            self.selectionRule(xKey: xKey)
         }
+        .chartXSelection(value: self.$selectedX)
         .modifier(AxisLabels(x: self.spec.xLabel, y: self.spec.yLabel, legend: self.showsLegend))
     }
 

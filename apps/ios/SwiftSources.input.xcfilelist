@@ -441,6 +441,8 @@ Sources/Native/NativeGlassComponents.swift
 Sources/Native/NativeListScreen.swift
 Sources/Native/NativeSupport.swift
 Sources/Native/NativeUsageScreen.swift
+Sources/Native/Usage/NativeUsageModel.swift
+Sources/Native/Usage/NativeUsageViews.swift
 Sources/Native/Workboard/NativeWorkboardScreen.swift
 Sources/Native/Workboard/WorkboardModels.swift
 Sources/Native/Workboard/WorkboardViewModel.swift
@@ -503,6 +505,7 @@ Sources/Settings/DeviceSettings/IOSDeviceSettingsPermissions.swift
 Sources/Settings/DeviceSettings/IOSDeviceSettingsReply.swift
 Sources/Settings/DeviceSettings/IOSDeviceSettingsSnapshot.swift
 Sources/Settings/GatewayCustomHeadersSettingsView.swift
+Sources/Settings/SettingsConnectionHeader.swift
 Sources/Settings/SettingsHubScreen.swift
 Sources/Settings/WatchMessageJournalView.swift
 Sources/Shell/App/AppShellModel.swift

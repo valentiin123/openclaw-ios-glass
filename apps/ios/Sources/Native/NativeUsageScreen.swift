@@ -1,90 +1,21 @@
 import Charts
-import Observation
 import SwiftUI
 import UIKit
 
-struct NativeUsageDay: Identifiable, Equatable {
-    let id: String
-    let date: Date
-    let cost: Double
-}
-
-struct NativeUsageSnapshot {
-    let days: [NativeUsageDay]
-    let totalCost: Double?
-
-    var peakDay: NativeUsageDay? {
-        self.days.max(by: { $0.cost < $1.cost })
-    }
-
-    var averageCost: Double? {
-        let active: [NativeUsageDay] = self.days.filter { $0.cost > 0 }
-        guard !active.isEmpty else { return nil }
-        let sum: Double = active.reduce(0) { $0 + $1.cost }
-        return sum / Double(active.count)
-    }
-}
-
-@MainActor
-@Observable
-final class NativeUsageModel {
-    var state: NativeLoadState<NativeUsageSnapshot> = .idle
-
-    func load(appModel: NodeAppModel, showSpinner: Bool) async {
-        guard appModel.isOperatorGatewayConnected else {
-            self.state = .failed(NativeGateway.offlineMessage)
-            return
-        }
-        if showSpinner { self.state = .loading }
-        do {
-            // usage.cost with the same params as RootSidebarModel (verified in the repo).
-            let data = try await appModel.operatorSession.request(
-                method: "usage.cost",
-                paramsJSON: CostUsageRequest.monthParamsJSON(),
-                timeoutSeconds: 12)
-            let summary = try JSONDecoder().decode(CostUsageSummaryLite.self, from: data)
-            let days: [NativeUsageDay] = Self.days(from: summary)
-            self.state = .loaded(NativeUsageSnapshot(days: days, totalCost: summary.totalCost))
-        } catch is CancellationError {
-            return
-        } catch {
-            self.state = .failed(error.localizedDescription)
-        }
-    }
-
-    private static func days(from summary: CostUsageSummaryLite) -> [NativeUsageDay] {
-        let parser = DateFormatter()
-        parser.calendar = Calendar(identifier: .gregorian)
-        parser.locale = Locale(identifier: "en_US_POSIX")
-        parser.dateFormat = "yyyy-MM-dd"
-        var result: [NativeUsageDay] = []
-        for entry in summary.daily ?? [] {
-            guard let date = parser.date(from: entry.date) else { continue }
-            result.append(NativeUsageDay(id: entry.date, date: date, cost: entry.totalCost ?? 0))
-        }
-        return result
-    }
-}
-
-enum NativeUsageRange: Hashable {
-    case week
-    case month
-}
-
-/// Native Usage page: range switch, headline total, Swift Charts bar chart with scrubbing, per-day list.
-/// Content sits on opaque grouped surfaces; glass only comes from system bars and controls.
+/// Native Usage page: glass range + metric switches, glass headline tiles, Swift Charts
+/// (cost / tokens per day, per model, per agent) and matching lists.
+/// Data types live in `Usage/NativeUsageModel.swift`, building blocks in `Usage/NativeUsageViews.swift`.
+/// Gestures: pull to refresh, touch-and-hold scrubbing on charts, swipe and long press to copy a figure.
 struct NativeUsageScreen: View {
     @Environment(NodeAppModel.self) private var appModel
     @State private var model = NativeUsageModel()
     @State private var selectedDate: Date?
+    @State private var selectedTitle: String?
     @State private var range: NativeUsageRange = .month
+    @State private var grouping: NativeUsageGrouping = .days
+    @State private var metric: NativeUsageMetric = .cost
     let title: String
     var headerSidebarAction: OpenClawSidebarHeaderAction?
-
-    private static let segments: [NativeSegment<NativeUsageRange>] = [
-        NativeSegment(id: .week, title: String(localized: "7 days")),
-        NativeSegment(id: .month, title: String(localized: "31 days")),
-    ]
 
     var body: some View {
         NavigationStack {
@@ -97,14 +28,23 @@ struct NativeUsageScreen: View {
             { snapshot in
                 self.content(snapshot)
             }
-            .safeAreaInset(edge: .top, spacing: 0) {
-                NativeSegmentedBar(segments: Self.segments, selection: self.$range)
-            }
+            .background { OpenClawProBackground() }
             .nativeChrome(title: self.title, sidebar: self.headerSidebarAction)
+            .nativeErrorAlert(self.$model.refreshError)
         }
         .task { await self.model.load(appModel: self.appModel, showSpinner: true) }
         .onChange(of: self.range) { _, _ in self.selectedDate = nil }
+        .onChange(of: self.grouping) { _, _ in
+            self.selectedDate = nil
+            self.selectedTitle = nil
+        }
+        .onChange(of: self.metric) { _, _ in self.selectedTitle = nil }
+        .sensoryFeedback(.selection, trigger: self.grouping)
+        .sensoryFeedback(.selection, trigger: self.metric)
+        .sensoryFeedback(.selection, trigger: self.range)
     }
+
+    // MARK: - Derived data
 
     private func visibleDays(_ snapshot: NativeUsageSnapshot) -> [NativeUsageDay] {
         switch self.range {
@@ -113,221 +53,278 @@ struct NativeUsageScreen: View {
         }
     }
 
+    /// Tokens are only offered when the Gateway reported some.
+    private func hasTokens(_ snapshot: NativeUsageSnapshot) -> Bool {
+        snapshot.days.contains { $0.tokens > 0 } || (snapshot.totalTokens ?? 0) > 0
+    }
+
+    private func effectiveMetric(_ snapshot: NativeUsageSnapshot) -> NativeUsageMetric {
+        self.hasTokens(snapshot) ? self.metric : .cost
+    }
+
+    // MARK: - Content
+
     private func content(_ snapshot: NativeUsageSnapshot) -> some View {
         let days: [NativeUsageDay] = self.visibleDays(snapshot)
-        let sum: Double = days.reduce(0) { $0 + $1.cost }
-        let total: Double = (self.range == .month ? snapshot.totalCost : nil) ?? sum
+        let metric: NativeUsageMetric = self.effectiveMetric(snapshot)
         return List {
             Section {
-                NativeUsageSummary(
-                    total: total,
-                    average: Self.average(days),
-                    peak: days.max(by: { $0.cost < $1.cost })?.cost)
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
+                self.tiles(snapshot: snapshot, days: days)
+                    .ngCardRow()
+                self.controls(snapshot: snapshot)
+                    .ngCardRow()
             }
-            if !days.isEmpty {
-                Section {
-                    self.chart(days)
-                } header: {
-                    Text("Daily cost")
-                }
-                Section {
-                    ForEach(days.reversed()) { day in
-                        NativeUsageDayRow(day: day)
-                            .swipeActions(edge: .trailing) { self.copyAction(for: day) }
-                            .contextMenu { self.menu(for: day) }
-                    }
-                } header: {
-                    Text("Days")
-                }
+            switch self.grouping {
+            case .days:
+                self.daysSections(days: days, metric: metric)
+            case .models:
+                self.breakdownSections(
+                    items: snapshot.models,
+                    header: "By model",
+                    metric: metric)
+            case .agents:
+                self.breakdownSections(
+                    items: snapshot.agents,
+                    header: "By agent",
+                    metric: metric)
             }
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
         .refreshable { await self.model.load(appModel: self.appModel, showSpinner: false) }
         .openClawAnimation(value: self.range)
+        .openClawAnimation(value: self.grouping)
+        .openClawAnimation(value: self.metric)
     }
 
-    private func chart(_ days: [NativeUsageDay]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            self.selectionHeader(days)
-            Chart {
-                ForEach(days) { day in
-                    BarMark(
-                        x: .value("Day", day.date, unit: .day),
-                        y: .value("Cost", day.cost))
-                        .foregroundStyle(self.barColor(for: day))
-                        .accessibilityLabel(day.date.formatted(.dateTime.weekday(.abbreviated).month().day()))
-                        .accessibilityValue(day.cost.formatted(.currency(code: "USD")))
+    // MARK: - Tiles
+
+    private func tiles(snapshot: NativeUsageSnapshot, days: [NativeUsageDay]) -> some View {
+        let costSum: Double = days.reduce(0) { $0 + $1.cost }
+        let tokenSum: Double = days.reduce(0) { $0 + $1.tokens }
+        let totalCost: Double = (self.range == .month ? snapshot.totalCost : nil) ?? costSum
+        let totalTokens: Double = (self.range == .month ? snapshot.totalTokens : nil) ?? tokenSum
+        let activeCost: [Double] = days.map(\.cost).filter { $0 > 0 }
+        var data: [NativeUsageTileData] = [
+            NativeUsageTileData(
+                id: "total",
+                title: String(localized: "Total cost"),
+                value: NativeUsageMetric.cost.full(totalCost),
+                systemImage: "dollarsign.circle",
+                tint: OpenClawBrand.accent),
+        ]
+        if !activeCost.isEmpty {
+            let average: Double = activeCost.reduce(0, +) / Double(activeCost.count)
+            data.append(NativeUsageTileData(
+                id: "average",
+                title: String(localized: "Average per active day"),
+                value: NativeUsageMetric.cost.full(average),
+                systemImage: "chart.line.flattrend.xyaxis",
+                tint: OpenClawBrand.info))
+        }
+        if let peak = days.map(\.cost).max(), peak > 0 {
+            data.append(NativeUsageTileData(
+                id: "peak",
+                title: String(localized: "Peak day"),
+                value: NativeUsageMetric.cost.full(peak),
+                systemImage: "arrow.up.right",
+                tint: OpenClawBrand.warn))
+        }
+        if self.hasTokens(snapshot) {
+            data.append(NativeUsageTileData(
+                id: "tokens",
+                title: String(localized: "Tokens"),
+                value: NativeUsageMetric.tokens.compact(totalTokens),
+                systemImage: "text.alignleft",
+                tint: OpenClawBrand.ok))
+        }
+        return NativeUsageTileGrid(tiles: data)
+    }
+
+    // MARK: - Controls
+
+    private func controls(snapshot: NativeUsageSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            OpenClawGlassSegmented(selection: self.$range, options: self.rangeOptions)
+            OpenClawGlassChipRow {
+                OpenClawGlassChip(
+                    title: "Days",
+                    systemImage: "calendar",
+                    isSelected: self.grouping == .days)
+                {
+                    self.setGrouping(.days)
                 }
-                if let average = Self.average(days) {
-                    RuleMark(y: .value("Average", average))
-                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                        .foregroundStyle(.secondary)
+                OpenClawGlassChip(
+                    title: "Models",
+                    systemImage: "cpu",
+                    isSelected: self.grouping == .models)
+                {
+                    self.setGrouping(.models)
                 }
-                if let selected = self.selectedDay(in: days) {
-                    RuleMark(x: .value("Day", selected.date, unit: .day))
-                        .foregroundStyle(Color.secondary.opacity(0.35))
-                        .lineStyle(StrokeStyle(lineWidth: 1))
-                        .annotation(
-                            position: .top,
-                            spacing: 4,
-                            overflowResolution: AnnotationOverflowResolution(x: .fit(to: .chart), y: .disabled))
-                        {
-                            ChartSelectionTooltip(
-                                title: selected.date.formatted(.dateTime.weekday(.abbreviated).month().day()),
-                                value: selected.cost.formatted(.currency(code: "USD")))
-                        }
+                OpenClawGlassChip(
+                    title: "Agents",
+                    systemImage: "person.2",
+                    isSelected: self.grouping == .agents)
+                {
+                    self.setGrouping(.agents)
                 }
-            }
-            .chartXSelection(value: self.$selectedDate)
-            .chartXAxis {
-                // 7 jours : un libellé par jour ; 31 jours : un libellé par semaine, sinon l'axe est illisible.
-                AxisMarks(values: .stride(by: .day, count: self.range == .week ? 1 : 7)) { _ in
-                    AxisTick()
-                    AxisValueLabel(
-                        format: self.range == .week
-                            ? Date.FormatStyle().weekday(.abbreviated)
-                            : Date.FormatStyle().month(.abbreviated).day(),
-                        centered: true)
-                }
-            }
-            .chartYAxis {
-                AxisMarks(position: .leading) { value in
-                    AxisGridLine()
-                    AxisValueLabel {
-                        if let cost = value.as(Double.self) {
-                            Text(cost, format: .currency(code: "USD").notation(.compactName))
-                        }
+                if self.hasTokens(snapshot) {
+                    OpenClawGlassChip(
+                        title: self.metric == .cost ? "Cost" : "Tokens",
+                        systemImage: "arrow.left.arrow.right",
+                        isSelected: false,
+                        tint: OpenClawBrand.info)
+                    {
+                        self.toggleMetric()
                     }
                 }
             }
-            .frame(minHeight: 200)
-            .openClawChartReveal()
-            .openClawAnimation(value: self.selectedDate)
-            .accessibilityLabel(Text("Daily cost chart"))
-            .accessibilityValue(Text(Self.summary(days)))
+            .padding(.horizontal, -OpenClawProMetric.pagePadding)
         }
-        .padding(.vertical, 6)
     }
 
+    private var rangeOptions: [OpenClawGlassSegmented<NativeUsageRange>.Option] {
+        [
+            OpenClawGlassSegmented<NativeUsageRange>.Option(.week, title: "7 days"),
+            OpenClawGlassSegmented<NativeUsageRange>.Option(.month, title: "31 days"),
+        ]
+    }
+
+    private func setGrouping(_ value: NativeUsageGrouping) {
+        guard value != self.grouping else { return }
+        withAnimation(OpenClawMotion.spring) { self.grouping = value }
+    }
+
+    private func toggleMetric() {
+        withAnimation(OpenClawMotion.spring) {
+            self.metric = self.metric == .cost ? .tokens : .cost
+        }
+    }
+
+    // MARK: - Days
+
     @ViewBuilder
-    private func selectionHeader(_ days: [NativeUsageDay]) -> some View {
-        if let selected = self.selectedDay(in: days) {
-            HStack {
-                Text(selected.date, format: .dateTime.weekday(.abbreviated).month().day())
-                    .font(OpenClawType.subheadSemiBold)
-                Spacer()
-                Text(selected.cost, format: .currency(code: "USD"))
-                    .font(OpenClawType.subheadSemiBold)
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
+    private func daysSections(days: [NativeUsageDay], metric: NativeUsageMetric) -> some View {
+        if !days.isEmpty {
+            Section {
+                NativeUsageDayChart(
+                    days: days,
+                    metric: metric,
+                    range: self.range,
+                    selectedDate: self.$selectedDate)
+                    .ngCardRow()
+            } header: {
+                NativeSettingsHeader(metric == .cost ? "Daily cost" : "Daily tokens")
+            }
+            Section {
+                let peak: Double = days.map { metric.value(cost: $0.cost, tokens: $0.tokens) }.max() ?? 0
+                ForEach(days.reversed()) { day in
+                    let value: Double = metric.value(cost: day.cost, tokens: day.tokens)
+                    let label: String = day.date.formatted(.dateTime.weekday(.abbreviated).month().day())
+                    NativeUsageRow(
+                        title: label,
+                        value: metric.full(value),
+                        detail: self.otherMetricText(cost: day.cost, tokens: day.tokens, metric: metric),
+                        fraction: peak > 0 ? value / peak : 0)
+                        .ngCardRow()
+                        .swipeActions(edge: .trailing) { self.copyAction(metric.full(value)) }
+                        .contextMenu { self.copyMenu(metric.full(value)) }
+                }
+            } header: {
+                NativeSettingsHeader("Days")
+            }
+        }
+    }
+
+    // MARK: - Models / agents
+
+    @ViewBuilder
+    private func breakdownSections(
+        items: [NativeUsageBreakdownItem]?,
+        header: LocalizedStringKey,
+        metric: NativeUsageMetric) -> some View
+    {
+        if let items {
+            let sorted: [NativeUsageBreakdownItem] = items.sorted {
+                metric.value(cost: $0.cost, tokens: $0.tokens) > metric.value(cost: $1.cost, tokens: $1.tokens)
+            }
+            if sorted.isEmpty {
+                Section {
+                    NativeInlineNotice(
+                        message: String(localized: "No usage recorded"),
+                        systemImage: "chart.bar.xaxis")
+                        .ngCardRow()
+                }
+            } else {
+                Section {
+                    NativeUsageBreakdownChart(
+                        items: Array(sorted.prefix(8)),
+                        metric: metric,
+                        selectedTitle: self.$selectedTitle)
+                        .ngCardRow()
+                } header: {
+                    NativeSettingsHeader(header)
+                }
+                Section {
+                    let peak: Double = sorted.map { metric.value(cost: $0.cost, tokens: $0.tokens) }.max() ?? 0
+                    ForEach(sorted) { item in
+                        let value: Double = metric.value(cost: item.cost, tokens: item.tokens)
+                        NativeUsageRow(
+                            title: item.title,
+                            subtitle: item.subtitle,
+                            value: metric.full(value),
+                            detail: self.otherMetricText(cost: item.cost, tokens: item.tokens, metric: metric),
+                            fraction: peak > 0 ? value / peak : 0)
+                            .ngCardRow()
+                            .swipeActions(edge: .trailing) { self.copyAction(item.title) }
+                            .contextMenu {
+                                self.copyMenu(item.title)
+                                self.copyMenu(metric.full(value))
+                            }
+                    }
+                } header: {
+                    NativeSettingsHeader("Details")
+                }
             }
         } else {
-            Text("Touch and hold the chart to inspect a day.")
-                .font(OpenClawType.footnote)
-                .foregroundStyle(.secondary)
+            Section {
+                NativeInlineNotice(
+                    message: String(localized: "This Gateway does not report usage by model or agent."),
+                    systemImage: "info.circle")
+                    .ngCardRow()
+            }
         }
     }
 
-    private func barColor(for day: NativeUsageDay) -> Color {
-        guard let selected = self.selectedDate else { return OpenClawBrand.accent }
-        let same: Bool = Calendar.current.isDate(day.date, inSameDayAs: selected)
-        return same ? OpenClawBrand.accent : OpenClawBrand.accent.opacity(0.4)
+    // MARK: - Helpers
+
+    private func otherMetricText(cost: Double, tokens: Double, metric: NativeUsageMetric) -> String? {
+        switch metric {
+        case .cost:
+            return tokens > 0 ? NativeUsageMetric.tokens.compact(tokens) : nil
+        case .tokens:
+            return cost > 0 ? NativeUsageMetric.cost.full(cost) : nil
+        }
     }
 
-    private func selectedDay(in days: [NativeUsageDay]) -> NativeUsageDay? {
-        guard let selected = self.selectedDate else { return nil }
-        return days.first { Calendar.current.isDate($0.date, inSameDayAs: selected) }
-    }
-
-    @ViewBuilder
-    private func copyAction(for day: NativeUsageDay) -> some View {
+    private func copyAction(_ text: String) -> some View {
         Button {
-            UIPasteboard.general.string = day.cost.formatted(.currency(code: "USD"))
+            UIPasteboard.general.string = text
         } label: {
             Label("Copy", systemImage: "doc.on.doc")
         }
         .tint(OpenClawBrand.info)
     }
 
-    @ViewBuilder
-    private func menu(for day: NativeUsageDay) -> some View {
+    private func copyMenu(_ text: String) -> some View {
         Button {
-            UIPasteboard.general.string = day.cost.formatted(.currency(code: "USD"))
+            UIPasteboard.general.string = text
         } label: {
-            Label("Copy", systemImage: "doc.on.doc")
-        }
-    }
-
-    private static func average(_ days: [NativeUsageDay]) -> Double? {
-        let active: [NativeUsageDay] = days.filter { $0.cost > 0 }
-        guard !active.isEmpty else { return nil }
-        return active.reduce(0) { $0 + $1.cost } / Double(active.count)
-    }
-
-    private static func summary(_ days: [NativeUsageDay]) -> String {
-        let peak = days.max(by: { $0.cost < $1.cost })
-        let peakText: String = peak.map { $0.cost.formatted(.currency(code: "USD")) } ?? "-"
-        return String(localized: "\(days.count) days, peak \(peakText)")
-    }
-}
-
-/// Headline total with two quiet secondary figures. One opaque surface, no glass.
-private struct NativeUsageSummary: View {
-    let total: Double
-    let average: Double?
-    let peak: Double?
-
-    var body: some View {
-        NativeSurface {
-            VStack(alignment: .leading, spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Total cost")
-                        .font(OpenClawType.footnote)
-                        .foregroundStyle(.secondary)
-                    Text(self.total, format: .currency(code: "USD"))
-                        .font(OpenClawType.title2SemiBold)
-                        .monospacedDigit()
-                }
-                .accessibilityElement(children: .combine)
-                HStack(alignment: .top, spacing: 16) {
-                    if let average {
-                        self.figure(title: "Average per active day", value: average)
-                    }
-                    if let peak {
-                        self.figure(title: "Peak day", value: peak)
-                    }
-                }
+            Label {
+                Text(verbatim: text)
+            } icon: {
+                Image(systemName: "doc.on.doc")
             }
         }
-    }
-
-    private func figure(title: LocalizedStringKey, value: Double) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(OpenClawType.footnote)
-                .foregroundStyle(.secondary)
-            Text(value, format: .currency(code: "USD"))
-                .font(OpenClawType.headline)
-                .monospacedDigit()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
-    }
-}
-
-private struct NativeUsageDayRow: View {
-    let day: NativeUsageDay
-
-    var body: some View {
-        LabeledContent {
-            Text(self.day.cost, format: .currency(code: "USD"))
-                .monospacedDigit()
-        } label: {
-            Text(self.day.date, format: .dateTime.weekday(.abbreviated).month().day())
-        }
-        .frame(minHeight: 44)
-        .accessibilityElement(children: .combine)
     }
 }
