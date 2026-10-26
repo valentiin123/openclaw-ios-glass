@@ -724,7 +724,7 @@ struct OpenClawChatComposer: View {
     }
 
     private var cleanComposerCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: self.viewModel.replyTarget != nil ? 0 : 8) {
             if self.style == .standard, !self.viewModel.attachments.isEmpty {
                 self.attachmentsStrip
                     #if os(iOS)

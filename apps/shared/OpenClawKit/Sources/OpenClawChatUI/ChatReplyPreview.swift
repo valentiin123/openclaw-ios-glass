@@ -47,6 +47,7 @@ struct ChatReplyPreview: View {
         .background(shape.fill(OpenClawChatTheme.composerBarSurface))
         .overlay(shape.strokeBorder(OpenClawChatTheme.composerBarBorder, lineWidth: 1))
         .clipShape(shape)
+        .padding(.top, 6)
         .opacity(self.isPresented ? 1 : 0)
         .offset(y: self.isPresented || self.reduceMotion ? 0 : 8)
         .onAppear {

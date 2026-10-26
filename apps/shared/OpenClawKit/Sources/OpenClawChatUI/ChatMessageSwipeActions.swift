@@ -163,14 +163,28 @@ struct ChatHorizontalPanGesture: UIGestureRecognizerRepresentable {
     }
 
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        /// A touch held this long before moving is a text-selection long press, not a swipe.
+        private static let holdThreshold: TimeInterval = 0.3
+
         private let leadingExclusion: CGFloat
+        private var touchStartTimestamp: TimeInterval?
 
         init(leadingExclusion: CGFloat) {
             self.leadingExclusion = leadingExclusion
         }
 
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            self.touchStartTimestamp = touch.timestamp
+            return true
+        }
+
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
             guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return false }
+            if let start = self.touchStartTimestamp,
+               ProcessInfo.processInfo.systemUptime - start > Self.holdThreshold
+            {
+                return false
+            }
             let velocity: CGPoint = pan.velocity(in: pan.view)
             guard abs(velocity.x) > abs(velocity.y) * ChatHorizontalPanGesture.dominance else { return false }
             guard velocity.x > 0 else { return true }
