@@ -266,8 +266,8 @@ struct AgentsBoardView: View {
             canStop: model.canStop,
             onOpen: { opened in self.openChat(opened) },
             onStop: { stopped in self.requestStop(stopped) },
-            onDelete: { removed in self.requestDelete(removed) },
             onDetails: { opened in self.openDetail(opened) },
+            onDelete: { removed in self.requestDelete(removed) },
             frameStore: self.tileFrames)
     }
 
