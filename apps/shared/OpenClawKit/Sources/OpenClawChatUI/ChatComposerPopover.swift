@@ -12,13 +12,13 @@ import UIKit
 // transparent scrim; nothing here ever resigns the first responder, so the keyboard stays open.
 
 enum ChatPopoverMetrics {
-    static let cornerRadius: CGFloat = 28
+    static let cornerRadius: CGFloat = 20
     static let width: CGFloat = 264
     static let wideWidth: CGFloat = 304
     static let rowHeight: CGFloat = 50
     static let rowInset: CGFloat = 16
     static let rowGutter: CGFloat = 8
-    static let rowCornerRadius: CGFloat = 18
+    static let rowCornerRadius: CGFloat = 14
     static let screenMargin: CGFloat = 14
     static let anchorGap: CGFloat = 10
     static let barGap: CGFloat = 20
@@ -178,41 +178,26 @@ struct ChatPopoverStagger: ViewModifier {
 
 // MARK: - Chrome
 
-/// Card surface: Liquid Glass tinted with the accent on iOS 26, tinted thin material before.
+/// Card surface: opaque palette fill (same family as the composer bar), hairline rim with a faint
+/// accent glow at the top, soft shadow. Liquid Glass is kept for the small controls inside, not the card.
 struct ChatPopoverSurface: ViewModifier {
-    @ViewBuilder
     func body(content: Content) -> some View {
         let shape: RoundedRectangle = RoundedRectangle(
             cornerRadius: ChatPopoverMetrics.cornerRadius,
             style: .continuous)
         let rim: LinearGradient = LinearGradient(
             colors: [
-                Color.white.opacity(0.42),
-                OpenClawChatTheme.brandAccent.opacity(0.22),
-                Color.white.opacity(0.06),
+                OpenClawChatTheme.brandAccent.opacity(0.30),
+                OpenClawChatTheme.hairline,
+                OpenClawChatTheme.hairline.opacity(0.6),
             ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing)
-        if #available(iOS 26.0, *) {
-            content
-                .clipShape(shape)
-                .glassEffect(
-                    Glass.regular.tint(OpenClawChatTheme.brandAccent.opacity(0.06)),
-                    in: shape)
-                .overlay(shape.strokeBorder(rim, lineWidth: 0.8).allowsHitTesting(false))
-                .shadow(color: Color.black.opacity(0.22), radius: 26, x: 0, y: 12)
-        } else {
-            content
-                .background {
-                    ZStack {
-                        shape.fill(.regularMaterial)
-                        shape.fill(OpenClawChatTheme.surfaceCard.opacity(0.5))
-                    }
-                }
-                .clipShape(shape)
-                .overlay(shape.strokeBorder(rim, lineWidth: 0.8).allowsHitTesting(false))
-                .shadow(color: Color.black.opacity(0.22), radius: 26, x: 0, y: 12)
-        }
+            startPoint: .top,
+            endPoint: .bottom)
+        return content
+            .background { shape.fill(OpenClawChatTheme.surfaceRaised) }
+            .clipShape(shape)
+            .overlay(shape.strokeBorder(rim, lineWidth: 1).allowsHitTesting(false))
+            .shadow(color: Color.black.opacity(0.28), radius: 24, x: 0, y: 10)
     }
 }
 

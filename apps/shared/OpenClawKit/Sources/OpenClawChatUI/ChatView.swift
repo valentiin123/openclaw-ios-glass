@@ -416,13 +416,6 @@ extension OpenClawChatView {
                 .padding(.top, Layout.stackSpacing)
                 .padding(.bottom, bottomPadding)
                 .frame(maxWidth: .infinity)
-                #if os(iOS)
-                // Opaque canvas under the whole bar area (down to the screen edge / keyboard): no transcript shows through.
-                .background {
-                    OpenClawChatTheme.background
-                        .ignoresSafeArea(edges: .bottom)
-                }
-                #endif
                 .chatSwipeDownDismissesKeyboard {
                     self.dismissKeyboardForSwipe()
                 }
@@ -442,10 +435,10 @@ extension OpenClawChatView {
         return -min(maxSink, spare)
     }
 
-    /// Compact layout: a little more air on the sides while typing, a narrower bar when the keyboard is down.
+    /// Compact layout: small side margins; slightly wider than the keyboard-up inset when the keyboard is down.
     private var composerHorizontalInset: CGFloat {
         if self.isTabletLayout || self.isDesktopLayout { return self.composerHorizontalMargin }
-        return self.isKeyboardVisible ? 6 : 30
+        return self.isKeyboardVisible ? 6 : 14
     }
 
     /// Minimal name + status strip, only for a subagent session on the compact layout.
