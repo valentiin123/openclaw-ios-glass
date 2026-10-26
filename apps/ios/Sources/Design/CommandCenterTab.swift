@@ -70,10 +70,15 @@ struct CommandCenterTab: View {
     private func content(split: Bool) -> some View {
         VStack(alignment: .leading, spacing: OverviewMetric.sectionSpacing) {
             self.attentionTile
+                .openClawEntrance(index: 0)
             self.gatewayTile
+                .openClawEntrance(index: 1)
             self.statStrip
+                .openClawEntrance(index: 2)
             self.sessionBlocks(split: split)
+                .openClawEntrance(index: 3)
             self.usageTile
+                .openClawEntrance(index: 4)
         }
     }
 
@@ -266,6 +271,7 @@ struct CommandCenterTab: View {
             VStack(spacing: 8) {
                 ForEach(sessions) { session in
                     self.recentSessionTile(session)
+                        .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
                 }
                 self.viewMoreButton
             }

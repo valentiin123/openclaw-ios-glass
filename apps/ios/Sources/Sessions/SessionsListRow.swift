@@ -16,7 +16,8 @@ struct SessionsListRow: View {
         Button(action: self.onOpen) {
             self.label
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.openClawPress)
+        .openClawAnimation(value: self.isSelected)
         .background(self.selectionFill, in: RoundedRectangle(
             cornerRadius: OpenClawProMetric.controlRadius,
             style: .continuous))

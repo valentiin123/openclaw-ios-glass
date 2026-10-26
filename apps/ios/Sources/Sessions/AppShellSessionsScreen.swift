@@ -238,6 +238,7 @@ struct AppShellSessionsScreen: View {
                 .padding(.bottom, 2)
             ForEach(section.nodes) { (node: ChatSessionSidebarModel.Node) in
                 self.row(node, selectedKey: selectedKey, mainKey: mainKey, categories: categories)
+                    .openClawEntrance()
             }
         }
     }
