@@ -10,7 +10,6 @@ const iosSourceRoots = [
   "Sources",
   "ShareExtension",
   "ActivityWidget",
-  path.join("WatchApp", "Sources"),
 ];
 
 const sharedSourceRoots = [
