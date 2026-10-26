@@ -50,6 +50,21 @@ extension OpenClawChatViewModel {
         return Task { await self.performSend(draft) }
     }
 
+    /// Sends the draft while a response is still running. The message goes into the durable outbox (the same
+    /// queue OpenClaw uses offline): it survives leaving the app and is delivered to the Gateway at once when
+    /// connected. Returns nil when there is no outbox, for slash commands, or when the draft cannot be sent.
+    @discardableResult
+    public func queueDraftDurably() -> Task<Void, Never>? {
+        guard !self.usesWebConversation, self.outbox != nil, self.canQueueSend else { return nil }
+        guard let draft = captureSendDraft(allowingActiveRun: true) else { return nil }
+        guard !Self.isSlashCommandDraft(draft.trimmed) else { return nil }
+        isSubmittingDraft = true
+        return Task {
+            defer { self.isSubmittingDraft = false }
+            await self.enqueueOutboxDraft(draft)
+        }
+    }
+
     public func loadSlashCommandsIfNeeded() {
         guard transport.supportsSlashCommandCatalog, !hasLoadedSlashCommands, !isLoadingSlashCommands else { return }
         Task { await self.loadSlashCommands(force: false) }
@@ -306,7 +321,7 @@ extension OpenClawChatViewModel {
         await self.deliverLiveSend(attempt)
     }
 
-    private func captureSendDraft() -> SendDraft? {
+    private func captureSendDraft(allowingActiveRun: Bool = false) -> SendDraft? {
         guard !isSubmittingDraft, !isSending else {
             return nil
         }
@@ -315,7 +330,7 @@ extension OpenClawChatViewModel {
             // attachment. Do not let a programmatic send overtake that owner.
             return nil
         }
-        guard !self.hasBlockingRunActivity else {
+        guard allowingActiveRun || !self.hasBlockingRunActivity else {
             return nil
         }
         let input = self.input

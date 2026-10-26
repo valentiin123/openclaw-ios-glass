@@ -1676,8 +1676,11 @@ extension OpenClawChatComposer {
         if model.canSend {
             model.send()
         } else {
-            // A response is running: park the draft in the queue, it goes out when the response ends.
-            self.sendQueue.enqueueCurrentDraft(of: model)
+            // A response is running: hand the draft to the durable outbox (survives leaving the app, goes to
+            // the Gateway at once). Without an outbox, fall back to the in-memory queue.
+            if model.queueDraftDurably() == nil {
+                self.sendQueue.enqueueCurrentDraft(of: model)
+            }
         }
     }
 
