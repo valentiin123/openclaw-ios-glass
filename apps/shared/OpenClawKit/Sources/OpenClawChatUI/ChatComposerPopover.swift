@@ -360,9 +360,12 @@ struct ChatPopoverRow: View {
         return HStack(spacing: 10) {
             if let systemImage = self.systemImage {
                 Image(systemName: systemImage)
-                    .font(OpenClawChatTypography.body)
+                    .font(OpenClawChatTypography.captionSemiBold)
                     .foregroundStyle(OpenClawChatTheme.brandAccent)
-                    .frame(width: 22, alignment: .center)
+                    .frame(width: 28, height: 28, alignment: .center)
+                    .background(
+                        OpenClawChatTheme.brandAccent.opacity(0.12),
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                     .accessibilityHidden(true)
             }
             VStack(alignment: .leading, spacing: 1) {
