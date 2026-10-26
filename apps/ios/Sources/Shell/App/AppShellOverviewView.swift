@@ -206,8 +206,10 @@ struct AppShellMoreListView: View {
     private var rows: some View {
         VStack(alignment: .leading, spacing: OpenClawSpace.sm) {
             self.chatRow
-            ForEach(AppShellMoreItem.allCases) { (item: AppShellMoreItem) in
+                .openClawEntrance(index: 0)
+            ForEach(Array(AppShellMoreItem.allCases.enumerated()), id: \.element) { (offset: Int, item: AppShellMoreItem) in
                 self.moreRow(item)
+                    .openClawEntrance(index: offset + 1)
             }
         }
         .padding(.horizontal, OpenClawProMetric.pagePadding)

@@ -266,6 +266,7 @@ struct NativeSettingsRow: View {
             }
         }
         .frame(minHeight: OpenClawHitTarget.minimum)
+        .openClawAnimation(value: self.pill)
         .accessibilityElement(children: .combine)
     }
 
@@ -295,28 +296,44 @@ struct NativeSettingsRow: View {
 
 /// Inline loading/error/content state for a section inside a form.
 struct NativeSettingsInlineState<Value, Content: View>: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let state: NativeLoadState<Value>
     let retry: () async -> Void
     @ViewBuilder let content: (Value) -> Content
 
-    var body: some View {
+    /// `NativeLoadState` is not Equatable: the phase is the value that drives the cross-fade.
+    private var phase: Int {
         switch self.state {
-        case .idle, .loading:
-            ProgressView()
-                .frame(maxWidth: .infinity, minHeight: OpenClawHitTarget.minimum)
-                .accessibilityLabel(Text("Loading"))
-        case let .failed(message):
-            VStack(alignment: .leading, spacing: OpenClawSpace.sm) {
-                Text(verbatim: message)
-                    .font(OpenClawType.footnote)
-                    .foregroundStyle(.secondary)
-                OpenClawGlassButton(title: "Retry", systemImage: "arrow.clockwise") {
-                    Task { await self.retry() }
-                }
-            }
-        case let .loaded(value):
-            self.content(value)
+        case .idle, .loading: 0
+        case .failed: 1
+        case .loaded: 2
         }
+    }
+
+    var body: some View {
+        Group {
+            switch self.state {
+            case .idle, .loading:
+                ProgressView()
+                    .frame(maxWidth: .infinity, minHeight: OpenClawHitTarget.minimum)
+                    .accessibilityLabel(Text("Loading"))
+                    .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
+            case let .failed(message):
+                VStack(alignment: .leading, spacing: OpenClawSpace.sm) {
+                    Text(verbatim: message)
+                        .font(OpenClawType.footnote)
+                        .foregroundStyle(.secondary)
+                    OpenClawGlassButton(title: "Retry", systemImage: "arrow.clockwise") {
+                        Task { await self.retry() }
+                    }
+                }
+                .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
+            case let .loaded(value):
+                self.content(value)
+                    .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
+            }
+        }
+        .openClawAnimation(value: self.phase)
     }
 }
 

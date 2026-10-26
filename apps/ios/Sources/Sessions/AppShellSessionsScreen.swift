@@ -14,6 +14,7 @@ import SwiftUI
 /// Content stays on opaque surfaces; no glass behind reading content.
 struct AppShellSessionsScreen: View {
     @Environment(NodeAppModel.self) private var appModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Bindable var model: RootSidebarModel
     let headerSidebarAction: OpenClawSidebarHeaderAction?
     let openChat: () -> Void
@@ -83,8 +84,11 @@ struct AppShellSessionsScreen: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {
                     self.header
+                        .openClawEntrance(index: 0)
                     self.searchField
+                        .openClawEntrance(index: 1)
                     self.gatewayRow
+                        .openClawEntrance(index: 2)
                     self.statusBlock(layout: layout)
                     ForEach(layout.sections) { (section: SessionsListSection) in
                         self.sectionView(
@@ -94,6 +98,9 @@ struct AppShellSessionsScreen: View {
                             categories: categories)
                     }
                 }
+                .openClawAnimation(value: layout.isEmpty)
+                .openClawAnimation(value: self.model.isRefreshing)
+                .openClawAnimation(value: self.model.sessionErrorText)
                 .padding(.horizontal, OpenClawProMetric.pagePadding)
                 .padding(.top, 16)
                 .padding(.bottom, 18)
@@ -165,8 +172,10 @@ struct AppShellSessionsScreen: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(String(localized: "Clear session search"))
+                .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
             }
         }
+        .openClawAnimation(value: self.searchText.isEmpty)
         .frame(minHeight: 44)
         .padding(.horizontal, 12)
         .background(
@@ -196,6 +205,7 @@ struct AppShellSessionsScreen: View {
                 .font(OpenClawType.captionMedium)
                 .foregroundStyle(OpenClawBrand.warn)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .transition(OpenClawMotion.edge(.top, reduceMotion: self.reduceMotion))
         }
         if self.model.isRefreshing, self.model.sessions.isEmpty {
             HStack(spacing: 9) {
@@ -205,11 +215,13 @@ struct AppShellSessionsScreen: View {
                     .foregroundStyle(OpenClawSidebarPalette.muted)
             }
             .frame(minHeight: 44)
+            .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
         } else if layout.isEmpty {
             Text(self.emptyText)
                 .font(OpenClawType.captionMedium)
                 .foregroundStyle(OpenClawSidebarPalette.muted)
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
         }
     }
 
@@ -236,9 +248,9 @@ struct AppShellSessionsScreen: View {
                 .tracking(0.5)
                 .padding(.horizontal, 10)
                 .padding(.bottom, 2)
-            ForEach(section.nodes) { (node: ChatSessionSidebarModel.Node) in
+            ForEach(Array(section.nodes.enumerated()), id: \.element.id) { (offset: Int, node: ChatSessionSidebarModel.Node) in
                 self.row(node, selectedKey: selectedKey, mainKey: mainKey, categories: categories)
-                    .openClawEntrance()
+                    .openClawEntrance(index: offset)
             }
         }
     }

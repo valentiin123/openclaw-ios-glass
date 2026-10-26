@@ -18,6 +18,8 @@ struct VoiceWakeToast: View {
         .padding(.vertical, 10)
         .padding(.horizontal, 12)
         .openClawGlassSurface()
+        .openClawEntrance()
+        .openClawAnimation(value: self.command)
         .accessibilityLabel("Voice Wake triggered")
         .accessibilityValue("Command: \(self.command)")
     }
