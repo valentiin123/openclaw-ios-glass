@@ -542,6 +542,7 @@ Sources/Shell/App/AppShellModel.swift
 Sources/Shell/App/AppShellOverviewView.swift
 Sources/Shell/App/AppShellRootView.swift
 Sources/Shell/App/AppShellSupport.swift
+Sources/Shell/App/AppShellTabSwipe.swift
 Sources/Shell/App/AppShellTabs.swift
 Sources/StartLiveVoiceIntent.swift
 Sources/Status/GatewayStatusBuilder.swift

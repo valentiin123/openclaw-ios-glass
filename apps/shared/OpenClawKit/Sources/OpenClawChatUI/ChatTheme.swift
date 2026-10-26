@@ -407,6 +407,16 @@ extension OpenClawChatTheme {
         #endif
     }
 
+    /// Composer bar fill, clearly distinct from the chat canvas: #FFFFFF light (over #FAF9F7), #252938 dark (over #0E1015).
+    static var composerBarSurface: Color {
+        self.paletteColor(light: 0xFFFFFF, dark: 0x252938)
+    }
+
+    /// Non-focused composer bar outline, more visible than the hairline: #C9C2B6 light, #3C4256 dark.
+    static var composerBarBorder: Color {
+        self.paletteColor(light: 0xC9C2B6, dark: 0x3C4256)
+    }
+
     /// Informational blue for running subagents and web tools (system color, adapts by itself).
     static var info: Color {
         #if os(macOS)

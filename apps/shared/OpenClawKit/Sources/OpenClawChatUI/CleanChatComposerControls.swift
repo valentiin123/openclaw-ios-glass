@@ -23,7 +23,7 @@ struct CleanChatComposerSurface: ViewModifier {
 
     private var borderColor: Color {
         #if os(iOS)
-        return self.isFocused ? OpenClawChatTheme.accent.opacity(0.85) : OpenClawChatTheme.composerBorder
+        return self.isFocused ? OpenClawChatTheme.accent.opacity(0.85) : OpenClawChatTheme.composerBarBorder
         #else
         return OpenClawChatTheme.composerBorder
         #endif
@@ -49,7 +49,11 @@ struct CleanChatComposerSurface: ViewModifier {
         #else
         // Opaque palette surface (nothing of the transcript shows through). Glass stays on the controls only.
         let squircle: RoundedRectangle = RoundedRectangle(cornerRadius: self.cornerRadius, style: .continuous)
-        content.background(squircle.fill(OpenClawChatTheme.composerField))
+        let shadowOpacity: Double = self.colorScheme == .dark ? 0.45 : 0.12
+        content.background(
+            squircle
+                .fill(OpenClawChatTheme.composerBarSurface)
+                .shadow(color: Color.black.opacity(shadowOpacity), radius: 10, x: 0, y: 2))
         #endif
     }
 }

@@ -112,9 +112,9 @@ struct CommandCenterTab: View {
     }
 
     private var headerButtons: some View {
-        HStack(spacing: OpenClawSpace.sm) {
-            self.moreButton
+        VStack(alignment: .trailing, spacing: OpenClawSpace.xxs) {
             self.settingsButton
+            self.moreButton
         }
     }
 

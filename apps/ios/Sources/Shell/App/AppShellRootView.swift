@@ -68,6 +68,7 @@ struct AppShellRootView: View {
         }
         .tabViewStyle(.sidebarAdaptable)
         .sensoryFeedback(.selection, trigger: self.navigation.selection.barTab)
+        .appShellTabSwipe(navigation: self.navigation)
         .fullScreenCover(isPresented: self.coverBinding) {
             self.animatedCover
         }

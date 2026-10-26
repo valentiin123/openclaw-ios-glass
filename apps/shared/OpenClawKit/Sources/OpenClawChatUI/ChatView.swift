@@ -922,7 +922,6 @@ extension OpenClawChatView {
             .chatMessageSwipeActions(
                 onReply: self.swipeReplyAction(for: msg),
                 onCopy: self.swipeCopyAction(for: msg))
-            .contextMenu { ChatDeferredContent { self.messageMenuActions(for: msg) } }
     }
 
     /// Swipe-to-reply mirrors `replyMessageButton` eligibility; nil disables the gesture direction.
