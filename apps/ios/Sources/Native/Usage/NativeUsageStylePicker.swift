@@ -1,7 +1,7 @@
 import SwiftUI
 
 // Local chart-style switch for the Usage charts (bars / line / share).
-// A plain segmented control: no extra glass layer on top of the reading content.
+// Opaque control (no glass on top of reading content), every segment is a 44 x 44 pt hit target.
 
 enum NativeUsageChartStyle: Hashable {
     case bars
@@ -26,21 +26,44 @@ enum NativeUsageChartStyle: Hashable {
 }
 
 struct NativeUsageStylePicker: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var style: NativeUsageChartStyle
     let options: [NativeUsageChartStyle]
 
+    private static let targetSize: CGFloat = 44
+
     var body: some View {
-        Picker(selection: self.$style) {
-            ForEach(self.options, id: \.self) { option in
-                Label(option.title, systemImage: option.systemImage)
-                    .labelStyle(.iconOnly)
-                    .tag(option)
+        HStack(spacing: 2) {
+            ForEach(self.options, id: \.self) { (option: NativeUsageChartStyle) in
+                self.segment(option)
             }
-        } label: {
-            Text("Chart style")
         }
-        .pickerStyle(.segmented)
-        .frame(width: CGFloat(self.options.count) * 56)
+        .padding(2)
+        .background(Color(uiColor: .tertiarySystemFill), in: Capsule())
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text("Chart style"))
         .sensoryFeedback(.selection, trigger: self.style)
+    }
+
+    private func segment(_ option: NativeUsageChartStyle) -> some View {
+        let isSelected: Bool = self.style == option
+        return Button {
+            guard !isSelected else { return }
+            OpenClawMotion.perform(reduceMotion: self.reduceMotion) { self.style = option }
+        } label: {
+            Label(option.title, systemImage: option.systemImage)
+                .labelStyle(.iconOnly)
+                .font(OpenClawType.subheadSemiBold)
+                .foregroundStyle(isSelected ? Color.white : Color.secondary)
+                .frame(minWidth: Self.targetSize, minHeight: Self.targetSize)
+                .background {
+                    if isSelected {
+                        Capsule().fill(OpenClawBrand.accent)
+                    }
+                }
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }

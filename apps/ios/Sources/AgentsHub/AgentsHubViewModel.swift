@@ -236,6 +236,43 @@ final class AgentsHubViewModel {
         }
     }
 
+    // MARK: Rename
+
+    /// Sets the conversation label (`sessions.patch`). An empty (trimmed) label clears it.
+    /// Updates `boardSessions` / `sessions` locally at once, then reloads the board.
+    /// Returns true on success; on failure `actionError` explains why and the board is left untouched.
+    func renameSession(_ session: OpenClawChatSessionEntry, label: String) async -> Bool {
+        let trimmed: String = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        let newLabel: String? = trimmed.isEmpty ? nil : trimmed
+        busyKeys.insert(session.key)
+        actionError = nil
+        defer { busyKeys.remove(session.key) }
+        do {
+            let request: OpenClawChatGatewayRequest = OpenClawChatGatewayRequests.patchSession(
+                sessionKey: session.key,
+                agentID: session.agentId,
+                label: .some(newLabel),
+                category: nil,
+                pinned: nil,
+                archived: nil,
+                unreadPatch: nil)
+            _ = try await gateway.request(request)
+            if let index = boardSessions.firstIndex(where: { $0.key == session.key }) {
+                boardSessions[index].label = newLabel
+            }
+            if let index = sessions.firstIndex(where: { $0.key == session.key }) {
+                sessions[index].label = newLabel
+            }
+            if let agentID = session.agentId ?? boardAgentID {
+                await loadBoard(agentID: agentID)
+            }
+            return true
+        } catch {
+            actionError = error.localizedDescription
+            return false
+        }
+    }
+
     // MARK: Create agent
 
     /// `agents.create` (scope operator.admin). Built locally because OpenClawChatGatewayRequests has no constructor.

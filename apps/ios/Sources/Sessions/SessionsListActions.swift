@@ -43,7 +43,8 @@ struct SessionsListActions {
                 let key: String = try await appModel.makeChatTransport().forkSession(
                     parentKey: parentKey,
                     fromLastCompleted: fromLastCompleted)
-                appModel.openChat(sessionKey: key)
+                // focusChatSession only: openChat(sessionKey:) also bumps openChatRequestID (legacy chat in RootTabs).
+                appModel.focusChatSession(key)
                 openChat()
                 await model.refreshSessions(appModel: appModel)
             } catch {

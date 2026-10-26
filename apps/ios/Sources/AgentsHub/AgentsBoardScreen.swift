@@ -44,6 +44,8 @@ struct AgentsBoardView: View {
     @State private var detailItem: AgentTileItem?
     @State private var confirmStop: AgentTileItem?
     @State private var confirmDelete: AgentTileItem?
+    @State private var renameTarget: AgentTileItem?
+    @State private var renameText: String = ""
     @State private var chatPresenter: SubagentChatPresenter = SubagentChatPresenter()
     @State private var tileFrames: AgentTileFrameStore = AgentTileFrameStore()
     @State private var newConversation: AgentNewConversationRequest?
@@ -88,6 +90,12 @@ struct AgentsBoardView: View {
             set: { newValue in if !newValue { self.confirmDelete = nil } })
     }
 
+    private var renameBinding: Binding<Bool> {
+        Binding<Bool>(
+            get: { self.renameTarget != nil },
+            set: { newValue in if !newValue { self.renameTarget = nil } })
+    }
+
     private func items(now: Date) -> [AgentTileItem] {
         guard let id = self.currentAgentID else { return [] }
         return AgentTileFactory.items(sessions: model.boardSessions, agentID: id, now: now)
@@ -120,6 +128,10 @@ struct AgentsBoardView: View {
                 titleVisibility: .visible,
                 actions: { self.deleteDialogActions },
                 message: { Text("Its history will be permanently removed.") })
+            .alert(
+                "Rename conversation",
+                isPresented: self.renameBinding,
+                actions: { self.renameAlertActions })
     }
 
     /// The new-conversation cover hangs off the content (not the outer chain) so it never competes with the
@@ -270,6 +282,7 @@ struct AgentsBoardView: View {
             onStop: { stopped in self.requestStop(stopped) },
             onDetails: { opened in self.openDetail(opened) },
             onDelete: { removed in self.requestDelete(removed) },
+            onRename: { renamed in self.requestRename(renamed) },
             frameStore: self.tileFrames,
             entranceIndex: index)
     }
@@ -326,6 +339,35 @@ struct AgentsBoardView: View {
 
     private func requestDelete(_ item: AgentTileItem) {
         self.confirmDelete = item
+    }
+
+    private func requestRename(_ item: AgentTileItem) {
+        self.renameText = item.name
+        self.renameTarget = item
+    }
+
+    @ViewBuilder
+    private var renameAlertActions: some View {
+        TextField("Name", text: self.$renameText)
+        Button("Save", action: self.confirmRenameNow)
+        Button("Cancel", role: .cancel, action: self.cancelRename)
+    }
+
+    private func cancelRename() {
+        self.renameTarget = nil
+    }
+
+    private func confirmRenameNow() {
+        guard let item = self.renameTarget else { return }
+        let label: String = self.renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.renameTarget = nil
+        guard !label.isEmpty else { return }
+        let session: OpenClawChatSessionEntry = item.session
+        let agentID: String? = self.currentAgentID
+        Task {
+            _ = await model.renameSession(session, label: label)
+            if let agentID { await model.loadBoard(agentID: agentID) }
+        }
     }
 
     @ViewBuilder

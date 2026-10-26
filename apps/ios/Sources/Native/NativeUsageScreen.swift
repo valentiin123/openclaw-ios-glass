@@ -22,15 +22,7 @@ struct NativeUsageScreen: View {
 
     var body: some View {
         NavigationStack {
-            NativeStateView(
-                state: self.model.state,
-                isEmpty: { $0.days.isEmpty && $0.totalCost == nil },
-                emptyTitle: "No usage recorded",
-                emptyIcon: "chart.bar.xaxis",
-                retry: { await self.model.load(appModel: self.appModel, showSpinner: true) })
-            { snapshot in
-                self.content(snapshot)
-            }
+            self.stateContent
             .background { OpenClawProBackground() }
             .nativeChrome(title: self.title, sidebar: self.headerSidebarAction)
             .nativeErrorAlert(self.$model.refreshError)
@@ -47,6 +39,26 @@ struct NativeUsageScreen: View {
         .sensoryFeedback(.selection, trigger: self.metric)
         .sensoryFeedback(.selection, trigger: self.range)
         .sensoryFeedback(.success, trigger: self.copiedTick)
+    }
+
+    // MARK: - State
+
+    @ViewBuilder
+    private var stateContent: some View {
+        switch self.model.state {
+        case .idle, .loading:
+            NativeUsageStateCard(kind: .loading)
+        case let .failed(message):
+            NativeUsageStateCard(
+                kind: .failed(message),
+                retry: { await self.model.load(appModel: self.appModel, showSpinner: true) })
+        case let .loaded(snapshot):
+            if snapshot.days.isEmpty && snapshot.totalCost == nil {
+                NativeUsageStateCard(kind: .empty)
+            } else {
+                self.content(snapshot)
+            }
+        }
     }
 
     // MARK: - Derived data
@@ -221,6 +233,7 @@ struct NativeUsageScreen: View {
                     metric: metric,
                     range: self.range,
                     selectedDate: self.$selectedDate)
+                    .openClawEntrance(index: 0)
                     .ngCardRow()
             } header: {
                 NativeSettingsHeader(metric == .cost ? "Daily cost" : "Daily tokens")
@@ -271,6 +284,7 @@ struct NativeUsageScreen: View {
                         items: Array(sorted.prefix(8)),
                         metric: metric,
                         selectedTitle: self.$selectedTitle)
+                        .openClawEntrance(index: 0)
                         .ngCardRow()
                 } header: {
                     NativeSettingsHeader(header)

@@ -17,6 +17,8 @@ struct CommandCenterTab: View {
     var openApprovals: () -> Void
     var openAutomations: () -> Void
     var openUsage: () -> Void
+    /// Opens a session in the full-screen sprite chat (same screen as the Agents tab).
+    var openSession: (String) -> Void
 
     struct WorkItem {
         let icon: String
@@ -478,8 +480,16 @@ struct CommandCenterTab: View {
     }
 
     private func openSessionKey(_ key: String?) {
-        self.appModel.openChat(sessionKey: key)
-        self.openChat()
+        // focusChatSession only: `NodeAppModel.openChat(sessionKey:)` also bumps `openChatRequestID`,
+        // which RootTabs turns into the legacy chat destination.
+        if let key, !key.isEmpty {
+            self.appModel.focusChatSession(key)
+            self.openSession(key)
+        } else {
+            // No key: main session (system chat), unchanged.
+            self.appModel.openChat(sessionKey: key)
+            self.openChat()
+        }
     }
 
     private func forkSession(_ session: OpenClawChatSessionEntry) {
@@ -1117,7 +1127,7 @@ struct CommandSessionsScreen: View {
     }
 
     private func openSessionKey(_ key: String) {
-        self.appModel.openChat(sessionKey: key)
+        self.appModel.focusChatSession(key)
         self.dismiss()
         self.openChat()
     }

@@ -107,6 +107,7 @@ struct AppShellSessionsScreen: View {
             }
             .safeAreaPadding(.bottom, OpenClawProMetric.bottomScrollInset)
             .scrollDismissesKeyboard(.interactively)
+            .scrollBounceBehavior(.always, axes: .vertical)
             .refreshable {
                 await self.model.refreshSessions(appModel: self.appModel)
             }
@@ -285,7 +286,9 @@ struct AppShellSessionsScreen: View {
 
     private func open(_ session: OpenClawChatSessionEntry) {
         self.isSearchFocused = false
-        self.appModel.openChat(sessionKey: session.key)
+        // focusChatSession only: openChat(sessionKey:) bumps openChatRequestID, which RootTabs
+        // turns into the legacy ChatProTab. The host presents the sprite chat via `openChat`.
+        self.appModel.focusChatSession(session.key)
         self.openChat()
     }
 }

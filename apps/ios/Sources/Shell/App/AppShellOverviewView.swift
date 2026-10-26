@@ -75,7 +75,8 @@ struct AppShellOverviewView: View {
             openSessions: self.openSessions,
             openApprovals: self.openApprovals,
             openAutomations: self.openAutomations,
-            openUsage: self.openUsage)
+            openUsage: self.openUsage,
+            openSession: self.openSession)
     }
 
     @ViewBuilder
@@ -138,6 +139,11 @@ struct AppShellOverviewView: View {
 
     private func openChat() {
         self.navigation.openChat()
+    }
+
+    /// Session tile on the Overview: same full-screen sprite chat as the Agents tab.
+    private func openSession(_ key: String) {
+        self.sessionChatPresenter.open(key)
     }
 
     /// Session picked in the Sessions list: `NodeAppModel.openChat(sessionKey:)` already focused it.

@@ -100,6 +100,8 @@ struct AgentTileView: View {
     var onDetails: ((AgentTileItem) -> Void)?
     /// Context menu "Delete" (removes the conversation). Hidden when nil.
     var onDelete: ((AgentTileItem) -> Void)?
+    /// Context menu "Rename" (sets the conversation label). Hidden when nil.
+    var onRename: ((AgentTileItem) -> Void)?
     /// Receives this tile's global frame (zoom origin of the chat). Nil -> not measured.
     var frameStore: AgentTileFrameStore?
     /// Position in the grid, used for the staggered entrance. Defaults to 0 (no extra delay).
@@ -129,6 +131,7 @@ struct AgentTileView: View {
         .accessibilityAddTraits(.isButton)
         .accessibilityAction(named: Text("View details"), self.showDetails)
         .accessibilityAction(named: Text("Stop"), self.stopIfAllowed)
+        .accessibilityAction(named: Text("Rename"), self.requestRename)
         .accessibilityAction(named: Text("Delete"), self.requestDelete)
     }
 
@@ -247,6 +250,9 @@ struct AgentTileView: View {
         if self.canStopNow {
             Button("Stop", systemImage: "stop.circle", role: .destructive, action: self.requestStop)
         }
+        if self.onRename != nil {
+            Button("Rename", systemImage: "pencil", action: self.requestRename)
+        }
         if self.onDelete != nil {
             Button("Delete", systemImage: "trash", role: .destructive, action: self.requestDelete)
         }
@@ -281,6 +287,10 @@ struct AgentTileView: View {
 
     private func requestStop() {
         self.onStop(self.item)
+    }
+
+    private func requestRename() {
+        self.onRename?(self.item)
     }
 
     private func requestDelete() {

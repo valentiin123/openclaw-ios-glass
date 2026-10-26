@@ -165,6 +165,89 @@ struct NativeUsageTileGrid: View {
     }
 }
 
+// MARK: - Loading / empty / error
+
+/// Themed state card (coral accent, opaque card surface) shown instead of the content.
+struct NativeUsageStateCard: View {
+    enum Kind {
+        case loading
+        case empty
+        case failed(String)
+    }
+
+    let kind: Kind
+    var retry: (() async -> Void)?
+
+    var body: some View {
+        VStack(spacing: 12) {
+            self.icon
+            Text(self.title)
+                .font(OpenClawType.headline)
+                .multilineTextAlignment(.center)
+            if let message = self.message {
+                Text(verbatim: message)
+                    .font(OpenClawType.subhead)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if case .failed = self.kind, let retry = self.retry {
+                Button {
+                    Task { await retry() }
+                } label: {
+                    Label("Retry", systemImage: "arrow.clockwise")
+                        .font(OpenClawType.subheadSemiBold)
+                        .padding(.horizontal, 16)
+                        .frame(minHeight: 44)
+                }
+                .tint(OpenClawBrand.accent)
+                .nativeGlassButton()
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(24)
+        .ngCardSurface(radius: 18)
+        .padding(.horizontal, OpenClawProMetric.pagePadding)
+        .frame(maxHeight: .infinity)
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var icon: some View {
+        switch self.kind {
+        case .loading:
+            ProgressView()
+                .tint(OpenClawBrand.accent)
+        case .empty:
+            Image(systemName: "chart.bar.xaxis")
+                .font(OpenClawType.title2)
+                .foregroundStyle(OpenClawBrand.accent)
+                .accessibilityHidden(true)
+        case .failed:
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(OpenClawType.title2)
+                .foregroundStyle(OpenClawBrand.warn)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private var title: LocalizedStringKey {
+        switch self.kind {
+        case .loading: "Loading"
+        case .empty: "No usage recorded"
+        case .failed: "Could not load"
+        }
+    }
+
+    private var message: String? {
+        switch self.kind {
+        case .loading: nil
+        case .empty: String(localized: "Usage will appear here once your agents have run.")
+        case let .failed(text): text
+        }
+    }
+}
+
 // MARK: - Row
 
 /// One day / model / agent: title, figure, and a thin share bar relative to the largest row.
@@ -255,7 +338,7 @@ struct NativeUsageDayChart: View {
                             x: .value("Day", day.date, unit: .day),
                             y: .value("Value", self.value(day)))
                             .interpolationMethod(.monotone)
-                            .foregroundStyle(OpenClawBrand.accent)
+                            .foregroundStyle(Self.baseColor)
                             .accessibilityLabel(day.date.formatted(.dateTime.weekday(.abbreviated).month().day()))
                             .accessibilityValue(self.metric.full(self.value(day)))
                     } else {
@@ -271,7 +354,7 @@ struct NativeUsageDayChart: View {
                 if let average = self.average {
                     RuleMark(y: .value("Average", average))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                        .foregroundStyle(OpenClawBrand.info.opacity(0.7))
+                        .foregroundStyle(NativeUsagePalette.color(at: 1).opacity(0.7))
                 }
                 if let selected = self.selectedDay {
                     RuleMark(x: .value("Day", selected.date, unit: .day))
@@ -335,10 +418,14 @@ struct NativeUsageDayChart: View {
         return self.days.first { Calendar.current.isDate($0.date, inSameDayAs: selected) }
     }
 
+    /// Per-day color comes from the shared palette (first slot = coral accent).
+    private static let baseColor: Color = NativeUsagePalette.color(at: 0)
+
     private func barColor(for day: NativeUsageDay) -> Color {
-        guard let selected = self.selectedDate else { return OpenClawBrand.accent }
+        let base: Color = Self.baseColor
+        guard let selected = self.selectedDate else { return base }
         let same: Bool = Calendar.current.isDate(day.date, inSameDayAs: selected)
-        return same ? OpenClawBrand.accent : OpenClawBrand.accent.opacity(0.4)
+        return same ? base : base.opacity(0.4)
     }
 
     private var summary: String {
