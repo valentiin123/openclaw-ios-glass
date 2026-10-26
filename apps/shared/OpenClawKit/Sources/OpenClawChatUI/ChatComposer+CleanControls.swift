@@ -192,9 +192,6 @@ extension OpenClawChatComposer {
                 Divider()
                 self.modelSignInButton
             }
-            #elseif os(iOS)
-            Divider()
-            self.modelSignInButton
             #endif
         } label: {
             self.cleanInlineModelLabel(compact: compact)
@@ -385,12 +382,11 @@ extension OpenClawChatComposer {
         #endif
     }
 
-    /// Keep recovery visible when authentication blocks send or capture UI replaces the model menu.
+    /// Keep recovery visible only when authentication genuinely blocks the composer.
     var showsModelSignInRow: Bool {
         #if os(iOS)
         guard self.composerChrome == .clean else { return true }
-        return self.viewModel.composerModelAvailabilityMessage != nil || self.cleanShowsCameraFlip ||
-            self.voiceNoteControl?.recorder.isRecording == true
+        return self.viewModel.composerModelAvailabilityMessage != nil
         #else
         !self.usesDesktopModelMenu
         #endif

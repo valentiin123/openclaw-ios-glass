@@ -40,8 +40,6 @@ struct ChatActionSystemRow: View {
 struct ChatActionMenuSectionHeader: View {
     let title: String
     var detail: String?
-    var resetAccessibilityIdentifier: String?
-    var resetAction: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -55,32 +53,12 @@ struct ChatActionMenuSectionHeader: View {
                     .foregroundStyle(.tertiary)
             }
             Spacer(minLength: 0)
-            if let resetAction, let resetAccessibilityIdentifier {
-                ChatActionResetButton(accessibilityIdentifier: resetAccessibilityIdentifier, action: resetAction)
-            }
         }
         .foregroundStyle(.secondary)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, ChatActionMenuMetric.horizontalPadding)
         .padding(.top, 9)
         .padding(.bottom, 3)
-    }
-}
-
-private struct ChatActionResetButton: View {
-    let accessibilityIdentifier: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: self.action) {
-            Image(systemName: "arrow.uturn.backward")
-                .frame(width: ChatActionMenuMetric.rowHeight, height: ChatActionMenuMetric.rowHeight)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(OpenClawBrand.accent)
-        .accessibilityLabel(String(localized: "Use default"))
-        .accessibilityIdentifier(self.accessibilityIdentifier)
     }
 }
 
@@ -279,14 +257,7 @@ struct ChatModelControlsMenuItems: View {
             let selectionID = self.viewModel.thinkingSelectionID
             let isSelected = selectionID == option.id
             VStack(spacing: 0) {
-                ChatActionMenuSectionHeader(
-                    title: "Thinking",
-                    resetAccessibilityIdentifier: selectionID == OpenClawChatViewModel.inheritedThinkingSelectionID
-                        ? nil
-                        : "chat-thinking-use-default",
-                    resetAction: selectionID == OpenClawChatViewModel.inheritedThinkingSelectionID
-                        ? nil
-                        : { self.viewModel.selectThinkingLevel(OpenClawChatViewModel.inheritedThinkingSelectionID) })
+                ChatActionMenuSectionHeader(title: "Thinking")
                 Button {
                     self.viewModel.selectThinkingLevel(option.id)
                     self.onSelection()
@@ -318,13 +289,7 @@ struct ChatModelControlsMenuItems: View {
         return VStack(alignment: .leading, spacing: 4) {
             ChatActionMenuSectionHeader(
                 title: "Thinking",
-                detail: valueLabel,
-                resetAccessibilityIdentifier: selectionID == OpenClawChatViewModel.inheritedThinkingSelectionID
-                    ? nil
-                    : "chat-thinking-use-default",
-                resetAction: selectionID == OpenClawChatViewModel.inheritedThinkingSelectionID
-                    ? nil
-                    : { self.viewModel.selectThinkingLevel(OpenClawChatViewModel.inheritedThinkingSelectionID) })
+                detail: valueLabel)
             ZStack {
                 Slider(
                     value: Binding(
@@ -399,12 +364,6 @@ struct ChatModelControlsMenuItems: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 8)
-                if selectionID != OpenClawChatViewModel.inheritedThinkingSelectionID {
-                    ChatActionResetButton(accessibilityIdentifier: "chat-fast-mode-use-default") {
-                        self.viewModel.selectFastMode(OpenClawChatViewModel.inheritedThinkingSelectionID)
-                    }
-                    .disabled(self.viewModel.isUpdatingSessionSettings)
-                }
                 Toggle(isOn: Binding(
                     get: { isOn },
                     set: { isOn in

@@ -546,7 +546,8 @@ struct SubagentChatScreen: View {
     }
 
     /// Own view model for this subagent session: it never retargets the main chat
-    /// (no `onSessionChanged`) and does not share the main chat's outbox.
+    /// (no `onSessionChanged`). Its durable outbox is the same gateway-scoped store as the main
+    /// chat; rows are scoped by session key, so queued sends stay with this subagent session.
     private func prepare() {
         if self.viewModel != nil { return }
         let store: OpenClawChatSQLiteTranscriptCache? = self.appModel.makeChatOfflineStore()
@@ -558,6 +559,7 @@ struct SubagentChatScreen: View {
             activeAgentId: agentID,
             sessionRoutingContract: self.appModel.chatSessionRoutingContract,
             transcriptCache: store,
+            outbox: store,
             diagnosticsLog: { message in GatewayDiagnostics.log(message) })
         self.viewModel = model
         model.load()
