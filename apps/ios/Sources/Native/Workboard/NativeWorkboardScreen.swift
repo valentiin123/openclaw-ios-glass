@@ -294,6 +294,7 @@ struct WorkboardListContent: View {
 
     private func row(_ card: WorkboardCardItem, index: Int) -> some View {
         let busy: Bool = self.busyCardIds.contains(card.id)
+        let reduce: Bool = self.reduceMotion
         return WorkboardCardView(
             card: card,
             statuses: self.content.statusOrder,
@@ -301,6 +302,11 @@ struct WorkboardListContent: View {
             isBusy: busy,
             onMove: self.onMove)
             .openClawEntrance(index: index)
+            .scrollTransition(.animated) { content, phase in
+                content
+                    .opacity(phase.isIdentity || reduce ? 1 : 0.55)
+                    .scaleEffect(phase.isIdentity || reduce ? 1 : 0.97)
+            }
             .ngCardRow()
             .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
             .workboardDraggable(card.id, enabled: self.canMove && !busy)
@@ -420,12 +426,15 @@ private struct WorkboardSectionHeader: View {
         return HStack(spacing: 8) {
             Image(systemName: icon)
                 .foregroundStyle(WorkboardStatusTint.color(self.status))
+                .symbolEffect(.pulse, options: .repeating, isActive: self.status == "running" && !self.reduceMotion)
                 .accessibilityHidden(true)
             Text(verbatim: label)
             Spacer(minLength: 8)
             Text(self.count, format: .number).monospacedDigit()
                 .foregroundStyle(.secondary)
+                .contentTransition(.numericText())
         }
+        .openClawAnimation(value: self.count)
         .font(OpenClawType.subheadSemiBold)
         .textCase(nil)
         .padding(.horizontal, OpenClawProMetric.pagePadding)
@@ -437,6 +446,7 @@ private struct WorkboardSectionHeader: View {
 // MARK: - Card
 
 private struct WorkboardCardView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let card: WorkboardCardItem
     let statuses: [String]
     let canMove: Bool
@@ -452,12 +462,14 @@ private struct WorkboardCardView: View {
             if self.isBusy {
                 ProgressView()
                     .accessibilityLabel(Text("Moving card"))
+                    .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
             }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .ngCardSurface()
         .opacity(self.isBusy ? 0.6 : 1)
+        .openClawAnimation(value: self.isBusy)
         .accessibilityElement(children: .combine)
         .accessibilityValue(Text(verbatim: self.accessibilitySummary))
         .accessibilityActions {

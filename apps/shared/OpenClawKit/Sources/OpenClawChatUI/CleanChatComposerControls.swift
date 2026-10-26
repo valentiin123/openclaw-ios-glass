@@ -46,14 +46,24 @@ enum CleanChatComposerMetrics {
     static let squircleCornerRadius: CGFloat = 28
     /// Extra room between the bar and the keyboard on iOS.
     static let keyboardGap: CGFloat = 8
-    static let restingMinHeight: CGFloat = 104
     static let controlTouchSize: CGFloat = 44
     static let primaryVisualSize: CGFloat = 32
+    #if os(iOS)
+    // Airy iOS bar: more room around the text. Controls keep their 44pt touch size.
+    static let restingMinHeight: CGFloat = 116
+    static let editorInlineInset: CGFloat = 18
+    static let editorBlockInset: CGFloat = 8
+    static let footerInlineInset: CGFloat = 10
+    static let footerBlockInset: CGFloat = 8
+    static let rowGap: CGFloat = 8
+    #else
+    static let restingMinHeight: CGFloat = 104
     static let editorInlineInset: CGFloat = 14
     static let editorBlockInset: CGFloat = 6
     static let footerInlineInset: CGFloat = 8
     static let footerBlockInset: CGFloat = 6
     static let rowGap: CGFloat = 4
+    #endif
     static let footerControlGap: CGFloat = 0
     static let regularModelWidth: CGFloat = 82
     static let compactModelWidth: CGFloat = controlTouchSize

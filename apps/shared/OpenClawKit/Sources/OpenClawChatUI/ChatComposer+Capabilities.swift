@@ -18,6 +18,7 @@ extension OpenClawChatComposer {
                 ChatPopoverRow(
                     title: String(localized: "Clear tool overrides"),
                     systemImage: "xmark.circle",
+                    tint: OpenClawChatTheme.danger,
                     isEnabled: !self.viewModel.composerClearToolOverridesDisabled,
                     closesPopover: false,
                     hint: self.viewModel.composerToolOverrideMutationDisabledReason ?? "")
@@ -53,6 +54,7 @@ extension OpenClawChatComposer {
             ChatPopoverRow(
                 title: String(localized: "Retry capability loading"),
                 systemImage: "arrow.clockwise",
+                tint: OpenClawChatTheme.info,
                 closesPopover: false)
             {
                 Task { await self.viewModel.loadComposerCapabilities(force: true) }
@@ -89,6 +91,7 @@ extension OpenClawChatComposer {
         let canSelectFull: Bool = self.viewModel.composerCapabilityCatalog.canSelectFullPermission
         return VStack(spacing: 0) {
             self.permissionRow(nil, title: String(localized: "Default (inherited)"), isEnabled: true)
+            ChatPopoverDivider()
             ForEach(OpenClawChatPermissionMode.allCases, id: \.rawValue) { mode in
                 self.permissionRow(
                     mode,
@@ -99,7 +102,7 @@ extension OpenClawChatComposer {
                 ChatPopoverNote(text: String(localized: "Full permission requires operator.admin access."))
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 8)
     }
 
     private func permissionRow(
@@ -108,13 +111,38 @@ extension OpenClawChatComposer {
         isEnabled: Bool) -> some View
     {
         let isSelected: Bool = self.viewModel.composerPermissionMode == mode
+        let symbol: String = Self.permissionSymbol(mode)
+        let tint: Color = Self.permissionTint(mode)
         return ChatPopoverRow(
             title: title,
+            systemImage: symbol,
+            tint: tint,
             isSelected: isSelected,
+            indicator: .exclusive,
             isEnabled: isEnabled,
             hint: self.viewModel.composerPermissionDisabledReason(mode) ?? "")
         {
             self.viewModel.selectComposerPermissionMode(mode)
+        }
+    }
+
+    private static func permissionSymbol(_ mode: OpenClawChatPermissionMode?) -> String {
+        switch mode {
+        case .readOnly: "eye"
+        case .guarded: "lock.shield"
+        case .workspace: "folder.badge.gearshape"
+        case .full: "exclamationmark.shield"
+        case nil: "arrow.triangle.branch"
+        }
+    }
+
+    private static func permissionTint(_ mode: OpenClawChatPermissionMode?) -> Color {
+        switch mode {
+        case .readOnly: OpenClawChatTheme.info
+        case .guarded: OpenClawChatTheme.success
+        case .workspace: OpenClawChatTheme.brandSecondary
+        case .full: OpenClawChatTheme.danger
+        case nil: OpenClawChatTheme.brandAccent
         }
     }
 
@@ -153,7 +181,9 @@ extension OpenClawChatComposer {
         return ChatPopoverRow(
             title: String(localized: "Web Search"),
             systemImage: "globe",
+            tint: OpenClawChatTheme.info,
             isSelected: isOn,
+            indicator: .toggle,
             isEnabled: available && !self.composerCapabilityBlocked,
             closesPopover: false,
             hint: self.viewModel.composerWebSearchMutationDisabledReason ?? "")
@@ -164,7 +194,11 @@ extension OpenClawChatComposer {
     }
 
     private var composerSkillsDisclosure: some View {
-        ChatPopoverDisclosure(title: String(localized: "Skills"), systemImage: "book.closed") {
+        ChatPopoverDisclosure(
+            title: String(localized: "Skills"),
+            systemImage: "book.closed",
+            tint: OpenClawChatTheme.violet)
+        {
             self.composerSkillRows
         }
         .accessibilityIdentifier("chat-composer-skills")
@@ -193,8 +227,11 @@ extension OpenClawChatComposer {
         let hint: String = status ?? self.viewModel.composerToolOverrideMutationDisabledReason ?? ""
         return ChatPopoverRow(
             title: skill.name,
+            systemImage: "sparkles",
+            tint: OpenClawChatTheme.violet,
             detail: status,
             isSelected: isOn,
+            indicator: .toggle,
             isEnabled: !skillBlocked && !self.composerCapabilityBlocked,
             closesPopover: false,
             hint: hint)
@@ -204,7 +241,11 @@ extension OpenClawChatComposer {
     }
 
     private var composerConnectorsDisclosure: some View {
-        ChatPopoverDisclosure(title: String(localized: "Connectors"), systemImage: "puzzlepiece.extension") {
+        ChatPopoverDisclosure(
+            title: String(localized: "Connectors"),
+            systemImage: "puzzlepiece.extension",
+            tint: OpenClawChatTheme.brandSecondary)
+        {
             self.composerConnectorRows
         }
         .accessibilityIdentifier("chat-composer-connectors")
@@ -231,11 +272,13 @@ extension OpenClawChatComposer {
         let reason: String = self.viewModel.composerToolOverrideMutationDisabledReason ?? ""
         return ChatPopoverDisclosure(
             title: connector.name,
-            systemImage: isOn ? "checkmark.circle.fill" : "circle")
+            systemImage: isOn ? "checkmark.circle.fill" : "circle",
+            tint: isOn ? OpenClawChatTheme.success : OpenClawChatTheme.inkMuted)
         {
             ChatPopoverRow(
                 title: String(localized: "Enabled for this session"),
                 isSelected: isOn,
+                indicator: .toggle,
                 isEnabled: !self.composerCapabilityBlocked,
                 closesPopover: false,
                 hint: reason)
@@ -248,7 +291,8 @@ extension OpenClawChatComposer {
             if !connector.tools.isEmpty {
                 ChatPopoverDisclosure(
                     title: String(localized: "Tool Access"),
-                    systemImage: "wrench.and.screwdriver")
+                    systemImage: "wrench.and.screwdriver",
+                    tint: OpenClawChatTheme.warning)
                 {
                     ForEach(connector.tools) { tool in
                         self.composerToolRow(connector: connector, tool: tool)
@@ -267,6 +311,7 @@ extension OpenClawChatComposer {
         return ChatPopoverRow(
             title: tool.label,
             isSelected: isOn,
+            indicator: .toggle,
             isEnabled: accessAvailable && !self.composerCapabilityBlocked,
             closesPopover: false,
             hint: self.viewModel.composerToolOverrideMutationDisabledReason ?? "")

@@ -18,6 +18,7 @@ import SwiftUI
 ///   overlaps it and stays above the keyboard.
 /// - Glass stays on navigation and controls; hosted screens keep their opaque grouped backgrounds.
 struct AppShellRootView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Bindable var navigation: AppShellNavigation
     let context: AppShellContext
 
@@ -68,9 +69,15 @@ struct AppShellRootView: View {
         .tabViewStyle(.sidebarAdaptable)
         .sensoryFeedback(.selection, trigger: self.navigation.selection.barTab)
         .fullScreenCover(isPresented: self.coverBinding) {
-            self.cover
+            self.animatedCover
         }
         .accessibilityIdentifier("AppShell.Root")
+    }
+
+    /// Switching between Chat and Settings cross-fades (with a light scale) instead of cutting.
+    private var animatedCover: some View {
+        self.cover
+            .openClawAnimation(value: self.navigation.coverKind)
     }
 
     @ViewBuilder
@@ -78,8 +85,10 @@ struct AppShellRootView: View {
         switch self.navigation.coverKind {
         case .chat:
             AppShellChatView(navigation: self.navigation)
+                .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
         case .settings:
             AppShellSettingsView(navigation: self.navigation, context: self.context)
+                .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
         }
     }
 }

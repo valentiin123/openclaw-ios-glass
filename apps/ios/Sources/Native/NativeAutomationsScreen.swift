@@ -623,8 +623,8 @@ struct NativeAutomationsScreen: View {
     private func section(_ title: String, jobs: [NativeCronJob]) -> some View {
         if !jobs.isEmpty {
             Section {
-                ForEach(jobs) { (job: NativeCronJob) in
-                    self.row(job)
+                ForEach(Array(jobs.enumerated()), id: \.element.id) { (index: Int, job: NativeCronJob) in
+                    self.row(job, index: index)
                 }
             } header: {
                 ActivitySectionHeader(title: title, count: jobs.count)
@@ -640,7 +640,7 @@ struct NativeAutomationsScreen: View {
         Task { await self.model.setEnabled(enabled, job: job, appModel: self.appModel) }
     }
 
-    private func row(_ job: NativeCronJob) -> some View {
+    private func row(_ job: NativeCronJob, index: Int) -> some View {
         let busy: Bool = self.model.busyIds.contains(job.id)
         return Button {
             self.selected = job
@@ -648,6 +648,7 @@ struct NativeAutomationsScreen: View {
             NativeAutomationRow(job: job, isBusy: busy)
         }
         .buttonStyle(ActivityRowButtonStyle())
+        .openClawEntrance(index: index)
         .activityPlainRow()
         .swipeActions(edge: .trailing, allowsFullSwipe: false) { self.trailingActions(job) }
         .swipeActions(edge: .leading, allowsFullSwipe: true) { self.leadingAction(job) }
@@ -734,6 +735,7 @@ struct NativeAutomationsScreen: View {
 /// One automation: state glyph, name, schedule, next run (or last error when failing).
 /// A flat tag spells the state out whenever it is not healthy, so it never relies on color alone.
 private struct NativeAutomationRow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let job: NativeCronJob
     let isBusy: Bool
 
@@ -750,10 +752,13 @@ private struct NativeAutomationRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: OpenClawSpace.md) {
             ActivityGlyph(systemImage: self.job.phase.systemImage, tint: self.job.phase.tint)
+                .symbolEffect(.pulse, options: .repeating, isActive: self.job.phase == .running && !self.reduceMotion)
             self.texts
             Spacer(minLength: OpenClawSpace.sm)
             self.trailing
         }
+        .openClawAnimation(value: self.job.phase)
+        .openClawAnimation(value: self.isBusy)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, minHeight: ActivityMetric.minTarget, alignment: .leading)
         .overlay(alignment: .bottom) { ActivityHairline() }
@@ -792,11 +797,13 @@ private struct NativeAutomationRow: View {
     private var trailing: some View {
         if self.isBusy {
             ProgressView()
+                .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
         } else if self.job.phase != .healthy {
             ActivityStatusTag(
                 text: self.job.phase.label,
                 systemImage: self.job.phase.systemImage,
                 tint: self.job.phase.tint)
+                .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
         }
     }
 }
@@ -881,10 +888,14 @@ struct NativeAutomationDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 self.header(job)
+                    .openClawEntrance(index: 0)
                 self.controls(job)
+                    .openClawEntrance(index: 1)
                 self.facts(job)
+                    .openClawEntrance(index: 2)
                 self.errorCard(job)
                 self.history(job)
+                    .openClawEntrance(index: 3)
             }
             .padding(.horizontal, OpenClawProMetric.pagePadding)
             .padding(.vertical, 12)
@@ -1049,8 +1060,9 @@ struct NativeAutomationDetailView: View {
                 NativeCronReliabilityCard(runs: runs)
                 NativeCronRunsChart(runs: runs)
                 VStack(spacing: 0) {
-                    ForEach(runs) { run in
+                    ForEach(Array(runs.enumerated()), id: \.element.id) { (index: Int, run: NativeCronRun) in
                         NativeCronRunRow(run: run)
+                            .openClawEntrance(index: index)
                         if run.id != runs.last?.id {
                             Divider().padding(.leading, 44)
                         }

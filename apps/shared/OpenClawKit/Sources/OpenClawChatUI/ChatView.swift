@@ -129,6 +129,8 @@ public struct OpenClawChatView: View {
     @State private var isAtLiveEdge = true
     @State private var isUserScrolling = false
     @State private var isKeyboardVisible = false
+    /// Bottom safe-area inset of the chat container (home indicator / tab bar), measured outside the composer inset.
+    @State private var bottomSafeInset: CGFloat = 0
     #if os(iOS)
     @State private var popoverCenter: ChatPopoverCenter = ChatPopoverCenter()
     #endif
@@ -345,6 +347,7 @@ extension OpenClawChatView {
             self.composerInset
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { self.contentWidth = $0 }
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { self.bottomSafeInset = $0 }
         .environment(\.openClawAssistantUsesReadingColumn, self.isTabletLayout)
     }
 
@@ -413,15 +416,23 @@ extension OpenClawChatView {
                 .padding(.top, Layout.stackSpacing)
                 .padding(.bottom, bottomPadding)
                 .frame(maxWidth: .infinity)
+                .chatSwipeDownDismissesKeyboard {
+                    self.dismissKeyboardForSwipe()
+                }
                 .animation(OpenClawChatMotion.animation(reduceMotion: self.reduceMotion), value: self.isKeyboardVisible)
         }
     }
 
-    /// Keyboard up: the composer sits flush on the keyboard. Keyboard down: a small gap above
-    /// the safe area, which already includes the tab bar.
+    /// Keyboard up: the composer sits flush on the keyboard. Keyboard down: the bar sinks a little into the
+    /// bottom safe area, but only by what that inset can spare (it keeps `clearance` points above the screen
+    /// edge, so the bar never touches the home indicator and is never clipped). No inset, no sink.
     private var composerBottomPadding: CGFloat {
         if self.isTabletLayout || self.isDesktopLayout { return 12 }
-        return self.isKeyboardVisible ? 0 : -14
+        if self.isKeyboardVisible { return 0 }
+        let maxSink: CGFloat = 14
+        let clearance: CGFloat = 24
+        let spare: CGFloat = max(0, self.bottomSafeInset - clearance)
+        return -min(maxSink, spare)
     }
 
     /// Compact layout: a little more air on the sides while typing, a narrower bar when the keyboard is down.
@@ -503,6 +514,8 @@ extension OpenClawChatView {
             .accessibilityIdentifier("chat-transcript")
             #if !os(macOS)
             .scrollDismissesKeyboard(.interactively)
+            // A short or empty conversation does not scroll; bouncing keeps the interactive dismissal alive.
+            .scrollBounceBehavior(.always)
             #endif
             .safeAreaInset(edge: .top, spacing: 0) {
                 self.messageListNoticeBanner(hasVisibleContent: hasVisibleContent)
@@ -570,6 +583,9 @@ extension OpenClawChatView {
         .layoutPriority(1)
         .chatTapToDismissKeyboard {
             self.dismissKeyboardIfNeeded()
+        }
+        .chatSwipeDownDismissesKeyboard {
+            self.dismissKeyboardForSwipe()
         }
         .onChange(of: self.viewModel.isLoading) { _, isLoading in
             guard !isLoading, !self.hasPerformedInitialScroll else { return }
@@ -1352,6 +1368,15 @@ extension OpenClawChatView {
         #endif
     }
 
+    /// A downward swipe on the transcript or the composer lowers the keyboard. The resign ends editing in the
+    /// text view, whose delegate clears the composer focus state. An open composer popover keeps the keyboard.
+    private func dismissKeyboardForSwipe() {
+        #if os(iOS)
+        guard self.isKeyboardVisible, self.popoverCenter.current == nil else { return }
+        self.dismissKeyboardIfNeeded()
+        #endif
+    }
+
     private func shouldDisplayMessage(_ message: OpenClawChatMessage) -> Bool {
         let primaryText = ChatMessageVisibleText.displayText(
             in: message,
@@ -1650,3 +1675,77 @@ private struct ChatLiveAssistantText<Content: View>: View {
         }
     }
 }
+
+/// A downward swipe lowers the keyboard, like iMessage. It works where the transcript's own interactive
+/// dismissal cannot: a short or empty conversation that does not scroll, and the composer card itself.
+/// The recognizer is passive (never cancels or delays touches, recognizes alongside every other recognizer),
+/// so scrolling, text selection and the chat-level pull-to-dismiss are untouched.
+extension View {
+    @ViewBuilder
+    func chatSwipeDownDismissesKeyboard(_ onSwipe: @escaping () -> Void) -> some View {
+        #if os(iOS)
+        self.gesture(ChatSwipeDownGesture(onSwipe: onSwipe))
+        #else
+        self
+        #endif
+    }
+}
+
+#if os(iOS)
+struct ChatSwipeDownGesture: UIGestureRecognizerRepresentable {
+    /// Vertical travel (points) before the swipe fires once.
+    static let triggerDistance: CGFloat = 24
+    /// Vertical velocity must dominate horizontal velocity at the start.
+    static let dominance: CGFloat = 1.5
+
+    let onSwipe: () -> Void
+
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIGestureRecognizer(context: Context) -> UIPanGestureRecognizer {
+        let recognizer = UIPanGestureRecognizer()
+        recognizer.maximumNumberOfTouches = 1
+        recognizer.cancelsTouchesInView = false
+        recognizer.delaysTouchesBegan = false
+        recognizer.delaysTouchesEnded = false
+        recognizer.delegate = context.coordinator
+        return recognizer
+    }
+
+    func handleUIGestureRecognizerAction(_ recognizer: UIPanGestureRecognizer, context: Context) {
+        switch recognizer.state {
+        case .changed:
+            guard !context.coordinator.hasFired else { return }
+            let dy: CGFloat = recognizer.translation(in: recognizer.view).y
+            guard dy >= Self.triggerDistance else { return }
+            context.coordinator.hasFired = true
+            self.onSwipe()
+        case .ended, .cancelled, .failed:
+            context.coordinator.hasFired = false
+        default:
+            break
+        }
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var hasFired = false
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return false }
+            self.hasFired = false
+            let velocity: CGPoint = pan.velocity(in: pan.view)
+            guard velocity.y > 0 else { return false }
+            return velocity.y > abs(velocity.x) * ChatSwipeDownGesture.dominance
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool
+        {
+            true
+        }
+    }
+}
+#endif

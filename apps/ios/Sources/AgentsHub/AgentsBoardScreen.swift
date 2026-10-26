@@ -211,6 +211,7 @@ struct AgentsBoardView: View {
         .padding(.horizontal, 14)
         .frame(minHeight: 44)
         .openClawGlassCapsule(interactive: true)
+        .openClawAnimation(value: name)
     }
 
     // MARK: Grid
@@ -222,6 +223,7 @@ struct AgentsBoardView: View {
                 self.errorRow
                 self.timeline
             }
+            .openClawAnimation(value: model.boardError ?? model.agentsError)
             .padding(.horizontal, OpenClawProMetric.pagePadding)
             .padding(.top, 4)
             .padding(.bottom, OpenClawProMetric.bottomScrollInset)
@@ -252,15 +254,15 @@ struct AgentsBoardView: View {
             AgentsBoardEmptyState()
         } else {
             LazyVGrid(columns: self.columns, alignment: .center, spacing: 12) {
-                ForEach(list) { item in
-                    self.tile(item)
+                ForEach(Array(list.enumerated()), id: \.element.id) { index, item in
+                    self.tile(item, index: index)
                 }
             }
             .agentsHubAnimation(value: list)
         }
     }
 
-    private func tile(_ item: AgentTileItem) -> some View {
+    private func tile(_ item: AgentTileItem, index: Int) -> some View {
         AgentTileView(
             item: item,
             canStop: model.canStop,
@@ -268,13 +270,15 @@ struct AgentsBoardView: View {
             onStop: { stopped in self.requestStop(stopped) },
             onDetails: { opened in self.openDetail(opened) },
             onDelete: { removed in self.requestDelete(removed) },
-            frameStore: self.tileFrames)
+            frameStore: self.tileFrames,
+            entranceIndex: index)
     }
 
     @ViewBuilder
     private var errorRow: some View {
         if let message = model.boardError ?? model.agentsError {
             AgentsHubErrorRow(message: message, retry: self.retry)
+                .transition(OpenClawMotion.edge(.top, reduceMotion: self.reduceMotion))
         }
     }
 

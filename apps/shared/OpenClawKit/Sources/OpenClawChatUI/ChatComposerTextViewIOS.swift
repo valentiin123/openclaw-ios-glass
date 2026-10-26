@@ -139,6 +139,10 @@ struct ChatComposerTextViewIOS: UIViewRepresentable {
 
         func textViewDidEndEditing(_ textView: UITextView) {
             self.lastFocusRequested = false
+            // A queued interaction update reads `parent.focusRequested`; that copy is stale until SwiftUI
+            // re-renders with the new focus state, and would otherwise look like a fresh focus request
+            // and bring a keyboard the user just dismissed straight back.
+            self.parent.focusRequested = false
             self.parent.onFocusChange(false)
         }
 

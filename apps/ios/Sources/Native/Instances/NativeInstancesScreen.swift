@@ -377,6 +377,7 @@ struct NativeInstancesScreen: View {
         } header: {
             Text("Gateways")
         }
+        .openClawAnimation(value: self.gateways.entries.count)
     }
 
     private func gatewayRow(_ entry: InstanceGatewayEntry) -> some View {
@@ -494,6 +495,7 @@ private extension View {
 // MARK: - Rows
 
 private struct InstancePendingRow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let model: InstancesViewModel
     let request: InstancePendingRequest
     let appModel: NodeAppModel
@@ -504,6 +506,7 @@ private struct InstancePendingRow: View {
             self.buttons
         }
         .padding(.vertical, OpenClawSpace.xs)
+        .openClawAnimation(value: self.model.isBusy(self.request.id))
     }
 
     private var info: some View {
@@ -594,6 +597,7 @@ private struct InstancePendingRow: View {
                 if busy {
                     ProgressView()
                         .accessibilityLabel(Text("Working"))
+                        .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
                 }
             }
         }
@@ -601,6 +605,7 @@ private struct InstancePendingRow: View {
 }
 
 private struct InstancePairedRow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let model: InstancesViewModel
     let device: InstancePairedDevice
 
@@ -611,6 +616,7 @@ private struct InstancePairedRow: View {
             self.menu
         }
         .padding(.vertical, OpenClawSpace.xs)
+        .openClawAnimation(value: self.device.connected == true)
         .accessibilityElement(children: .contain)
     }
 
@@ -640,6 +646,7 @@ private struct InstancePairedRow: View {
                 label: OpenClawTextValue.verbatim(String(localized: "Connected")),
                 tone: .ok,
                 systemImage: "checkmark.circle.fill")
+                .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
         }
     }
 

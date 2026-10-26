@@ -32,8 +32,9 @@ enum ChatThinkingSliderMath {
     }
 }
 
-/// Horizontal thinking-level control: a thick track with detents and a round thumb the user drags.
-/// Opaque palette colors only (no Liquid Glass). One light haptic tick per detent crossed.
+/// Horizontal thinking-level control: a glass capsule bar with an accent fill, detents and a round thumb
+/// the user drags. The fill grows from the first detent when the bar appears, the thumb swells while
+/// held and settles with a spring on the nearest detent. One light haptic tick per detent crossed.
 struct ChatThinkingSlider: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let options: [OpenClawChatThinkingLevelOption]
@@ -42,15 +43,23 @@ struct ChatThinkingSlider: View {
     let onSelectIndex: @MainActor (Int) -> Void
 
     @State private var dragIndex: Int?
+    @State private var isDragging: Bool = false
+    @State private var hasAppeared: Bool = false
 
-    private static let trackHeight: CGFloat = 16
-    private static let thumbSize: CGFloat = 32
-    private static let touchHeight: CGFloat = 44
-    private static let notchSize: CGFloat = 6
+    private static let trackHeight: CGFloat = 12
+    private static let thumbSize: CGFloat = 36
+    private static let barHeight: CGFloat = 60
+    private static let barInset: CGFloat = 12
+    private static let notchSize: CGFloat = 5
 
     private var displayedIndex: Int {
         let raw: Int = self.dragIndex ?? self.selectedIndex
         return min(max(raw, 0), max(self.options.count - 1, 0))
+    }
+
+    /// Index used for drawing: the first detent until the entrance animation has run.
+    private var shownIndex: Int {
+        self.hasAppeared ? self.displayedIndex : 0
     }
 
     private var displayedLabel: String {
@@ -59,9 +68,11 @@ struct ChatThinkingSlider: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            self.track
+        VStack(spacing: 10) {
+            self.bar
+                .modifier(ChatPopoverStagger())
             self.endLabels
+                .modifier(ChatPopoverStagger())
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(String(localized: "Thinking level"))
@@ -70,42 +81,59 @@ struct ChatThinkingSlider: View {
             self.adjust(direction)
         }
         .accessibilityIdentifier("chat-thinking-slider")
+        .onAppear {
+            self.playEntrance()
+        }
     }
 
-    private var track: some View {
+    private var bar: some View {
         GeometryReader { proxy in
-            let travel: CGFloat = max(proxy.size.width - Self.thumbSize, 1)
+            let travel: CGFloat = max(proxy.size.width - Self.barInset * 2 - Self.thumbSize, 1)
             let count: Int = self.options.count
             let thumbX: CGFloat = ChatThinkingSliderMath.position(
-                index: self.displayedIndex,
+                index: self.shownIndex,
                 travel: travel,
                 count: count)
             ZStack(alignment: .leading) {
-                self.trackBar(travel: travel, thumbX: thumbX)
+                self.trackBar(width: proxy.size.width, thumbX: thumbX)
                 self.notches(travel: travel)
                 self.thumb
-                    .offset(x: thumbX)
+                    .offset(x: Self.barInset + thumbX)
             }
-            .frame(height: Self.touchHeight)
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .leading)
+            .animation(
+                self.isDragging
+                    ? ChatPopoverMotion.selecting(reduceMotion: self.reduceMotion)
+                    : ChatPopoverMotion.thumb(reduceMotion: self.reduceMotion),
+                value: self.shownIndex)
             .contentShape(Rectangle())
             .gesture(self.dragGesture(travel: travel, count: count))
         }
-        .frame(height: Self.touchHeight)
+        .frame(height: Self.barHeight)
+        .openClawChatGlass(cornerRadius: Self.barHeight / 2)
+        .shadow(color: Color.black.opacity(0.20), radius: 18, x: 0, y: 8)
     }
 
-    private func trackBar(travel: CGFloat, thumbX: CGFloat) -> some View {
-        let inset: CGFloat = Self.thumbSize / 2
-        let fillWidth: CGFloat = thumbX + inset
+    private func trackBar(width: CGFloat, thumbX: CGFloat) -> some View {
+        let fillWidth: CGFloat = thumbX + Self.thumbSize / 2
+        let accent: Color = OpenClawChatTheme.brandAccent
+        let enabledOpacity: Double = self.isEnabled ? 1 : 0.4
+        let gradient: LinearGradient = LinearGradient(
+            colors: [accent.opacity(0.78), accent],
+            startPoint: .leading,
+            endPoint: .trailing)
         return ZStack(alignment: .leading) {
             Capsule()
-                .fill(OpenClawChatTheme.surfaceHover)
-                .overlay(Capsule().strokeBorder(OpenClawChatTheme.hairline, lineWidth: 1))
-                .frame(height: Self.trackHeight)
+                .fill(OpenClawChatTheme.inkMuted.opacity(0.24))
+                .frame(width: max(width - Self.barInset * 2, 1), height: Self.trackHeight)
+                .offset(x: Self.barInset)
             Capsule()
-                .fill(OpenClawChatTheme.brandAccent.opacity(self.isEnabled ? 1 : 0.4))
+                .fill(gradient)
                 .frame(width: max(fillWidth, Self.trackHeight), height: Self.trackHeight)
+                .shadow(color: accent.opacity(0.45), radius: 6, x: 0, y: 0)
+                .opacity(enabledOpacity)
+                .offset(x: Self.barInset)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func notches(travel: CGFloat) -> some View {
@@ -113,11 +141,14 @@ struct ChatThinkingSlider: View {
         return ZStack(alignment: .leading) {
             ForEach(0..<count, id: \.self) { index in
                 let x: CGFloat = ChatThinkingSliderMath.position(index: index, travel: travel, count: count)
-                let covered: Bool = index <= self.displayedIndex
+                let covered: Bool = index <= self.shownIndex
+                let dotColor: Color = covered
+                    ? Color.white.opacity(0.9)
+                    : OpenClawChatTheme.inkMuted.opacity(0.6)
                 Circle()
-                    .fill(covered ? Color.white.opacity(0.85) : OpenClawChatTheme.inkMuted.opacity(0.55))
+                    .fill(dotColor)
                     .frame(width: Self.notchSize, height: Self.notchSize)
-                    .offset(x: x + (Self.thumbSize - Self.notchSize) / 2)
+                    .offset(x: Self.barInset + x + (Self.thumbSize - Self.notchSize) / 2)
             }
         }
         .allowsHitTesting(false)
@@ -125,52 +156,74 @@ struct ChatThinkingSlider: View {
     }
 
     private var thumb: some View {
-        Circle()
-            .fill(OpenClawChatTheme.surfaceRaised)
+        let scale: CGFloat = (self.isDragging && !self.reduceMotion) ? 1.14 : 1
+        return Circle()
+            .fill(Color.white)
             .overlay(Circle().strokeBorder(OpenClawChatTheme.brandAccent, lineWidth: 3))
+            .overlay(
+                Circle()
+                    .fill(OpenClawChatTheme.brandAccent.opacity(0.9))
+                    .frame(width: 8, height: 8))
             .frame(width: Self.thumbSize, height: Self.thumbSize)
-            .shadow(color: Color.black.opacity(0.18), radius: 3, x: 0, y: 1)
+            .shadow(color: Color.black.opacity(0.28), radius: 6, x: 0, y: 3)
+            .scaleEffect(scale)
             .opacity(self.isEnabled ? 1 : 0.5)
-            .animation(
-                self.dragIndex == nil ? OpenClawChatMotion.animation(reduceMotion: self.reduceMotion) : nil,
-                value: self.displayedIndex)
+            .animation(ChatPopoverMotion.thumb(reduceMotion: self.reduceMotion), value: self.isDragging)
             .accessibilityHidden(true)
     }
 
     private var endLabels: some View {
         HStack(spacing: 8) {
             Text(String(localized: "Faster"))
-                .font(OpenClawChatTypography.caption)
-                .foregroundStyle(OpenClawChatTheme.inkMuted)
+                .font(OpenClawChatTypography.captionSemiBold)
+                .foregroundStyle(OpenClawChatTheme.inkStandard)
             Spacer(minLength: 8)
             Text(verbatim: self.displayedLabel)
-                .font(OpenClawChatTypography.captionSemiBold)
+                .font(OpenClawChatTypography.body)
                 .foregroundStyle(OpenClawChatTheme.inkStrong)
+                .contentTransition(.opacity)
+                .animation(
+                    ChatPopoverMotion.selecting(reduceMotion: self.reduceMotion),
+                    value: self.displayedLabel)
             Spacer(minLength: 8)
             Text(String(localized: "Smarter"))
-                .font(OpenClawChatTypography.caption)
-                .foregroundStyle(OpenClawChatTheme.inkMuted)
+                .font(OpenClawChatTypography.captionSemiBold)
+                .foregroundStyle(OpenClawChatTheme.inkStandard)
         }
+        .padding(.horizontal, 10)
         .accessibilityHidden(true)
+    }
+
+    private func playEntrance() {
+        guard !self.hasAppeared else { return }
+        if self.reduceMotion {
+            self.hasAppeared = true
+            return
+        }
+        withAnimation(ChatPopoverMotion.thumbSpring.delay(0.22)) {
+            self.hasAppeared = true
+        }
     }
 
     private func dragGesture(travel: CGFloat, count: Int) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
                 guard self.isEnabled else { return }
-                let position: CGFloat = value.location.x - Self.thumbSize / 2
+                self.isDragging = true
+                let position: CGFloat = value.location.x - Self.barInset - Self.thumbSize / 2
                 let next: Int = ChatThinkingSliderMath.nearestIndex(
                     position: position,
                     travel: travel,
                     count: count)
                 if next != self.displayedIndex {
-                    Self.tick()
+                    ChatPopoverHaptics.selected()
                 }
                 self.dragIndex = next
             }
             .onEnded { _ in
                 guard self.isEnabled else { return }
                 let committed: Int = self.displayedIndex
+                self.isDragging = false
                 self.dragIndex = nil
                 if committed != self.selectedIndex {
                     self.onSelectIndex(committed)
@@ -188,19 +241,31 @@ struct ChatThinkingSlider: View {
         }
         let next: Int = min(max(self.selectedIndex + delta, 0), max(self.options.count - 1, 0))
         guard next != self.selectedIndex else { return }
-        Self.tick()
+        ChatPopoverHaptics.selected()
         self.onSelectIndex(next)
-    }
-
-    @MainActor
-    private static func tick() {
-        let generator: UISelectionFeedbackGenerator = UISelectionFeedbackGenerator()
-        generator.selectionChanged()
     }
 }
 
-/// Popover body for the thinking button: title, slider, and a reset to the inherited default.
+/// Press feedback of the glass pill buttons that float on the thinking blur.
+private struct ChatPopoverPillButtonStyle: ButtonStyle {
+    let reduceMotion: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        let pressed: Bool = configuration.isPressed
+        let scale: CGFloat = (pressed && !self.reduceMotion) ? 0.96 : 1
+        let animation: Animation = self.reduceMotion
+            ? OpenClawChatMotion.reducedFade
+            : ChatPopoverMotion.pressSpring
+        configuration.label
+            .scaleEffect(scale)
+            .animation(animation, value: pressed)
+    }
+}
+
+/// Popover body for the thinking button: a small caption, the slider bar and the Fast mode pill.
+/// Nothing here has an opaque background: the controls float on the progressive blur.
 struct ChatThinkingPopoverContent: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Bindable var viewModel: OpenClawChatViewModel
 
     var body: some View {
@@ -210,13 +275,9 @@ struct ChatThinkingPopoverContent: View {
             selectionID: selectionID,
             effectiveLevelID: self.viewModel.thinkingLevel,
             options: options)
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(String(localized: "Thinking"))
-                    .font(OpenClawChatTypography.captionSemiBold)
-                    .foregroundStyle(OpenClawChatTheme.inkMuted)
-                Spacer(minLength: 8)
-            }
+        VStack(alignment: .leading, spacing: 12) {
+            self.caption
+                .modifier(ChatPopoverStagger())
             if options.count > 1 {
                 ChatThinkingSlider(
                     options: options,
@@ -230,33 +291,66 @@ struct ChatThinkingPopoverContent: View {
                 Text(verbatim: only.label.capitalized)
                     .font(OpenClawChatTypography.body)
                     .foregroundStyle(OpenClawChatTheme.inkStrong)
-                    .frame(minHeight: ChatPopoverMetrics.rowHeight, alignment: .leading)
+                    .frame(maxWidth: .infinity, minHeight: ChatPopoverMetrics.rowHeight, alignment: .center)
+                    .openClawChatGlass(cornerRadius: ChatPopoverMetrics.rowHeight / 2)
             }
             if self.viewModel.showsFastModeControls {
                 self.fastModeRow
             }
         }
-        .padding(.horizontal, ChatPopoverMetrics.rowInset + 2)
         .padding(.vertical, 10)
+    }
+
+    private var caption: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "brain")
+                .font(OpenClawChatTypography.captionSemiBold)
+                .foregroundStyle(OpenClawChatTheme.brandAccent)
+                .accessibilityHidden(true)
+            Text(String(localized: "Thinking"))
+                .font(OpenClawChatTypography.captionSemiBold)
+                .textCase(.uppercase)
+                .tracking(0.8)
+                .foregroundStyle(OpenClawChatTheme.inkStandard)
+        }
+        .padding(.horizontal, 14)
     }
 
     private var fastModeRow: some View {
         let isOn: Bool = self.viewModel.fastModeIsEnabled
         let canChange: Bool = self.viewModel.selectedModelSupportsFastMode && !self.viewModel.isUpdatingSessionSettings
-        return ChatPopoverRow(
-            title: String(localized: "Fast mode"),
-            systemImage: "bolt.fill",
-            isSelected: isOn,
-            isEnabled: canChange,
-            closesPopover: false)
-        {
+        let boltColor: Color = isOn ? OpenClawChatTheme.brandAccent : OpenClawChatTheme.inkMuted
+        return Button {
+            ChatPopoverHaptics.selected()
             let next: String = isOn ? "off" : "on"
             self.viewModel.selectFastMode(next)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: OpenClawChatTypography.scaled(15), weight: .semibold))
+                    .foregroundStyle(boltColor)
+                    .accessibilityHidden(true)
+                Text(String(localized: "Fast mode"))
+                    .font(OpenClawChatTypography.body)
+                    .foregroundStyle(OpenClawChatTheme.inkStrong)
+                Spacer(minLength: 8)
+                ChatPopoverMiniSwitch(isOn: isOn)
+            }
+            .padding(.horizontal, 18)
+            .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+            .openClawChatGlass(cornerRadius: 26, interactive: true)
+            .shadow(color: Color.black.opacity(0.16), radius: 12, x: 0, y: 6)
+            .contentShape(Capsule())
         }
-        .padding(.horizontal, -ChatPopoverMetrics.rowInset)
+        .buttonStyle(ChatPopoverPillButtonStyle(reduceMotion: self.reduceMotion))
+        .disabled(!canChange)
+        .opacity(canChange ? 1 : 0.5)
+        .modifier(ChatPopoverStagger())
+        .accessibilityLabel(String(localized: "Fast mode"))
+        .accessibilityValue(isOn ? String(localized: "Selected") : "")
+        .accessibilityAddTraits(isOn ? .isSelected : [])
         .accessibilityIdentifier("chat-fast-mode-toggle")
     }
 }
-
 
 #endif

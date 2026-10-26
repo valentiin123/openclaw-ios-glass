@@ -3,7 +3,7 @@ import SwiftUI
 
 #if os(iOS)
 
-/// Look of a composer popover: a small opaque card, or a bar floating across the screen width
+/// Look of a composer popover: a glass card, or a bar floating across the screen width
 /// (used by the thinking slider, which sits directly on a progressive blur with no card behind it).
 enum ChatPopoverStyle {
     case card
@@ -68,11 +68,29 @@ struct ChatPopoverOverlay: View {
     }
 }
 
+/// Press feedback of the control that opens a popover: a small springy squeeze, nothing under Reduce Motion.
+private struct ChatPopoverAnchorButtonStyle: ButtonStyle {
+    let reduceMotion: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        let pressed: Bool = configuration.isPressed
+        let scale: CGFloat = (pressed && !self.reduceMotion) ? 0.88 : 1
+        let animation: Animation = self.reduceMotion
+            ? OpenClawChatMotion.reducedFade
+            : ChatPopoverMotion.pressSpring
+        configuration.label
+            .scaleEffect(scale)
+            .opacity(pressed ? 0.78 : 1)
+            .animation(animation, value: pressed)
+    }
+}
+
 /// A plain button that opens a popover grown out of its own label.
 /// Inside `OpenClawChatView` the popover is an overlay (keyboard stays up); elsewhere it falls back
 /// to a transparent cover.
 struct ChatPopoverButton<Label: View, Content: View>: View {
     @Environment(\.chatPopoverCenter) private var center
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isPresented: Bool = false
     @State private var anchorFrame: CGRect = .zero
     private let width: CGFloat
@@ -104,7 +122,7 @@ struct ChatPopoverButton<Label: View, Content: View>: View {
         } label: {
             self.label()
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ChatPopoverAnchorButtonStyle(reduceMotion: self.reduceMotion))
         .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }, action: { frame in
             self.anchorFrame = frame
         })
@@ -140,16 +158,19 @@ struct ChatPopoverDisclosure<Content: View>: View {
     @State private var isExpanded: Bool
     private let title: String
     private let systemImage: String
+    private let tint: Color
     private let content: Content
 
     init(
         title: String,
         systemImage: String,
+        tint: Color = OpenClawChatTheme.brandAccent,
         initiallyExpanded: Bool = false,
         @ViewBuilder content: () -> Content)
     {
         self.title = title
         self.systemImage = systemImage
+        self.tint = tint
         self._isExpanded = State(initialValue: initiallyExpanded)
         self.content = content()
     }
@@ -157,13 +178,16 @@ struct ChatPopoverDisclosure<Content: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             Button {
-                OpenClawChatMotion.perform(reduceMotion: self.reduceMotion) {
+                ChatPopoverHaptics.selected()
+                withAnimation(ChatPopoverMotion.revealing(reduceMotion: self.reduceMotion)) {
                     self.isExpanded.toggle()
                 }
             } label: {
                 self.header
             }
-            .buttonStyle(.plain)
+            .buttonStyle(ChatPopoverRowButtonStyle(reduceMotion: self.reduceMotion))
+            .padding(.horizontal, ChatPopoverMetrics.rowGutter)
+            .modifier(ChatPopoverStagger())
             .accessibilityLabel(self.title)
             .accessibilityValue(self.isExpanded ? String(localized: "Expanded") : String(localized: "Collapsed"))
             .accessibilityAddTraits(.isButton)
@@ -171,19 +195,24 @@ struct ChatPopoverDisclosure<Content: View>: View {
                 VStack(spacing: 0) {
                     self.content
                 }
-                .padding(.leading, 16)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .padding(.leading, 20)
+                .transition(self.expansionTransition)
             }
         }
     }
 
+    private var expansionTransition: AnyTransition {
+        if self.reduceMotion {
+            return AnyTransition.opacity
+        }
+        let insertion: AnyTransition = AnyTransition.opacity
+            .combined(with: AnyTransition.scale(scale: 0.95, anchor: .top))
+        return AnyTransition.asymmetric(insertion: insertion, removal: AnyTransition.opacity)
+    }
+
     private var header: some View {
-        HStack(spacing: 10) {
-            Image(systemName: self.systemImage)
-                .font(OpenClawChatTypography.body)
-                .foregroundStyle(OpenClawChatTheme.brandAccent)
-                .frame(width: 22, alignment: .center)
-                .accessibilityHidden(true)
+        HStack(spacing: 12) {
+            ChatPopoverGlyph(name: self.systemImage, tint: self.tint)
             Text(verbatim: self.title)
                 .font(OpenClawChatTypography.body)
                 .foregroundStyle(OpenClawChatTheme.inkStrong)
@@ -195,10 +224,10 @@ struct ChatPopoverDisclosure<Content: View>: View {
                 .rotationEffect(.degrees(self.isExpanded ? 90 : 0))
                 .accessibilityHidden(true)
         }
-        .padding(.horizontal, ChatPopoverMetrics.rowInset)
-        .padding(.vertical, 4)
+        .padding(.horizontal, ChatPopoverMetrics.rowInset - ChatPopoverMetrics.rowGutter)
+        .padding(.vertical, 6)
         .frame(maxWidth: .infinity, minHeight: ChatPopoverMetrics.rowHeight, alignment: .leading)
-        .contentShape(Rectangle())
+        .contentShape(RoundedRectangle(cornerRadius: ChatPopoverMetrics.rowCornerRadius, style: .continuous))
     }
 }
 

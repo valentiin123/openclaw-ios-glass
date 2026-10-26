@@ -67,6 +67,8 @@ private struct AgentRowSwipeModifier: ViewModifier {
             .font(OpenClawType.headline)
             .foregroundStyle(tint)
             .opacity(opacity)
+            .scaleEffect(self.reachedThreshold ? 1.18 : 1)
+            .animation(OpenClawMotion.animation(reduceMotion: self.reduceMotion), value: self.reachedThreshold)
             .accessibilityHidden(true)
     }
 
@@ -239,6 +241,7 @@ struct AgentGlassTreeScreen: View {
     let root: OpenClawChatSessionEntry
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var namespace
 
     @State private var detailNode: SubagentNode?
@@ -297,6 +300,8 @@ struct AgentGlassTreeScreen: View {
             .padding(.horizontal, OpenClawProMetric.pagePadding)
             .padding(.top, 8)
             .padding(.bottom, OpenClawProMetric.bottomScrollInset)
+            .openClawAnimation(value: self.model.treeError)
+            .openClawAnimation(value: self.model.actionError)
         }
     }
 
@@ -304,9 +309,11 @@ struct AgentGlassTreeScreen: View {
     private var messages: some View {
         if let message = self.model.treeError {
             AgentsHubErrorRow(message: message, retry: self.reload)
+                .transition(OpenClawMotion.edge(.top, reduceMotion: self.reduceMotion))
         }
         if let message = self.model.actionError {
             AgentsHubErrorRow(message: message, retry: nil)
+                .transition(OpenClawMotion.edge(.top, reduceMotion: self.reduceMotion))
         }
     }
 
@@ -318,6 +325,9 @@ struct AgentGlassTreeScreen: View {
                 active: tree.activeDescendantCount,
                 failed: tree.failedDescendantCount,
                 isLive: self.isLive)
+                .openClawEntrance(index: 0)
+                .openClawAnimation(value: tree.activeDescendantCount)
+                .openClawAnimation(value: tree.failedDescendantCount)
         }
     }
 
@@ -338,9 +348,16 @@ struct AgentGlassTreeScreen: View {
     }
 
     private func rowStack(_ list: [FlatSubagentRow], now: Date) -> some View {
-        LazyVStack(alignment: .leading, spacing: 12) {
-            ForEach(list) { row in
+        let reduce: Bool = self.reduceMotion
+        return LazyVStack(alignment: .leading, spacing: 12) {
+            ForEach(Array(list.enumerated()), id: \.element.id) { index, row in
                 self.rowView(row, now: now)
+                    .openClawEntrance(index: index)
+                    .scrollTransition(.animated) { content, phase in
+                        content
+                            .opacity(phase.isIdentity || reduce ? 1 : 0.6)
+                            .scaleEffect(phase.isIdentity || reduce ? 1 : 0.97)
+                    }
             }
         }
     }
@@ -367,6 +384,7 @@ struct AgentGlassTreeScreen: View {
             ProgressView().accessibilityLabel(Text("Loading subagents"))
         } else if let tree = self.model.tree, tree.children.isEmpty, !self.model.isLoadingTree {
             ContentUnavailableView("No subagents", systemImage: "person.2.slash")
+                .openClawEntrance(index: 0)
         }
     }
 

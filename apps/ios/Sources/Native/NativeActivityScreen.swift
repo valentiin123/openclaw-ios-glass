@@ -451,8 +451,8 @@ struct NativeActivityScreen: View {
             self.topBlocks(visible, days: days)
             ForEach(days) { (day: NativeActivityDay) in
                 Section {
-                    ForEach(day.events) { (event: NativeActivityEvent) in
-                        self.row(event, lastID: lastID)
+                    ForEach(Array(day.events.enumerated()), id: \.element.id) { (index: Int, event: NativeActivityEvent) in
+                        self.row(event, lastID: lastID, index: index)
                     }
                 } header: {
                     ActivitySectionHeader(title: day.title, count: day.events.count)
@@ -478,9 +478,11 @@ struct NativeActivityScreen: View {
             NativeActivityChart(days: days)
                 .padding(12)
                 .activityTile()
+                .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
                 .activityBlockRow()
             if NativeActivityAgentChart.hasData(visible) {
                 NativeActivityAgentChart(events: visible)
+                    .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
                     .activityBlockRow()
             }
         }
@@ -529,13 +531,14 @@ struct NativeActivityScreen: View {
         Task { await self.model.loadMore(appModel: self.appModel) }
     }
 
-    private func row(_ event: NativeActivityEvent, lastID: String?) -> some View {
+    private func row(_ event: NativeActivityEvent, lastID: String?, index: Int) -> some View {
         Button {
             self.open(event)
         } label: {
             NativeActivityRow(event: event)
         }
         .buttonStyle(ActivityRowButtonStyle())
+        .openClawEntrance(index: index)
         .activityPlainRow()
         .contextMenu { self.menu(for: event) }
         .swipeActions(edge: .leading, allowsFullSwipe: true) { self.copyAction(for: event) }
@@ -614,6 +617,7 @@ struct NativeActivityScreen: View {
 /// One event: state glyph, title, detail line (kind, agent, channel, error code) and time.
 /// Failures also carry a flat tag, so the state never relies on color alone.
 private struct NativeActivityRow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let event: NativeActivityEvent
 
     private var detail: String? {
@@ -623,10 +627,12 @@ private struct NativeActivityRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: OpenClawSpace.md) {
             ActivityGlyph(systemImage: self.event.statusSymbol, tint: self.event.statusColor)
+                .symbolEffect(.pulse, options: .repeating, isActive: self.event.status == "started" && !self.reduceMotion)
             self.texts
             Spacer(minLength: OpenClawSpace.sm)
             self.trailing
         }
+        .openClawAnimation(value: self.event.status)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, minHeight: ActivityMetric.minTarget, alignment: .leading)
         .overlay(alignment: .bottom) { ActivityHairline() }
@@ -873,9 +879,10 @@ struct NativeActivityDetailView: View {
         ScrollView {
             VStack(spacing: OpenClawSpace.md) {
                 self.header
-                self.group(self.timingFacts)
-                self.group(self.originFacts)
-                self.group(self.referenceFacts)
+                    .openClawEntrance(index: 0)
+                self.group(self.timingFacts, index: 1)
+                self.group(self.originFacts, index: 2)
+                self.group(self.referenceFacts, index: 3)
             }
             .padding(.horizontal, OpenClawProMetric.pagePadding)
             .padding(.vertical, OpenClawSpace.md)
@@ -959,7 +966,7 @@ struct NativeActivityDetailView: View {
     }
 
     @ViewBuilder
-    private func group(_ facts: [Fact]) -> some View {
+    private func group(_ facts: [Fact], index: Int) -> some View {
         if !facts.isEmpty {
             VStack(spacing: 0) {
                 ForEach(facts) { (fact: Fact) in
@@ -967,6 +974,7 @@ struct NativeActivityDetailView: View {
                 }
             }
             .activityTile()
+            .openClawEntrance(index: index)
         }
     }
 

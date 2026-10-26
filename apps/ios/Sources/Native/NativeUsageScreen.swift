@@ -75,8 +75,10 @@ struct NativeUsageScreen: View {
         return List {
             Section {
                 self.tiles(snapshot: snapshot, days: days)
+                    .openClawEntrance(index: 0)
                     .ngCardRow()
                 self.controls(snapshot: snapshot)
+                    .openClawEntrance(index: 1)
                     .ngCardRow()
             }
             switch self.grouping {
@@ -225,7 +227,7 @@ struct NativeUsageScreen: View {
             }
             Section {
                 let peak: Double = days.map { metric.value(cost: $0.cost, tokens: $0.tokens) }.max() ?? 0
-                ForEach(days.reversed()) { day in
+                ForEach(Array(days.reversed().enumerated()), id: \.element.id) { index, day in
                     let value: Double = metric.value(cost: day.cost, tokens: day.tokens)
                     let label: String = day.date.formatted(.dateTime.weekday(.abbreviated).month().day())
                     NativeUsageRow(
@@ -233,6 +235,7 @@ struct NativeUsageScreen: View {
                         value: metric.full(value),
                         detail: self.otherMetricText(cost: day.cost, tokens: day.tokens, metric: metric),
                         fraction: peak > 0 ? value / peak : 0)
+                        .openClawEntrance(index: index)
                         .ngCardRow()
                         .swipeActions(edge: .trailing) { self.copyAction(metric.full(value)) }
                         .contextMenu { self.copyMenu(metric.full(value)) }
@@ -274,7 +277,7 @@ struct NativeUsageScreen: View {
                 }
                 Section {
                     let peak: Double = sorted.map { metric.value(cost: $0.cost, tokens: $0.tokens) }.max() ?? 0
-                    ForEach(sorted) { item in
+                    ForEach(Array(sorted.enumerated()), id: \.element.id) { index, item in
                         let value: Double = metric.value(cost: item.cost, tokens: item.tokens)
                         NativeUsageRow(
                             title: item.title,
@@ -282,6 +285,7 @@ struct NativeUsageScreen: View {
                             value: metric.full(value),
                             detail: self.otherMetricText(cost: item.cost, tokens: item.tokens, metric: metric),
                             fraction: peak > 0 ? value / peak : 0)
+                            .openClawEntrance(index: index)
                             .ngCardRow()
                             .swipeActions(edge: .trailing) { self.copyAction(item.title) }
                             .contextMenu {
@@ -328,6 +332,7 @@ struct NativeUsageScreen: View {
     private var copiedToast: some View {
         if self.showCopied {
             Label("Copied", systemImage: "checkmark")
+                .symbolEffect(.bounce, options: .nonRepeating, value: self.reduceMotion ? 0 : self.copiedTick)
                 .font(OpenClawType.subheadSemiBold)
                 .padding(.horizontal, 16)
                 .frame(minHeight: 44)

@@ -101,6 +101,7 @@ struct AppShellActivityView: View {
 
     var body: some View {
         self.content
+            .openClawAnimation(value: self.currentSection)
             .environment(\.activityHeader, self.pageHeader)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background { OpenClawProBackground().ignoresSafeArea() }
@@ -115,11 +116,13 @@ struct AppShellActivityView: View {
                 tab: .activity,
                 path: DashboardRouteMap.activityPagePath,
                 titleText: String(localized: "Activity"))
+                .transition(.opacity)
         case .automations:
             self.nativeList(
                 tab: .automations,
                 path: DashboardRouteMap.cronJobsPagePath,
                 titleText: String(localized: "Automations"))
+                .transition(.opacity)
         }
     }
 
@@ -179,6 +182,7 @@ struct AppShellSettingsView: View {
 
     var body: some View {
         self.content
+            .openClawAnimation(value: self.navigation.settingsPresentation)
             .accessibilityIdentifier("AppShell.Settings")
     }
 
@@ -191,8 +195,10 @@ struct AppShellSettingsView: View {
                 headerSidebarAction: self.closeAction,
                 onRouteChange: self.context.onSettingsRouteChange,
                 onApprovalNotificationsRoute: self.context.onApprovalNotificationsRoute)
+                .transition(.opacity)
         case .gateway:
             self.gateway
+                .transition(OpenClawMotion.edge(.trailing, reduceMotion: self.reduceMotion))
         }
     }
 

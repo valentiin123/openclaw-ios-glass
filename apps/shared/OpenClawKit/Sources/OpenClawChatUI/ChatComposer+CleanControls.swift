@@ -44,6 +44,7 @@ extension OpenClawChatComposer {
             ChatPopoverRow(
                 title: String(localized: "Photo Library"),
                 systemImage: "photo.on.rectangle",
+                tint: OpenClawChatTheme.info,
                 isEnabled: inputEnabled,
                 closesBeforeAction: true)
             {
@@ -52,6 +53,7 @@ extension OpenClawChatComposer {
             ChatPopoverRow(
                 title: String(localized: "Camera"),
                 systemImage: "camera",
+                tint: OpenClawChatTheme.brandAccent,
                 isEnabled: inputEnabled && cameraAvailable,
                 closesBeforeAction: true)
             {
@@ -60,6 +62,7 @@ extension OpenClawChatComposer {
             ChatPopoverRow(
                 title: String(localized: "File"),
                 systemImage: "folder",
+                tint: OpenClawChatTheme.brandSecondary,
                 isEnabled: inputEnabled,
                 closesBeforeAction: true)
             {
@@ -67,7 +70,7 @@ extension OpenClawChatComposer {
             }
             self.cleanComposerCapabilityItems
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 8)
     }
     #endif
 
@@ -249,7 +252,7 @@ extension OpenClawChatComposer {
                 self.modelPopoverRows(provider.models, disabled: choicesDisabled)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 8)
     }
 
     private func modelPopoverRows(_ models: [OpenClawChatModelChoice], disabled: Bool) -> some View {
@@ -259,6 +262,7 @@ extension OpenClawChatComposer {
                 title: model.pickerName,
                 detail: unavailable,
                 isSelected: self.viewModel.isSelectedModel(model.selectionID),
+                indicator: .exclusive,
                 isEnabled: !disabled && unavailable == nil,
                 hint: unavailable ?? "")
             {

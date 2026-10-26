@@ -17,7 +17,47 @@ private struct AgentTilePressStyle: ButtonStyle {
         let animation: Animation = OpenClawMotion.animation(reduceMotion: self.reduceMotion)
         return configuration.label
             .scaleEffect(scale)
+            .brightness(configuration.isPressed ? -0.02 : 0)
             .animation(animation, value: configuration.isPressed)
+    }
+}
+
+// MARK: - Activity dot
+
+/// Small dot that breathes while a run is active. Static (and absent when idle) under Reduce Motion or when inactive.
+private struct AgentTileActivityDot: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var pulsing: Bool = false
+    let isActive: Bool
+    let color: Color
+
+    var body: some View {
+        if self.isActive {
+            self.dot
+        }
+    }
+
+    private var pulseAnimation: Animation? {
+        if self.reduceMotion { return nil }
+        return Animation.easeInOut(duration: 0.9).repeatForever(autoreverses: true)
+    }
+
+    private var dot: some View {
+        let animated: Bool = self.pulsing && !self.reduceMotion
+        let scale: CGFloat = animated ? 1.35 : 1
+        let opacity: Double = animated ? 0.55 : 1
+        return Circle()
+            .fill(self.color)
+            .frame(width: 6, height: 6)
+            .scaleEffect(scale)
+            .opacity(opacity)
+            .animation(self.pulseAnimation, value: self.pulsing)
+            .onAppear(perform: self.startPulse)
+            .accessibilityHidden(true)
+    }
+
+    private func startPulse() {
+        self.pulsing = true
     }
 }
 
@@ -44,6 +84,7 @@ private struct AgentTileClock: View {
             .foregroundStyle(.secondary)
             .monospacedDigit()
             .lineLimit(1)
+            .contentTransition(.numericText())
     }
 }
 
@@ -61,6 +102,8 @@ struct AgentTileView: View {
     var onDelete: ((AgentTileItem) -> Void)?
     /// Receives this tile's global frame (zoom origin of the chat). Nil -> not measured.
     var frameStore: AgentTileFrameStore?
+    /// Position in the grid, used for the staggered entrance. Defaults to 0 (no extra delay).
+    var entranceIndex: Int = 0
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -76,6 +119,7 @@ struct AgentTileView: View {
             self.card
         }
         .buttonStyle(AgentTilePressStyle(reduceMotion: self.reduceMotion))
+        .openClawEntrance(index: self.entranceIndex)
         .onGeometryChange(for: CGRect.self, of: self.globalFrame, action: self.storeFrame)
         .contextMenu { self.menuItems }
         .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))
@@ -121,6 +165,7 @@ struct AgentTileView: View {
             self.toolLine
             Spacer(minLength: 0)
         }
+        .openClawAnimation(value: self.item.toolLine)
     }
 
     private var header: some View {
@@ -140,6 +185,7 @@ struct AgentTileView: View {
             .frame(width: self.spriteSize, height: self.spriteSize)
             .saturation(saturation)
             .opacity(opacity)
+            .openClawAnimation(value: asleep)
     }
 
     @ViewBuilder
@@ -160,12 +206,15 @@ struct AgentTileView: View {
 
     private var stateLine: some View {
         HStack(spacing: 6) {
+            AgentTileActivityDot(isActive: self.item.state.isActive, color: self.item.state.tint)
             Text(verbatim: self.item.state.label)
                 .font(OpenClawType.captionSemiBold)
                 .foregroundStyle(self.item.state.tint)
                 .lineLimit(1)
+                .contentTransition(.interpolate)
             AgentTileClock(item: self.item)
         }
+        .openClawAnimation(value: self.item.state.label)
     }
 
     /// Small parent link for subagents whose parent conversation is known.
@@ -187,6 +236,7 @@ struct AgentTileView: View {
                 .font(OpenClawType.caption2)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
+                .transition(OpenClawMotion.edge(.top, reduceMotion: self.reduceMotion))
         }
     }
 
