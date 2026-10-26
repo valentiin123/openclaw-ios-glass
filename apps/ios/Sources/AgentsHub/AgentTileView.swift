@@ -57,6 +57,8 @@ struct AgentTileView: View {
     let onStop: (AgentTileItem) -> Void
     /// Context menu "View details" (run facts sheet). Falls back to `onOpen` when nil.
     var onDetails: ((AgentTileItem) -> Void)?
+    /// Context menu "Delete" (removes the conversation). Hidden when nil.
+    var onDelete: ((AgentTileItem) -> Void)?
     /// Receives this tile's global frame (zoom origin of the chat). Nil -> not measured.
     var frameStore: AgentTileFrameStore?
 
@@ -83,6 +85,7 @@ struct AgentTileView: View {
         .accessibilityAddTraits(.isButton)
         .accessibilityAction(named: Text("View details"), self.showDetails)
         .accessibilityAction(named: Text("Stop"), self.stopIfAllowed)
+        .accessibilityAction(named: Text("Delete"), self.requestDelete)
     }
 
     // MARK: Pieces
@@ -194,6 +197,9 @@ struct AgentTileView: View {
         if self.canStopNow {
             Button("Stop", systemImage: "stop.circle", role: .destructive, action: self.requestStop)
         }
+        if self.onDelete != nil {
+            Button("Delete", systemImage: "trash", role: .destructive, action: self.requestDelete)
+        }
     }
 
     // MARK: Frame
@@ -225,6 +231,10 @@ struct AgentTileView: View {
 
     private func requestStop() {
         self.onStop(self.item)
+    }
+
+    private func requestDelete() {
+        self.onDelete?(self.item)
     }
 
     private func stopIfAllowed() {

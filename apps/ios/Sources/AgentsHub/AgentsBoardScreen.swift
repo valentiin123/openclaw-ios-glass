@@ -43,6 +43,7 @@ struct AgentsBoardView: View {
     @State private var selectedAgentID: String?
     @State private var detailItem: AgentTileItem?
     @State private var confirmStop: AgentTileItem?
+    @State private var confirmDelete: AgentTileItem?
     @State private var chatPresenter: SubagentChatPresenter = SubagentChatPresenter()
     @State private var tileFrames: AgentTileFrameStore = AgentTileFrameStore()
     @State private var newConversation: AgentNewConversationRequest?
@@ -81,6 +82,12 @@ struct AgentsBoardView: View {
             set: { newValue in if !newValue { self.confirmStop = nil } })
     }
 
+    private var confirmDeleteBinding: Binding<Bool> {
+        Binding<Bool>(
+            get: { self.confirmDelete != nil },
+            set: { newValue in if !newValue { self.confirmDelete = nil } })
+    }
+
     private func items(now: Date) -> [AgentTileItem] {
         guard let id = self.currentAgentID else { return [] }
         return AgentTileFactory.items(sessions: model.boardSessions, agentID: id, now: now)
@@ -107,6 +114,12 @@ struct AgentsBoardView: View {
                 isPresented: self.confirmStopBinding,
                 titleVisibility: .visible,
                 actions: { self.stopDialogActions })
+            .confirmationDialog(
+                "Delete this conversation?",
+                isPresented: self.confirmDeleteBinding,
+                titleVisibility: .visible,
+                actions: { self.deleteDialogActions },
+                message: { Text("Its history will be permanently removed.") })
     }
 
     /// The new-conversation cover hangs off the content (not the outer chain) so it never competes with the
@@ -253,6 +266,7 @@ struct AgentsBoardView: View {
             canStop: model.canStop,
             onOpen: { opened in self.openChat(opened) },
             onStop: { stopped in self.requestStop(stopped) },
+            onDelete: { removed in self.requestDelete(removed) },
             onDetails: { opened in self.openDetail(opened) },
             frameStore: self.tileFrames)
     }
@@ -304,6 +318,31 @@ struct AgentsBoardView: View {
 
     private func requestStop(_ item: AgentTileItem) {
         self.confirmStop = item
+    }
+
+    private func requestDelete(_ item: AgentTileItem) {
+        self.confirmDelete = item
+    }
+
+    @ViewBuilder
+    private var deleteDialogActions: some View {
+        Button("Delete", role: .destructive, action: self.confirmDeleteNow)
+        Button("Cancel", role: .cancel, action: self.cancelDelete)
+    }
+
+    private func cancelDelete() {
+        self.confirmDelete = nil
+    }
+
+    private func confirmDeleteNow() {
+        guard let item = self.confirmDelete else { return }
+        self.confirmDelete = nil
+        let session: OpenClawChatSessionEntry = item.session
+        let agentID: String? = self.currentAgentID
+        Task {
+            _ = await model.deleteSession(session)
+            if let agentID { await model.loadBoard(agentID: agentID) }
+        }
     }
 
     @ViewBuilder

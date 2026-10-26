@@ -84,6 +84,10 @@ struct ChatComposerTextViewIOS: UIViewRepresentable {
         private(set) var isReportingTextChange = false
         var lastReportedText: String?
         private var interactionUpdateScheduled = false
+        /// Last values seen by the focus logic. Focus is only requested on a rising edge, so a re-render
+        /// that still carries a stale `focusRequested == true` cannot bring a dismissed keyboard back.
+        private var lastFocusRequested = false
+        private var lastInteractionEnabled = false
 
         init(_ parent: ChatComposerTextViewIOS) {
             self.parent = parent
@@ -108,9 +112,12 @@ struct ChatComposerTextViewIOS: UIViewRepresentable {
                     textView.isSelectable = isEnabled
                 }
                 // UIKit owns user-initiated focus; false is not a blur request.
-                if self.parent.focusRequested, isEnabled,
-                   !textView.isFirstResponder
-                {
+                let requested = self.parent.focusRequested
+                let risingRequest = requested && !self.lastFocusRequested
+                let reEnabled = isEnabled && !self.lastInteractionEnabled
+                self.lastFocusRequested = requested
+                self.lastInteractionEnabled = isEnabled
+                if requested, isEnabled, !textView.isFirstResponder, risingRequest || reEnabled {
                     textView.becomeFirstResponder()
                 } else if !isEnabled, textView.isFirstResponder {
                     textView.resignFirstResponder()
@@ -131,6 +138,7 @@ struct ChatComposerTextViewIOS: UIViewRepresentable {
         }
 
         func textViewDidEndEditing(_ textView: UITextView) {
+            self.lastFocusRequested = false
             self.parent.onFocusChange(false)
         }
 

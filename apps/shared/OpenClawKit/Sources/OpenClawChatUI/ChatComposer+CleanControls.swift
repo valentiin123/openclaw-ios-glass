@@ -248,16 +248,6 @@ extension OpenClawChatComposer {
                 }
                 self.modelPopoverRows(provider.models, disabled: choicesDisabled)
             }
-            ChatPopoverDivider()
-            ChatPopoverRow(
-                title: String(localized: "Model sign-in"),
-                systemImage: "key",
-                isEnabled: self.modelSignInAction == nil,
-                closesBeforeAction: true)
-            {
-                self.performModelSignInAction(.open)
-            }
-            .accessibilityIdentifier("chat-model-sign-in")
         }
         .padding(.vertical, 4)
     }
@@ -346,7 +336,11 @@ extension OpenClawChatComposer {
             .accessibilityHint(self.cleanInlineEffortDisabledHint ?? "")
             .fixedSize()
         #elseif os(iOS)
-        ChatPopoverButton(width: ChatPopoverMetrics.wideWidth, blursBackground: true) {
+        ChatPopoverButton(
+            width: ChatPopoverMetrics.wideWidth,
+            blursBackground: true,
+            scrollsContent: false,
+            style: .floatingBar) {
             ChatThinkingPopoverContent(viewModel: self.viewModel)
         } label: {
             ZStack(alignment: .topTrailing) {

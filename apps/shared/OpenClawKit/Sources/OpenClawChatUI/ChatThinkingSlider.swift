@@ -206,7 +206,6 @@ struct ChatThinkingPopoverContent: View {
     var body: some View {
         let options: [OpenClawChatThinkingLevelOption] = self.viewModel.thinkingLevelOptions
         let selectionID: String = self.viewModel.thinkingSelectionID
-        let isInherited: Bool = selectionID == OpenClawChatViewModel.inheritedThinkingSelectionID
         let index: Int = ChatThinkingSliderMath.resolvedIndex(
             selectionID: selectionID,
             effectiveLevelID: self.viewModel.thinkingLevel,
@@ -217,11 +216,6 @@ struct ChatThinkingPopoverContent: View {
                     .font(OpenClawChatTypography.captionSemiBold)
                     .foregroundStyle(OpenClawChatTheme.inkMuted)
                 Spacer(minLength: 8)
-                if !isInherited {
-                    ChatPopoverResetButton {
-                        self.viewModel.selectThinkingLevel(OpenClawChatViewModel.inheritedThinkingSelectionID)
-                    }
-                }
             }
             if options.count > 1 {
                 ChatThinkingSlider(
@@ -264,23 +258,5 @@ struct ChatThinkingPopoverContent: View {
     }
 }
 
-struct ChatPopoverResetButton: View {
-    let action: @MainActor () -> Void
-
-    var body: some View {
-        Button {
-            self.action()
-        } label: {
-            Image(systemName: "arrow.uturn.backward")
-                .font(OpenClawChatTypography.captionSemiBold)
-                .foregroundStyle(OpenClawChatTheme.brandAccent)
-                .frame(width: ChatPopoverMetrics.rowHeight, height: ChatPopoverMetrics.rowHeight)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(String(localized: "Use default"))
-        .accessibilityIdentifier("chat-thinking-use-default")
-    }
-}
 
 #endif

@@ -216,6 +216,26 @@ final class AgentsHubViewModel {
         if let tree { await loadTree(root: tree.session) }
     }
 
+    // MARK: Delete
+
+    /// Deletes a conversation (`sessions.delete`, transcript included) and drops it from the board at once.
+    /// Returns true on success; on failure `actionError` explains why and the board is left untouched.
+    func deleteSession(_ session: OpenClawChatSessionEntry) async -> Bool {
+        busyKeys.insert(session.key)
+        actionError = nil
+        defer { busyKeys.remove(session.key) }
+        do {
+            _ = try await gateway.request(OpenClawChatGatewayRequests.deleteSession(
+                sessionKey: session.key, agentID: session.agentId))
+            boardSessions.removeAll { $0.key == session.key }
+            sessions.removeAll { $0.key == session.key }
+            return true
+        } catch {
+            actionError = error.localizedDescription
+            return false
+        }
+    }
+
     // MARK: Create agent
 
     /// `agents.create` (scope operator.admin). Built locally because OpenClawChatGatewayRequests has no constructor.

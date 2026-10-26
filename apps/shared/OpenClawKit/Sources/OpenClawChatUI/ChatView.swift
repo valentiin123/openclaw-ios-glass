@@ -129,6 +129,9 @@ public struct OpenClawChatView: View {
     @State private var isAtLiveEdge = true
     @State private var isUserScrolling = false
     @State private var isKeyboardVisible = false
+    #if os(iOS)
+    @State private var popoverCenter: ChatPopoverCenter = ChatPopoverCenter()
+    #endif
     @State private var hoveredMessageID: UUID?
     @State private var restoresLiveEdgeAfterKeyboardShows = false
     @State private var expandedUserMessageIDs: Set<UUID> = []
@@ -263,7 +266,13 @@ public struct OpenClawChatView: View {
             }
 
             self.content
+            #if os(iOS)
+            ChatPopoverOverlay(center: self.popoverCenter)
+            #endif
         }
+        #if os(iOS)
+        .environment(\.chatPopoverCenter, self.popoverCenter)
+        #endif
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onAppear {
             self.viewModel.refreshSourceContext()
@@ -400,10 +409,11 @@ extension OpenClawChatView {
             let bottomPadding: CGFloat = self.composerBottomPadding
             self.composer
                 .frame(maxWidth: self.readingColumnWidth)
-                .padding(.horizontal, self.composerHorizontalMargin)
+                .padding(.horizontal, self.composerHorizontalInset)
                 .padding(.top, Layout.stackSpacing)
                 .padding(.bottom, bottomPadding)
                 .frame(maxWidth: .infinity)
+                .animation(OpenClawChatMotion.animation(reduceMotion: self.reduceMotion), value: self.isKeyboardVisible)
         }
     }
 
@@ -411,7 +421,13 @@ extension OpenClawChatView {
     /// the safe area, which already includes the tab bar.
     private var composerBottomPadding: CGFloat {
         if self.isTabletLayout || self.isDesktopLayout { return 12 }
-        return self.isKeyboardVisible ? 0 : Layout.outerPaddingVertical
+        return self.isKeyboardVisible ? 0 : -14
+    }
+
+    /// Compact layout: a little more air on the sides while typing, a narrower bar when the keyboard is down.
+    private var composerHorizontalInset: CGFloat {
+        if self.isTabletLayout || self.isDesktopLayout { return self.composerHorizontalMargin }
+        return self.isKeyboardVisible ? 10 : 30
     }
 
     /// Minimal name + status strip, only for a subagent session on the compact layout.

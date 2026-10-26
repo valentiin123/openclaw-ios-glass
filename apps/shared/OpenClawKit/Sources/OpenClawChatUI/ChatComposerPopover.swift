@@ -9,7 +9,7 @@ import UIKit
 // close on any tap outside, through a transparent scrim that swallows the tap so nothing behind fires.
 
 enum ChatPopoverMetrics {
-    static let cornerRadius: CGFloat = 12
+    static let cornerRadius: CGFloat = 18
     static let width: CGFloat = 232
     static let wideWidth: CGFloat = 288
     static let rowHeight: CGFloat = 44
@@ -75,6 +75,21 @@ struct ChatPopoverSurface: ViewModifier {
     }
 }
 
+/// Card: opaque surface. Floating bar: no surface at all, only a soft shadow under the control.
+struct ChatPopoverChrome: ViewModifier {
+    let style: ChatPopoverStyle
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        switch self.style {
+        case .card:
+            content.modifier(ChatPopoverSurface())
+        case .floatingBar:
+            content.shadow(color: Color.black.opacity(0.18), radius: 10, x: 0, y: 4)
+        }
+    }
+}
+
 private struct ChatPopoverLayout {
     let width: CGFloat
     let originX: CGFloat
@@ -122,12 +137,13 @@ private struct ChatPopoverLayout {
     }
 }
 
-private struct ChatPopoverHost<PopoverContent: View>: View {
+struct ChatPopoverHost<PopoverContent: View>: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let anchorFrame: CGRect
     let width: CGFloat
     let blursBackground: Bool
     let scrollsContent: Bool
+    let style: ChatPopoverStyle
     let popoverContent: () -> PopoverContent
     let onClosed: @MainActor () -> Void
 
@@ -141,7 +157,7 @@ private struct ChatPopoverHost<PopoverContent: View>: View {
                 anchor: self.anchorFrame,
                 container: proxy.size,
                 safeInsets: proxy.safeAreaInsets,
-                width: self.width)
+                width: self.style == .floatingBar ? proxy.size.width : self.width)
             ZStack(alignment: .topLeading) {
                 self.backdrop(layout: layout)
                 self.positionedPanel(layout: layout)
@@ -170,7 +186,9 @@ private struct ChatPopoverHost<PopoverContent: View>: View {
                     .mask(
                         RadialGradient(
                             colors: [Color.black, Color.black.opacity(0)],
-                            center: layout.blurCenter,
+                            center: self.style == .floatingBar
+                                ? UnitPoint(x: 0.5, y: layout.blurCenter.y)
+                                : layout.blurCenter,
                             startRadius: ChatPopoverMetrics.blurStartRadius,
                             endRadius: ChatPopoverMetrics.blurEndRadius))
                     .opacity(self.isShown ? 1 : 0)
@@ -221,7 +239,7 @@ private struct ChatPopoverHost<PopoverContent: View>: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .modifier(ChatPopoverSurface())
+        .modifier(ChatPopoverChrome(style: self.style))
         .scaleEffect(scale, anchor: layout.scaleAnchor)
         .opacity(opacity)
         .accessibilityAddTraits(.isModal)
@@ -259,6 +277,7 @@ private struct ChatPopoverPresenter<PopoverContent: View>: ViewModifier {
     let width: CGFloat
     let blursBackground: Bool
     let scrollsContent: Bool
+    let style: ChatPopoverStyle
     let popoverContent: () -> PopoverContent
 
     @State private var anchorFrame: CGRect = .zero
@@ -274,6 +293,7 @@ private struct ChatPopoverPresenter<PopoverContent: View>: ViewModifier {
                     width: self.width,
                     blursBackground: self.blursBackground,
                     scrollsContent: self.scrollsContent,
+                    style: self.style,
                     popoverContent: self.popoverContent,
                     onClosed: {
                         withTransaction(ChatPopoverTransaction.instant) {
@@ -293,6 +313,7 @@ extension View {
         width: CGFloat = ChatPopoverMetrics.width,
         blursBackground: Bool = false,
         scrollsContent: Bool = true,
+        style: ChatPopoverStyle = .card,
         @ViewBuilder content: @escaping () -> PopoverContent) -> some View
     {
         self.modifier(ChatPopoverPresenter(
@@ -300,6 +321,7 @@ extension View {
             width: width,
             blursBackground: blursBackground,
             scrollsContent: scrollsContent,
+            style: style,
             popoverContent: content))
     }
 }
@@ -368,6 +390,7 @@ struct ChatPopoverRow: View {
         .padding(.horizontal, ChatPopoverMetrics.rowInset)
         .padding(.vertical, 4)
         .frame(maxWidth: .infinity, minHeight: ChatPopoverMetrics.rowHeight, alignment: .leading)
+        .background(self.isSelected ? OpenClawChatTheme.brandAccent.opacity(0.10) : Color.clear)
         .contentShape(Rectangle())
     }
 
@@ -390,6 +413,8 @@ private struct ChatPopoverRowButtonStyle: ButtonStyle {
         let pressed: Color = OpenClawChatTheme.surfaceHover
         configuration.label
             .background(configuration.isPressed ? pressed : Color.clear)
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 

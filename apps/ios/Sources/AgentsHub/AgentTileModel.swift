@@ -648,10 +648,17 @@ enum AgentTileFactory {
 
     static func isSubagent(_ session: OpenClawChatSessionEntry) -> Bool {
         if session.isMain == true { return false }
-        if hasText(session.spawnedBy) { return true }
-        if hasText(session.parentSessionKey) { return true }
+        if session.key.contains(":subagent:") { return true }
         if hasText(session.subagentRole) { return true }
-        return session.key.contains(":subagent:")
+        if let depth = session.spawnDepth, depth >= 1 { return true }
+        if hasText(session.spawnedBy) { return true }
+        // The gateway stamps chats started from the app with `parentSessionKey = agent:<id>:main` and
+        // `spawnDepth = 0`: those are the user's own conversations, never subagents.
+        if hasText(session.parentSessionKey) {
+            if let depth = session.spawnDepth, depth < 1 { return false }
+            return true
+        }
+        return false
     }
 
     /// A conversation started directly by the user in this agent: not the system chat, not spawned by

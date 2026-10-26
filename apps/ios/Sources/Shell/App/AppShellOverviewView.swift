@@ -20,6 +20,8 @@ struct AppShellOverviewView: View {
     @State private var showsMoreList: Bool = false
     @State private var pendingMore: AppShellMoreItem?
     @State private var pendingChat: Bool = false
+    /// Chats opened from the Sessions list use the same screen as the Agents tab (sprite header).
+    @State private var sessionChatPresenter: SubagentChatPresenter = SubagentChatPresenter()
 
     private var moreAction: OpenClawSidebarHeaderAction {
         OpenClawSidebarHeaderAction(
@@ -60,6 +62,7 @@ struct AppShellOverviewView: View {
                 openGateway: self.openGateway,
                 close: self.closeMore)
         }
+        .subagentChatPresentation(presenter: self.sessionChatPresenter)
         .accessibilityIdentifier("AppShell.Overview")
     }
 
@@ -82,7 +85,7 @@ struct AppShellOverviewView: View {
             AppShellSessionsScreen(
                 model: self.context.sidebarModel,
                 headerSidebarAction: self.backAction,
-                openChat: self.openChat,
+                openChat: self.openSessionChat,
                 openGateway: self.openGateway)
                 .appShellSwipeBack()
         case .more:
@@ -135,6 +138,11 @@ struct AppShellOverviewView: View {
 
     private func openChat() {
         self.navigation.openChat()
+    }
+
+    /// Session picked in the Sessions list: `NodeAppModel.openChat(sessionKey:)` already focused it.
+    private func openSessionChat() {
+        self.sessionChatPresenter.open(self.appModel.chatSessionKey)
     }
 
     /// Gear button: the full Settings hub, full screen, on its root.
