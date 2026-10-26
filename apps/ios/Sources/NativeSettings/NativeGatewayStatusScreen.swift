@@ -165,6 +165,8 @@ struct NativeGatewayStatusScreen: View {
             tint: OpenClawBrand.accent)
             .nativeSettingsCopyMenu(value)
             .nativeSettingsCopySwipe(value)
+            .openClawEntrance()
+            .openClawAnimation(value: value)
     }
 
     // MARK: - Formatting
