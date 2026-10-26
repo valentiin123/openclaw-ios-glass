@@ -542,14 +542,10 @@ extension ChatMessageBubble {
             } label: {
                 Text(String(localized: self.userMessageExpanded ? "Show less" : "Show more"))
                     .font(OpenClawChatTypography.caption)
-                    .foregroundStyle(OpenClawChatTheme.muted)
                     .padding(.horizontal, 10)
                     .frame(minHeight: 30)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(OpenClawChatTheme.divider, lineWidth: 0.5))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(ChatInlineChipButtonStyle(isSelected: self.userMessageExpanded))
             .accessibilityValue(String(
                 localized: self.userMessageExpanded ? "Expanded" : "Collapsed"))
             .accessibilityIdentifier("chat-user-message-disclosure-toggle")
@@ -933,12 +929,65 @@ struct ChatSpeechStatusChip: View {
                         .font(OpenClawChatTypography.caption)
                 }
             }
-            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .frame(minHeight: 30)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ChatInlineChipButtonStyle(isSelected: !self.isPreparing))
         .accessibilityLabel(self.isPreparing
             ? "Preparing audio, tap to cancel"
             : "Speaking, tap to stop")
+    }
+}
+
+/// Inline text chip button: soft coral fill, hairline, 8 pt corners, press scale through
+/// `OpenClawChatMotion` (no scale under Reduce Motion). The visual chip is compact; a 44 pt
+/// vertical hit target is kept without changing layout. Selected: accent ink. Disabled: dimmed.
+struct ChatInlineChipButtonStyle: ButtonStyle {
+    var isSelected: Bool = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        ChatInlineChipButtonBody(
+            label: configuration.label,
+            isPressed: configuration.isPressed,
+            isSelected: self.isSelected)
+    }
+}
+
+private struct ChatInlineChipButtonBody<Label: View>: View {
+    let label: Label
+    let isPressed: Bool
+    let isSelected: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
+    @Environment(\.isEnabled) private var isEnabled: Bool
+
+    var body: some View {
+        self.label
+            .foregroundStyle(self.isSelected ? OpenClawChatTheme.brandAccent : OpenClawChatTheme.inkMuted)
+            .background(self.chipFill, in: self.chipShape)
+            .overlay(self.chipShape.strokeBorder(self.chipStroke, lineWidth: 0.5))
+            .scaleEffect(self.isPressed && !self.reduceMotion ? 0.96 : 1)
+            .opacity(self.isEnabled ? 1 : 0.4)
+            .padding(.vertical, 7)
+            .contentShape(Rectangle())
+            .padding(.vertical, -7)
+            .animation(OpenClawChatMotion.animation(reduceMotion: self.reduceMotion), value: self.isPressed)
+            .animation(OpenClawChatMotion.animation(reduceMotion: self.reduceMotion), value: self.isSelected)
+    }
+
+    private var chipShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+    }
+
+    private var chipFill: Color {
+        if self.isPressed { return OpenClawChatTheme.brandAccent.opacity(0.22) }
+        if self.isSelected { return OpenClawChatTheme.brandAccent.opacity(0.14) }
+        return OpenClawChatTheme.brandAccent.opacity(0.08)
+    }
+
+    private var chipStroke: Color {
+        if self.isSelected || self.isPressed { return OpenClawChatTheme.brandAccent.opacity(0.45) }
+        return OpenClawChatTheme.hairline
     }
 }
 

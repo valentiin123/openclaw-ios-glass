@@ -43,7 +43,7 @@ struct ChatMessageReactions: View {
                         } label: {
                             self.chip(reaction, selected: selected)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(ChatReactionChipButtonStyle())
                         .disabled(self.viewModel.isReactionPending(for: self.message, emoji: reaction.emoji))
                     } else {
                         self.chip(reaction, selected: selected)
@@ -63,9 +63,15 @@ struct ChatMessageReactions: View {
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 5)
-        .foregroundStyle(selected ? OpenClawChatTheme.accent : Color.primary)
-        .background(selected ? OpenClawChatTheme.accent.opacity(0.14) : Color.secondary.opacity(0.1), in: Capsule())
-        .overlay(Capsule().strokeBorder(selected ? OpenClawChatTheme.accent.opacity(0.6) : Color.clear))
+        .foregroundStyle(selected ? OpenClawChatTheme.brandAccent : OpenClawChatTheme.inkStandard)
+        .background(
+            selected ? OpenClawChatTheme.brandAccent.opacity(0.14) : OpenClawChatTheme.surfaceAlt,
+            in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(
+                    selected ? OpenClawChatTheme.brandAccent.opacity(0.6) : OpenClawChatTheme.hairline,
+                    lineWidth: 0.5))
         .accessibilityElement(children: .ignore)
     }
 
@@ -80,6 +86,32 @@ struct ChatMessageReactions: View {
             ? String(format: String(localized: "%@ and %lld others"), shown, names.count - 3)
             : shown
         return String(format: String(localized: "%@ reacted with %@"), label, reaction.emoji)
+    }
+}
+
+/// Press feedback for reaction chips: small scale through `OpenClawChatMotion` (none under Reduce Motion),
+/// dimmed when disabled, and a 44 pt vertical hit target that does not change the chip layout.
+struct ChatReactionChipButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        ChatReactionChipButtonBody(label: configuration.label, isPressed: configuration.isPressed)
+    }
+}
+
+private struct ChatReactionChipButtonBody<Label: View>: View {
+    let label: Label
+    let isPressed: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
+    @Environment(\.isEnabled) private var isEnabled: Bool
+
+    var body: some View {
+        self.label
+            .scaleEffect(self.isPressed && !self.reduceMotion ? 0.94 : 1)
+            .opacity(self.isEnabled ? (self.isPressed ? 0.8 : 1) : 0.5)
+            .padding(.vertical, 7)
+            .contentShape(Rectangle())
+            .padding(.vertical, -7)
+            .animation(OpenClawChatMotion.animation(reduceMotion: self.reduceMotion), value: self.isPressed)
     }
 }
 
@@ -121,10 +153,16 @@ struct ChatMessageReactionPicker: View {
                                 .font(OpenClawChatTypography.body(size: 26, weight: .regular, relativeTo: .title2))
                                 .frame(maxWidth: .infinity, minHeight: 44)
                                 .background(
-                                    selected ? OpenClawChatTheme.accent.opacity(0.16) : Color.secondary.opacity(0.08),
-                                    in: RoundedRectangle(cornerRadius: 12))
+                                    selected ? OpenClawChatTheme.brandAccent.opacity(0.16) : OpenClawChatTheme.surfaceAlt,
+                                    in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .strokeBorder(
+                                            selected ? OpenClawChatTheme.brandAccent.opacity(0.6)
+                                                : OpenClawChatTheme.hairline,
+                                            lineWidth: 0.5))
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(ChatReactionChipButtonStyle())
                         .disabled(self.viewModel.isReactionPending(for: self.message, emoji: emoji))
                         .accessibilityLabel(emoji)
                         .accessibilityAddTraits(selected ? .isSelected : [])

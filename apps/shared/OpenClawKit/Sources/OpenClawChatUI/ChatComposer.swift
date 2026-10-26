@@ -756,7 +756,11 @@ struct OpenClawChatComposer: View {
             .padding(.horizontal, self.isDesktopLayout ? 0 : 6)
             .padding(.vertical, self.isDesktopLayout ? 0 : 2)
         #endif
+        #if os(iOS)
+        .modifier(CleanChatComposerSurface(cornerRadius: self.cleanCornerRadius, isFocused: self.isFocused))
+        #else
         .modifier(CleanChatComposerSurface(cornerRadius: self.cleanCornerRadius))
+        #endif
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("chat-composer-surface")
         #if os(iOS)

@@ -40,25 +40,64 @@ struct ChatMessageActionBar: View {
             }
         }
         .font(OpenClawChatTypography.callout)
-        .foregroundStyle(OpenClawChatTheme.inkMuted)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("chat-message-action-bar")
     }
 }
 
-/// 44 pt icon button, no glass: transparent at rest, an opaque theme surface while pressed.
+/// 44 pt hit target around a 32 pt tinted chip (coral icon on a soft coral fill, opaque, no glass).
+/// Pressed: deeper tint, hairline and a small scale through `OpenClawChatMotion` (fade only under
+/// Reduce Motion). Selected: stronger tint and accent hairline. Disabled: dimmed.
 struct ChatMessageActionButtonStyle: ButtonStyle {
     static let touchSize: CGFloat = 44
-    private static let cornerRadius: CGFloat = 12
+    static let chipSize: CGFloat = 32
+    static let cornerRadius: CGFloat = 10
+
+    var isSelected: Bool = false
 
     func makeBody(configuration: Configuration) -> some View {
-        let pressedFill: Color = configuration.isPressed ? OpenClawChatTheme.surfaceHover : Color.clear
-        return configuration.label
-            .frame(width: Self.touchSize, height: Self.touchSize)
-            .background(
-                pressedFill,
-                in: RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
+        ChatMessageActionButtonBody(
+            label: configuration.label,
+            isPressed: configuration.isPressed,
+            isSelected: self.isSelected)
+    }
+}
+
+private struct ChatMessageActionButtonBody<Label: View>: View {
+    let label: Label
+    let isPressed: Bool
+    let isSelected: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
+    @Environment(\.isEnabled) private var isEnabled: Bool
+
+    var body: some View {
+        self.label
+            .foregroundStyle(self.isSelected ? OpenClawChatTheme.brandAccent : OpenClawChatTheme.inkMuted)
+            .frame(width: ChatMessageActionButtonStyle.chipSize, height: ChatMessageActionButtonStyle.chipSize)
+            .background(self.chipFill, in: self.chipShape)
+            .overlay(self.chipShape.strokeBorder(self.chipStroke, lineWidth: 0.5))
+            .scaleEffect(self.isPressed && !self.reduceMotion ? 0.92 : 1)
+            .opacity(self.isEnabled ? 1 : 0.4)
+            .frame(width: ChatMessageActionButtonStyle.touchSize, height: ChatMessageActionButtonStyle.touchSize)
             .contentShape(Rectangle())
+            .animation(OpenClawChatMotion.animation(reduceMotion: self.reduceMotion), value: self.isPressed)
+            .animation(OpenClawChatMotion.animation(reduceMotion: self.reduceMotion), value: self.isSelected)
+    }
+
+    private var chipShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: ChatMessageActionButtonStyle.cornerRadius, style: .continuous)
+    }
+
+    private var chipFill: Color {
+        if self.isPressed { return OpenClawChatTheme.brandAccent.opacity(0.22) }
+        if self.isSelected { return OpenClawChatTheme.brandAccent.opacity(0.16) }
+        return OpenClawChatTheme.brandAccent.opacity(0.08)
+    }
+
+    private var chipStroke: Color {
+        if self.isSelected || self.isPressed { return OpenClawChatTheme.brandAccent.opacity(0.45) }
+        return OpenClawChatTheme.hairline
     }
 }
 
@@ -75,8 +114,9 @@ private struct ChatMessageCopyActionButton: View {
             self.copiedAt = .now
         } label: {
             Image(systemName: self.symbolName)
+                .contentTransition(.symbolEffect(.replace))
         }
-        .buttonStyle(ChatMessageActionButtonStyle())
+        .buttonStyle(ChatMessageActionButtonStyle(isSelected: self.copiedAt != nil))
         .accessibilityLabel(String(localized: "Copy Message"))
         .accessibilityIdentifier("chat-copy-message")
         .task(id: self.copiedAt) {

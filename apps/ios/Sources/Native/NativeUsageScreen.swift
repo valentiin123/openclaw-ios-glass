@@ -284,7 +284,8 @@ struct NativeUsageScreen: View {
                             subtitle: item.subtitle,
                             value: metric.full(value),
                             detail: self.otherMetricText(cost: item.cost, tokens: item.tokens, metric: metric),
-                            fraction: peak > 0 ? value / peak : 0)
+                            fraction: peak > 0 ? value / peak : 0,
+                            tint: NativeUsagePalette.color(at: index))
                             .openClawEntrance(index: index)
                             .ngCardRow()
                             .swipeActions(edge: .trailing) { self.copyAction(item.title) }

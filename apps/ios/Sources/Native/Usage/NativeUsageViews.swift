@@ -2,7 +2,7 @@ import Charts
 import SwiftUI
 
 // Building blocks of the native Usage page.
-// Glass is used for controls and headline tiles; reading content (rows, charts) stays on quiet surfaces.
+// Glass is reserved for controls and chrome; reading content (tiles, rows, charts) stays on opaque surfaces.
 
 // MARK: - Tiles
 
@@ -63,48 +63,104 @@ struct NativeSparkline: View {
     }
 }
 
-/// Row of glass headline tiles (total, average, peak, ...).
+/// Shared color ramp for per-model / per-agent rows and charts.
+enum NativeUsagePalette {
+    static let colors: [Color] = [
+        OpenClawBrand.accent,
+        OpenClawBrand.info,
+        OpenClawBrand.ok,
+        OpenClawBrand.warn,
+        OpenClawBrand.providerGoogle,
+        OpenClawBrand.providerOpenAI,
+        OpenClawBrand.providerAnthropic,
+        OpenClawBrand.textSecondary,
+    ]
+
+    static func color(at index: Int) -> Color {
+        let count: Int = Self.colors.count
+        let safe: Int = ((index % count) + count) % count
+        return Self.colors[safe]
+    }
+}
+
+/// Headline figures: one hero tile (total) followed by smaller opaque stat cards.
+/// These are reading content, so they sit on opaque card surfaces, not glass.
 struct NativeUsageTileGrid: View {
     let tiles: [NativeUsageTileData]
 
+    private var rest: [NativeUsageTileData] {
+        Array(self.tiles.dropFirst())
+    }
+
     var body: some View {
-        OpenClawGlassControlGroup {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 8)], spacing: 8) {
-                ForEach(self.tiles) { tile in
-                    self.tileView(tile)
+        VStack(spacing: 8) {
+            if let hero = self.tiles.first {
+                self.heroView(hero)
+            }
+            if !self.rest.isEmpty {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 8)], spacing: 8) {
+                    ForEach(self.rest) { tile in
+                        self.tileView(tile)
+                    }
                 }
             }
         }
     }
 
-    private func tileView(_ tile: NativeUsageTileData) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 4) {
-                Image(systemName: tile.systemImage)
-                    .font(OpenClawType.captionSemiBold)
-                    .foregroundStyle(tile.tint)
-                    .accessibilityHidden(true)
+    private func iconBadge(_ tile: NativeUsageTileData) -> some View {
+        Image(systemName: tile.systemImage)
+            .font(OpenClawType.captionSemiBold)
+            .foregroundStyle(tile.tint)
+            .frame(width: 28, height: 28)
+            .background(tile.tint.opacity(0.14), in: Circle())
+            .accessibilityHidden(true)
+    }
+
+    private func heroView(_ tile: NativeUsageTileData) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                self.iconBadge(tile)
                 Text(verbatim: tile.title)
-                    .font(OpenClawType.caption)
+                    .font(OpenClawType.subheadMedium)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
             }
+            Text(verbatim: tile.value)
+                .font(OpenClawType.title2)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .contentTransition(.numericText())
+            if tile.spark.count > 1 {
+                NativeSparkline(values: tile.spark, tint: tile.tint, height: 40)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .ngCardSurface(radius: 18)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func tileView(_ tile: NativeUsageTileData) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            self.iconBadge(tile)
             Text(verbatim: tile.value)
                 .font(OpenClawType.headline)
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
                 .contentTransition(.numericText())
+            Text(verbatim: tile.title)
+                .font(OpenClawType.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
             if tile.spark.count > 1 {
                 NativeSparkline(values: tile.spark, tint: tile.tint)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .openClawGlass(
-            in: RoundedRectangle(cornerRadius: 18, style: .continuous),
-            tint: tile.tint.opacity(0.10))
+        .ngCardSurface(radius: 16)
         .accessibilityElement(children: .combine)
     }
 }
@@ -119,6 +175,7 @@ struct NativeUsageRow: View {
     let value: String
     var detail: String?
     let fraction: Double
+    var tint: Color = OpenClawBrand.accent
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -163,12 +220,12 @@ struct NativeUsageRow: View {
             ZStack(alignment: .leading) {
                 Capsule().fill(Color(uiColor: .tertiarySystemFill))
                 Capsule()
-                    .fill(OpenClawBrand.accent.opacity(0.75))
+                    .fill(self.tint.opacity(0.85))
                     .frame(width: clamped > 0 ? max(4, proxy.size.width * clamped) : 0)
                     .animation(OpenClawMotion.animation(reduceMotion: self.reduceMotion), value: clamped)
             }
         }
-        .frame(height: 4)
+        .frame(height: 6)
         .accessibilityHidden(true)
     }
 }
@@ -214,7 +271,7 @@ struct NativeUsageDayChart: View {
                 if let average = self.average {
                     RuleMark(y: .value("Average", average))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(OpenClawBrand.info.opacity(0.7))
                 }
                 if let selected = self.selectedDay {
                     RuleMark(x: .value("Day", selected.date, unit: .day))
@@ -376,8 +433,10 @@ struct NativeUsageBreakdownChart: View {
     }
 
     private func barColor(for item: NativeUsageBreakdownItem) -> Color {
-        guard let selected = self.selectedTitle else { return OpenClawBrand.accent }
-        return item.title == selected ? OpenClawBrand.accent : OpenClawBrand.accent.opacity(0.4)
+        let index: Int = self.items.firstIndex(where: { $0.id == item.id }) ?? 0
+        let base: Color = NativeUsagePalette.color(at: index)
+        guard let selected = self.selectedTitle else { return base }
+        return item.title == selected ? base : base.opacity(0.4)
     }
 
     @ViewBuilder

@@ -11,12 +11,30 @@ struct CleanChatComposerSurface: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.openClawChatDesktopLayout) private var isDesktopLayout
     let cornerRadius: CGFloat
+    /// iOS only: the hairline turns coral while the draft has focus.
+    var isFocused: Bool = false
 
     func body(content: Content) -> some View {
         self.platformSurface(content)
             .overlay(
                 RoundedRectangle(cornerRadius: self.cornerRadius, style: .continuous)
-                    .strokeBorder(OpenClawChatTheme.composerBorder, lineWidth: 1))
+                    .strokeBorder(self.borderColor, lineWidth: self.borderWidth))
+    }
+
+    private var borderColor: Color {
+        #if os(iOS)
+        return self.isFocused ? OpenClawChatTheme.accent.opacity(0.85) : OpenClawChatTheme.composerBorder
+        #else
+        return OpenClawChatTheme.composerBorder
+        #endif
+    }
+
+    private var borderWidth: CGFloat {
+        #if os(iOS)
+        return self.isFocused ? 1.5 : 1
+        #else
+        return 1
+        #endif
     }
 
     @ViewBuilder
@@ -29,13 +47,9 @@ struct CleanChatComposerSurface: ViewModifier {
                         ? AnyShapeStyle(OpenClawChatTheme.desktopComposer(in: self.colorScheme))
                         : OpenClawChatTheme.composerField))
         #else
-        // Composer is chrome: Liquid Glass on iOS 26, thin material before. Squircle (continuous) shape.
+        // Opaque palette surface (nothing of the transcript shows through). Glass stays on the controls only.
         let squircle: RoundedRectangle = RoundedRectangle(cornerRadius: self.cornerRadius, style: .continuous)
-        if #available(iOS 26.0, *) {
-            content.glassEffect(Glass.regular, in: squircle)
-        } else {
-            content.background(.regularMaterial, in: squircle)
-        }
+        content.background(squircle.fill(OpenClawChatTheme.composerField))
         #endif
     }
 }
@@ -43,16 +57,16 @@ struct CleanChatComposerSurface: ViewModifier {
 enum CleanChatComposerMetrics {
     static let surfaceCornerRadius: CGFloat = 20
     /// Large continuous radius of the iOS composer bar (squircle, not a capsule).
-    static let squircleCornerRadius: CGFloat = 28
+    static let squircleCornerRadius: CGFloat = 17
     /// Extra room between the bar and the keyboard on iOS.
-    static let keyboardGap: CGFloat = 8
+    static let keyboardGap: CGFloat = 4
     static let controlTouchSize: CGFloat = 44
     static let primaryVisualSize: CGFloat = 32
     #if os(iOS)
     // Airy iOS bar: more room around the text. Controls keep their 44pt touch size.
     static let restingMinHeight: CGFloat = 116
-    static let editorInlineInset: CGFloat = 18
-    static let editorBlockInset: CGFloat = 8
+    static let editorInlineInset: CGFloat = 22
+    static let editorBlockInset: CGFloat = 12
     static let footerInlineInset: CGFloat = 10
     static let footerBlockInset: CGFloat = 8
     static let rowGap: CGFloat = 8

@@ -11,16 +11,7 @@ struct NativeUsageShareChart: View {
 
     @State private var selectedAngle: Double?
 
-    private static let palette: [Color] = [
-        OpenClawBrand.accent,
-        OpenClawBrand.info,
-        OpenClawBrand.ok,
-        OpenClawBrand.warn,
-        OpenClawBrand.providerGoogle,
-        OpenClawBrand.providerOpenAI,
-        OpenClawBrand.providerAnthropic,
-        OpenClawBrand.textSecondary,
-    ]
+    private static let palette: [Color] = NativeUsagePalette.colors
 
     private var slices: [NativeUsageBreakdownItem] {
         self.items.filter { self.value($0) > 0 }

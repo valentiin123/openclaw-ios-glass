@@ -43,7 +43,7 @@ struct ChatCopyButton: View {
                 .frame(width: Self.controlSize, height: Self.controlSize)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ChatCopyChipButtonStyle(isSelected: self.copiedAt != nil))
         .accessibilityLabel(self.label)
         .contentTransition(.symbolEffect(.replace))
         .task(id: self.copiedAt) {
@@ -59,6 +59,52 @@ struct ChatCopyButton: View {
         .help(self.label)
         .modifier(ChatHoverAction(revealed: self.revealed || self.copiedAt != nil))
         #endif
+    }
+}
+
+/// Small coral chip inside the 44 pt (28 pt on macOS) hit target of inline block controls.
+/// Pressed: deeper tint and a small scale through `OpenClawChatMotion` (no scale under Reduce Motion).
+/// Selected (copied): accent ink and stronger tint. Disabled: dimmed.
+struct ChatCopyChipButtonStyle: ButtonStyle {
+    var isSelected: Bool = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        ChatCopyChipBody(
+            label: configuration.label,
+            isPressed: configuration.isPressed,
+            isSelected: self.isSelected)
+    }
+}
+
+private struct ChatCopyChipBody<Label: View>: View {
+    let label: Label
+    let isPressed: Bool
+    let isSelected: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
+    @Environment(\.isEnabled) private var isEnabled: Bool
+
+    private static var chipSize: CGFloat { 24 }
+
+    var body: some View {
+        self.label
+            .font(OpenClawChatTypography.caption)
+            .foregroundStyle(self.isSelected ? OpenClawChatTheme.brandAccent : OpenClawChatTheme.inkMuted)
+            .background(alignment: .center) {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(self.chipFill)
+                    .frame(width: Self.chipSize, height: Self.chipSize)
+            }
+            .scaleEffect(self.isPressed && !self.reduceMotion ? 0.92 : 1)
+            .opacity(self.isEnabled ? 1 : 0.4)
+            .animation(OpenClawChatMotion.animation(reduceMotion: self.reduceMotion), value: self.isPressed)
+            .animation(OpenClawChatMotion.animation(reduceMotion: self.reduceMotion), value: self.isSelected)
+    }
+
+    private var chipFill: Color {
+        if self.isPressed { return OpenClawChatTheme.brandAccent.opacity(0.22) }
+        if self.isSelected { return OpenClawChatTheme.brandAccent.opacity(0.16) }
+        return OpenClawChatTheme.brandAccent.opacity(0.08)
     }
 }
 
