@@ -61,6 +61,11 @@ func chatReaderShowsJumpToLatest(
     hasNewerContentBelow && !isAtLiveEdge && hasVisibleContent && !isLoading
 }
 
+@MainActor
+private final class ChatContentHeightBox {
+    var height: CGFloat = 0
+}
+
 private enum ScrollFollowTarget: Equatable {
     case latest
     case turn(UUID)
@@ -124,6 +129,8 @@ public struct OpenClawChatView: View {
     @State private var dismissedProgressCards: Set<String> = []
     @State private var hasPerformedInitialScroll = false
     @State private var settleScrollTask: Task<Void, Never>?
+    /// Reference box so per-frame content-height updates never invalidate the view body.
+    @State private var contentHeightBox: ChatContentHeightBox = ChatContentHeightBox()
     @State private var lastTurnStartID: UUID?
     @State private var hasNewerContentBelow = false
     @State private var followTarget: ScrollFollowTarget? = .latest
@@ -536,6 +543,11 @@ extension OpenClawChatView {
                     self.hasNewerContentBelow = false
                 }
             }
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentSize.height
+            } action: { _, newHeight in
+                self.contentHeightBox.height = newHeight
+            }
             .onScrollPhaseChange { _, phase in
                 guard self.hasPerformedInitialScroll else { return }
                 if phase == .interacting {
@@ -589,11 +601,16 @@ extension OpenClawChatView {
             self.dismissKeyboardForSwipe()
         }
         .onChange(of: self.viewModel.isLoading) { _, isLoading in
-            guard !isLoading, !self.hasPerformedInitialScroll else { return }
-            self.restoreInitialScrollPosition()
-            self.hasPerformedInitialScroll = true
-            self.lastTurnStartID = self.latestVisibleTurnStartID
-            self.scheduleSettleScrollToBottom()
+            guard !isLoading else { return }
+            if self.hasPerformedInitialScroll {
+                if self.followTarget == .latest { self.scheduleSettleScrollToBottom() }
+            } else {
+                self.performInitialScrollIfNeeded()
+            }
+        }
+        .onAppear {
+            // Cached history never toggles isLoading; position as soon as rows exist.
+            self.performInitialScrollIfContentReady()
         }
         .onChange(of: self.viewModel.currentSessionTarget) { _, _ in
             self.speech?.stop()
@@ -623,6 +640,9 @@ extension OpenClawChatView {
             self.settleScrollTask?.cancel()
         }
         .onChange(of: self.viewModel.timelineRevision) { _, _ in
+            if !self.hasPerformedInitialScroll {
+                self.performInitialScrollIfContentReady()
+            }
             self.handleTimelineChange()
         }
         #if canImport(UIKit) && !os(macOS)
@@ -1353,17 +1373,42 @@ extension OpenClawChatView {
     /// the reader scrolls, follows a turn, or opens a search result, so manual scrolling is never fought.
     private func scheduleSettleScrollToBottom() {
         self.settleScrollTask?.cancel()
+        let heightBox: ChatContentHeightBox = self.contentHeightBox
         self.settleScrollTask = Task { @MainActor in
-            for delayMilliseconds in [120, 350, 800] {
-                try? await Task.sleep(for: .milliseconds(delayMilliseconds))
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .milliseconds(2400))
+            var lastScrolledHeight: CGFloat = -1
+            while clock.now < deadline {
+                try? await Task.sleep(for: .milliseconds(100))
                 guard !Task.isCancelled,
                       self.followTarget == .latest,
                       !self.isUserScrolling,
                       self.searchMessageID == nil
                 else { return }
-                self.moveScrollPosition(to: self.scrollerBottomID)
+                // Re-scroll only while the content height keeps changing (images, markdown, late history).
+                let currentHeight: CGFloat = heightBox.height
+                if abs(currentHeight - lastScrolledHeight) > 0.5 {
+                    lastScrolledHeight = currentHeight
+                    self.moveScrollPosition(to: self.scrollerBottomID)
+                }
             }
         }
+    }
+
+    private func performInitialScrollIfNeeded() {
+        guard !self.hasPerformedInitialScroll else { return }
+        self.restoreInitialScrollPosition()
+        self.hasPerformedInitialScroll = true
+        self.lastTurnStartID = self.latestVisibleTurnStartID
+        self.scheduleSettleScrollToBottom()
+    }
+
+    private func performInitialScrollIfContentReady() {
+        guard !self.hasPerformedInitialScroll,
+              !self.viewModel.isLoading,
+              !self.viewModel.messages.isEmpty
+        else { return }
+        self.performInitialScrollIfNeeded()
     }
 
     private func moveScrollPosition(

@@ -262,6 +262,9 @@ struct AppShellGlassTabBar: View {
 
     private static let indicatorSpring: Animation = .spring(response: 0.42, dampingFraction: 0.68)
     private static let pressSpring: Animation = .spring(response: 0.26, dampingFraction: 0.62)
+    /// Tracking spring while the finger keeps moving on the bar: short response so the capsule
+    /// stays under the finger, but never an instant jump.
+    private static let trackingSpring: Animation = .interactiveSpring(response: 0.2, dampingFraction: 0.82)
     /// Horizontal travel (points) before a touch on the bar counts as a drag rather than a tap.
     private static let dragActivation: CGFloat = 6
 
@@ -348,8 +351,18 @@ struct AppShellGlassTabBar: View {
     private func barDragGesture(count: Int) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { (value: DragGesture.Value) in
-                if self.barDragX != nil || abs(value.translation.width) > Self.dragActivation {
-                    self.barDragX = value.location.x
+                let isTracking: Bool = self.barDragX != nil
+                if isTracking || abs(value.translation.width) > Self.dragActivation {
+                    if self.reduceMotion {
+                        self.barDragX = value.location.x
+                    } else {
+                        // First sample: the capsule springs from its tab to the finger.
+                        // Next samples: a tighter spring keeps it fluid under the finger.
+                        let animation: Animation = isTracking ? Self.trackingSpring : Self.indicatorSpring
+                        withAnimation(animation) {
+                            self.barDragX = value.location.x
+                        }
+                    }
                 }
             }
             .onEnded { (value: DragGesture.Value) in

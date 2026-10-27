@@ -434,6 +434,16 @@ final class AppShellNavigation {
         self.resetTokens[tab] ?? 0
     }
 
+    /// Section the Activity page shows. While Activity is the selected bar tab it follows the
+    /// selection; otherwise it is the section the tab will restore when entered (`userSelected`),
+    /// so the page is already correct while it slides in and its content never swaps mid-swipe.
+    var displayedActivitySection: AppShellActivitySection {
+        if self.selection.barTab == .activity {
+            return AppShellActivitySection(tab: self.selection)
+        }
+        return self.lastActivitySection
+    }
+
     // MARK: Internals
 
     /// Single place that changes `selection`, so the Activity tab can remember its section.

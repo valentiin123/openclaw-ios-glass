@@ -16,6 +16,11 @@ final class AppShellHorizontalPanRecognizer: UIPanGestureRecognizer {
     static let maxTangent: CGFloat = 0.84
     /// Distance (points, in window coordinates) after which the direction is judged.
     static let decisionDistance: CGFloat = 10
+    /// Distance after which a clearly horizontal movement begins the pan without waiting for the
+    /// system slop, so it wins the race against the vertical scroll view of a list.
+    static let earlyBeginDistance: CGFloat = 6
+    /// tan(30°): the early begin needs an almost purely horizontal movement.
+    static let earlyBeginTangent: CGFloat = 0.58
 
     private var origin: CGPoint = CGPoint.zero
     private var decided: Bool = false
@@ -42,6 +47,15 @@ final class AppShellHorizontalPanRecognizer: UIPanGestureRecognizer {
             }
         }
         super.touchesMoved(touches, with: event)
+        if self.state == .possible, let first = touches.first {
+            let point: CGPoint = first.location(in: nil)
+            let dx: CGFloat = abs(point.x - self.origin.x)
+            let dy: CGFloat = abs(point.y - self.origin.y)
+            if dx >= Self.earlyBeginDistance, dy <= Self.earlyBeginTangent * dx {
+                self.decided = true
+                self.state = .began
+            }
+        }
     }
 
     override func reset() {
@@ -228,8 +242,11 @@ struct AppShellTabSwipeInstaller: UIViewRepresentable {
             let velocity: CGPoint = pan.velocity(in: pan.view)
             let absX: CGFloat = abs(translation.x)
             let absY: CGFloat = abs(translation.y)
-            if absX <= 0 { return false }
-            if absY > AppShellHorizontalPanRecognizer.maxTangent * absX { return false }
+            // An early begin can happen before the pan has accumulated any translation or velocity
+            // of its own: the recognizer already checked the angle, so only reject a measured
+            // movement that is clearly not horizontal.
+            if absX > 0, absY > AppShellHorizontalPanRecognizer.maxTangent * absX { return false }
+            if abs(velocity.x) + abs(velocity.y) < 50 { return true }
             return abs(velocity.y) <= Self.velocityTangent * abs(velocity.x)
         }
 

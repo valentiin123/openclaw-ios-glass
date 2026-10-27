@@ -68,8 +68,12 @@ struct AppShellActivityView: View {
     @Bindable var navigation: AppShellNavigation
     let context: AppShellContext
 
+    /// Section shown by the page. It comes from the navigation model (the selection while this tab
+    /// is selected, otherwise the section the tab restores when entered), so swiping Home to
+    /// Automations slides in a page that is already on the right section: nothing swaps or
+    /// cross-fades while the pager moves.
     private var currentSection: AppShellActivitySection {
-        AppShellActivitySection(tab: self.navigation.selection)
+        self.navigation.displayedActivitySection
     }
 
     private var sectionBinding: Binding<AppShellActivitySection> {

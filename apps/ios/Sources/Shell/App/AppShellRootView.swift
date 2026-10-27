@@ -69,12 +69,17 @@ struct AppShellRootView: View {
     private var pagedShell: some View {
         let bottomInset: CGFloat = self.bottomSafeInset + AppShellGlassTabBar.reservedHeight
         return Color.clear
-            .onGeometryChange(
-                for: CGFloat.self,
-                of: { (proxy: GeometryProxy) -> CGFloat in proxy.safeAreaInsets.bottom },
-                action: { (newInset: CGFloat) in
-                    self.bottomSafeInset = newInset
-                })
+            .background {
+                // Measured on a view that ignores the safe area: a view laid out inside it reports 0.
+                Color.clear
+                    .ignoresSafeArea()
+                    .onGeometryChange(
+                        for: CGFloat.self,
+                        of: { (proxy: GeometryProxy) -> CGFloat in proxy.safeAreaInsets.bottom },
+                        action: { (newInset: CGFloat) in
+                            self.bottomSafeInset = newInset
+                        })
+            }
             .overlay {
                 AppShellPagerView(
                     navigation: self.navigation,
