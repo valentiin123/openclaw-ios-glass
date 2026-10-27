@@ -2421,7 +2421,8 @@ final class NodeAppModel {
                 NSLocalizedDescriptionKey: "INVALID_REQUEST: screen format must be mp4",
             ])
         }
-        let includeAudio = params.includeAudio ?? true
+        // Microphone audio in a screen recording is opt-in per request.
+        let includeAudio = params.includeAudio ?? false
         guard !self.screenRecordActive else {
             throw NSError(domain: "Screen", code: 31, userInfo: [
                 NSLocalizedDescriptionKey: "SCREEN_CAPTURE_BUSY: screen recording already active",
@@ -3074,9 +3075,8 @@ extension NodeAppModel {
     }
 
     private func isCameraEnabled() -> Bool {
-        // Default-on: if the key doesn't exist yet, treat it as enabled.
-        if UserDefaults.standard.object(forKey: "camera.enabled") == nil { return true }
-        return UserDefaults.standard.bool(forKey: "camera.enabled")
+        // Default-off: remote camera access needs an explicit opt-in (native consent dialog).
+        UserDefaults.standard.bool(forKey: "camera.enabled")
     }
 
     nonisolated static func cameraFacingPreference(rawValue: String?) -> OpenClawCameraFacing {

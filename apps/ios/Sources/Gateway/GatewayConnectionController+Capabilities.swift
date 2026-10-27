@@ -132,11 +132,8 @@ extension GatewayConnectionController {
     private func currentCaps() -> [String] {
         var caps = [OpenClawCapability.screen.rawValue]
 
-        // Default-on: if the key doesn't exist yet, treat it as enabled.
-        let cameraEnabled =
-            UserDefaults.standard.object(forKey: "camera.enabled") == nil
-                ? true
-                : UserDefaults.standard.bool(forKey: "camera.enabled")
+        // Default-off: the camera capability is only advertised after an explicit opt-in.
+        let cameraEnabled = UserDefaults.standard.bool(forKey: "camera.enabled")
         if cameraEnabled { caps.append(OpenClawCapability.camera.rawValue) }
 
         let voiceWakeEnabled = UserDefaults.standard.bool(forKey: VoiceWakePreferences.enabledKey)

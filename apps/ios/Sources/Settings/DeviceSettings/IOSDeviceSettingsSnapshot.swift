@@ -38,7 +38,7 @@ final class IOSDeviceSettingsSnapshotProducer {
                 appearance: DeviceSettingsAppearance(rawValue: self.appearanceModel.preference.rawValue),
                 notificationsEnabled: NotificationServingPreference.isEnabled(defaults: self.defaults)),
             capabilities: .init(
-                cameraEnabled: self.defaults.object(forKey: "camera.enabled") as? Bool ?? true,
+                cameraEnabled: self.defaults.object(forKey: "camera.enabled") as? Bool ?? false,
                 keepAwakeEnabled: self.defaults.object(forKey: "screen.preventSleep") as? Bool ?? true,
                 healthSummaryAvailable: HealthAuthorization.isAvailable,
                 healthSummaryEnabled: HealthAuthorization.isEnabled),

@@ -92,7 +92,8 @@ final class ScreenRecordService: @unchecked Sendable {
         let config = RecordConfig(
             durationMs: CaptureRateLimits.clampDurationMs(durationMs),
             fpsValue: Double(Int32(CaptureRateLimits.clampFps(fps, maxFps: 30).rounded())),
-            includeAudio: includeAudio ?? true,
+            // Microphone audio is opt-in per request (IOS-04).
+            includeAudio: includeAudio ?? false,
             outURL: outURL)
         try? FileManager().removeItem(at: outURL)
 
