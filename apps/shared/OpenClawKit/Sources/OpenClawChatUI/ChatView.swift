@@ -123,6 +123,7 @@ public struct OpenClawChatView: View {
     @State private var scrollCommand = ChatScrollCommand()
     @State private var dismissedProgressCards: Set<String> = []
     @State private var hasPerformedInitialScroll = false
+    @State private var settleScrollTask: Task<Void, Never>?
     @State private var lastTurnStartID: UUID?
     @State private var hasNewerContentBelow = false
     @State private var followTarget: ScrollFollowTarget? = .latest
@@ -592,10 +593,12 @@ extension OpenClawChatView {
             self.restoreInitialScrollPosition()
             self.hasPerformedInitialScroll = true
             self.lastTurnStartID = self.latestVisibleTurnStartID
+            self.scheduleSettleScrollToBottom()
         }
         .onChange(of: self.viewModel.currentSessionTarget) { _, _ in
             self.speech?.stop()
             self.scrollCommand.cancel()
+            self.settleScrollTask?.cancel()
             self.hasPerformedInitialScroll = false
             self.followTarget = .latest
             self.isAtLiveEdge = true
@@ -617,6 +620,7 @@ extension OpenClawChatView {
             self.viewModel.flushDraftPersistence()
             self.speech?.stop()
             self.scrollCommand.cancel()
+            self.settleScrollTask?.cancel()
         }
         .onChange(of: self.viewModel.timelineRevision) { _, _ in
             self.handleTimelineChange()
@@ -635,6 +639,7 @@ extension OpenClawChatView {
             self.followTarget = .latest
             self.hasNewerContentBelow = false
             self.moveScrollPosition(to: self.scrollerBottomID)
+            self.scheduleSettleScrollToBottom()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
             self.restoresLiveEdgeAfterKeyboardShows = false
@@ -1328,6 +1333,9 @@ extension OpenClawChatView {
         case .latest:
             self.hasNewerContentBelow = false
             self.moveScrollPosition(to: self.scrollerBottomID)
+            if !self.viewModel.hasStreamingAssistantText {
+                self.scheduleSettleScrollToBottom()
+            }
         case let .turn(messageID):
             // Reader policy stays on this turn after the one-shot scroll command completes. Reissuing
             // that target for every streaming delta can loop SwiftUI layout and starve interaction.
@@ -1337,6 +1345,24 @@ extension OpenClawChatView {
                 hasTransientContent: self.hasVisibleTransientContent)
         case nil:
             self.hasNewerContentBelow = true
+        }
+    }
+
+    /// Short deferred re-scrolls to the bottom so late height changes (markdown, images, tool cards,
+    /// history arriving after the first layout) still end at the live edge. Each step bails out as soon as
+    /// the reader scrolls, follows a turn, or opens a search result, so manual scrolling is never fought.
+    private func scheduleSettleScrollToBottom() {
+        self.settleScrollTask?.cancel()
+        self.settleScrollTask = Task { @MainActor in
+            for delayMilliseconds in [120, 350, 800] {
+                try? await Task.sleep(for: .milliseconds(delayMilliseconds))
+                guard !Task.isCancelled,
+                      self.followTarget == .latest,
+                      !self.isUserScrolling,
+                      self.searchMessageID == nil
+                else { return }
+                self.moveScrollPosition(to: self.scrollerBottomID)
+            }
         }
     }
 

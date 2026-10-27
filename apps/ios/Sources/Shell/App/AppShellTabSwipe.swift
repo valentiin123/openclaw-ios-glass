@@ -60,13 +60,20 @@ struct AppShellTabSwipeInstaller: UIViewRepresentable {
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         /// Touches starting closer than this to the left edge belong to the back gesture.
         private static let edgeInset: CGFloat = 24
-        /// The first movement must be this many times wider than tall.
-        private static let dominance: CGFloat = 1.5
+        /// The first movement must be this many times wider than tall (translation).
+        private static let dominance: CGFloat = 1.6
+        /// The first velocity must be this many times larger horizontally than vertically.
+        private static let velocityDominance: CGFloat = 1.2
+        /// Distance over which the translation consumed by the recognizer's slop is given back to
+        /// the finger, so the pages do not jump when the pan begins.
+        private static let catchUpDistance: CGFloat = 48
 
         private var installer: AppShellTabSwipeInstaller
         private let recognizer: UIPanGestureRecognizer = UIPanGestureRecognizer()
         private weak var window: UIWindow?
         private var touchStartedInHorizontalScroller: Bool = false
+        /// Translation at the moment the pan was recognized (the slop already travelled).
+        private var startX: CGFloat = 0
 
         init(installer: AppShellTabSwipeInstaller) {
             self.installer = installer
@@ -101,17 +108,28 @@ struct AppShellTabSwipeInstaller: UIViewRepresentable {
             let velocity: CGPoint = pan.velocity(in: pan.view)
             switch pan.state {
             case .began:
+                self.startX = translation.x
                 self.installer.onBegan()
-                self.installer.onChanged(translation.x)
+                self.installer.onChanged(self.compensated(translation.x))
             case .changed:
-                self.installer.onChanged(translation.x)
+                self.installer.onChanged(self.compensated(translation.x))
             case .ended:
-                self.installer.onEnded(translation.x, velocity.x)
+                let adjusted: CGFloat = self.compensated(translation.x)
+                self.startX = 0
+                self.installer.onEnded(adjusted, velocity.x)
             case .cancelled, .failed:
+                self.startX = 0
                 self.installer.onCancelled()
             default:
                 break
             }
+        }
+
+        /// Starts at 0 when the pan begins and gives the slop back to the finger progressively.
+        private func compensated(_ x: CGFloat) -> CGFloat {
+            let travelled: CGFloat = abs(x - self.startX)
+            let remaining: CGFloat = 1 - min(travelled / Self.catchUpDistance, 1)
+            return x - self.startX * remaining
         }
 
         // MARK: UIGestureRecognizerDelegate
@@ -133,9 +151,13 @@ struct AppShellTabSwipeInstaller: UIViewRepresentable {
             guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return false }
             if self.touchStartedInHorizontalScroller { return false }
             let translation: CGPoint = pan.translation(in: pan.view)
+            let velocity: CGPoint = pan.velocity(in: pan.view)
             let absX: CGFloat = abs(translation.x)
             let absY: CGFloat = abs(translation.y)
-            return absX > Self.dominance * absY
+            let velocityX: CGFloat = abs(velocity.x)
+            let velocityY: CGFloat = abs(velocity.y)
+            if absX <= Self.dominance * absY { return false }
+            return velocityX > Self.velocityDominance * velocityY
         }
 
         /// Whoever begins first wins: a row swipe action or a slider that already recognized
@@ -167,6 +189,7 @@ struct AppShellTabSwipeInstaller: UIViewRepresentable {
                 if candidate is UISlider || candidate is UISwitch || candidate is UISegmentedControl {
                     return false
                 }
+                if Self.ownsSwipeAction(candidate) { return false }
                 current = candidate.superview
             }
             var responder: UIResponder? = view
@@ -177,6 +200,17 @@ struct AppShellTabSwipeInstaller: UIViewRepresentable {
                 responder = candidate.next
             }
             return true
+        }
+
+        /// True when the view carries an enabled row swipe-action recognizer (list rows with
+        /// swipe actions). Matched by class name only, no private API is called.
+        private static func ownsSwipeAction(_ view: UIView) -> Bool {
+            guard let recognizers = view.gestureRecognizers else { return false }
+            for candidate in recognizers where candidate.isEnabled {
+                let name: String = NSStringFromClass(type(of: candidate))
+                if name.contains("SwipeAction") { return true }
+            }
+            return false
         }
 
         /// True when an ancestor scroll view can scroll horizontally (carousels, paged content).
@@ -232,8 +266,11 @@ private struct AppShellTabSwipeModifier: ViewModifier {
         return navigation.homePath.isEmpty
     }
 
+    /// A drag that starts while a settle animation still runs follows the finger through a
+    /// spring (`tracksWithSpring`), so the pages continue from where they are on screen.
     @MainActor
     private static func begin(_ pager: AppShellPagerState) {
+        pager.tracksWithSpring = pager.isSettling()
         pager.isDragging = true
     }
 
@@ -248,11 +285,22 @@ private struct AppShellTabSwipeModifier: ViewModifier {
     {
         if reduceMotion { return }
         let index: Int = AppShellPagerMath.index(of: navigation.selection)
-        pager.dragX = AppShellPagerMath.clamp(
+        let target: CGFloat = AppShellPagerMath.clamp(
             dragX: translation,
             index: index,
             count: AppShellTab.barTabs.count,
             width: pager.pageWidth)
+        if pager.tracksWithSpring && pager.isSettling() {
+            withAnimation(.interactiveSpring(response: 0.18, dampingFraction: 0.9)) {
+                pager.dragX = target
+            }
+        } else {
+            var transaction: Transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                pager.dragX = target
+            }
+        }
     }
 
     /// Settles on the nearest page. `dragX` returns to 0 while the selected index changes, so the
@@ -279,6 +327,8 @@ private struct AppShellTabSwipeModifier: ViewModifier {
             velocity: velocity,
             width: pager.pageWidth,
             count: tabs.count)
+        pager.noteSettle()
+        pager.tracksWithSpring = false
         OpenClawMotion.perform(reduceMotion: reduceMotion) {
             pager.dragX = 0
             pager.isDragging = false
@@ -290,6 +340,8 @@ private struct AppShellTabSwipeModifier: ViewModifier {
 
     @MainActor
     private static func cancel(_ pager: AppShellPagerState, reduceMotion: Bool) {
+        pager.noteSettle()
+        pager.tracksWithSpring = false
         OpenClawMotion.perform(reduceMotion: reduceMotion) {
             pager.dragX = 0
             pager.isDragging = false

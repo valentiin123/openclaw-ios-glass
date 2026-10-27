@@ -13,8 +13,6 @@ struct ChatMessageActionBar: View {
     let onReact: () -> Void
     let onReply: (() -> Void)?
 
-    @State private var showsSelectableText: Bool = false
-
     private enum Metrics {
         static let spacing: CGFloat = 4
     }
@@ -31,14 +29,6 @@ struct ChatMessageActionBar: View {
             }
             if !self.copyText.isEmpty {
                 ChatMessageCopyActionButton(text: self.copyText)
-                Button {
-                    self.showsSelectableText = true
-                } label: {
-                    Image(systemName: "text.cursor")
-                }
-                .buttonStyle(ChatMessageActionButtonStyle())
-                .accessibilityLabel(String(localized: "Select Text"))
-                .accessibilityIdentifier("chat-select-message-text")
             }
             if let onReply = self.onReply {
                 Button(action: onReply) {
@@ -52,9 +42,6 @@ struct ChatMessageActionBar: View {
         .font(OpenClawChatTypography.callout)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("chat-message-action-bar")
-        .sheet(isPresented: self.$showsSelectableText) {
-            ChatSelectableTextSheet(text: self.copyText)
-        }
     }
 }
 

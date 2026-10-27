@@ -15,6 +15,21 @@ final class AppShellPagerState {
     var pageWidth: CGFloat = 0
     /// True from the moment the pan is recognized until it ends or is cancelled.
     var isDragging: Bool = false
+
+    /// End of the last settle animation (swipe release or tap on the bar). A drag that starts
+    /// before this moment follows the finger through a spring, so the pages catch up with the
+    /// finger from where they currently are instead of jumping.
+    @ObservationIgnored var settleUntil: Date = Date.distantPast
+    /// True for the current drag when it started while a settle animation was still running.
+    @ObservationIgnored var tracksWithSpring: Bool = false
+
+    func noteSettle() {
+        self.settleUntil = Date().addingTimeInterval(0.6)
+    }
+
+    func isSettling() -> Bool {
+        Date() < self.settleUntil
+    }
 }
 
 // MARK: - Math
@@ -37,8 +52,14 @@ enum AppShellPagerMath {
         return min(max(dragX, lower), upper)
     }
 
-    /// Page the pager settles on when the finger lifts. Uses the translation plus a short
-    /// projection of the velocity, so a quick flick also changes page.
+    /// Velocity (points per second) above which a short drag still changes page.
+    static let flickVelocity: CGFloat = 450
+    /// Minimum travel (points) for a flick to count, so a tiny twitch never changes page.
+    static let flickMinimumTravel: CGFloat = 16
+
+    /// Page the pager settles on when the finger lifts. A quick flick in the direction of the
+    /// drag changes page; otherwise the translation plus a short projection of the velocity must
+    /// pass a third of the page width.
     static func settleTarget(
         index: Int,
         translation: CGFloat,
@@ -47,13 +68,21 @@ enum AppShellPagerMath {
         count: Int) -> Int
     {
         guard width > 0, count > 0 else { return index }
-        let projected: CGFloat = translation + velocity * 0.2
-        let threshold: CGFloat = width * 0.4
         var target: Int = index
-        if projected < -threshold {
-            target = index + 1
-        } else if projected > threshold {
-            target = index - 1
+        let sameDirection: Bool = (translation > 0) == (velocity > 0)
+        let isFlick: Bool = abs(velocity) > Self.flickVelocity
+            && abs(translation) > Self.flickMinimumTravel
+            && sameDirection
+        if isFlick {
+            target = translation < 0 ? index + 1 : index - 1
+        } else {
+            let projected: CGFloat = translation + velocity * 0.12
+            let threshold: CGFloat = width * 0.33
+            if projected < -threshold {
+                target = index + 1
+            } else if projected > threshold {
+                target = index - 1
+            }
         }
         return min(max(target, 0), count - 1)
     }
@@ -71,11 +100,16 @@ enum AppShellPagerMath {
 /// base offset plus the finger translation. The pages always exist, so the neighbour is already
 /// on screen while the finger drags. Only the selected page receives touches, and none do during
 /// a drag. The drag itself comes from `appShellTabSwipe` (a window-level pan recognizer).
+///
+/// The pager is meant to extend to the bottom edge of the screen (the floating tab bar is an
+/// overlay, not an inset). `bottomInset` is added to each page's bottom safe area, so scroll
+/// views keep their last row reachable above the bar while content scrolls underneath it.
 struct AppShellPagerView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Bindable var navigation: AppShellNavigation
     let pager: AppShellPagerState
     let context: AppShellContext
+    let bottomInset: CGFloat
 
     var body: some View {
         let index: Int = AppShellPagerMath.index(of: self.navigation.selection)
@@ -111,6 +145,7 @@ struct AppShellPagerView: View {
         let isCurrent: Bool = tab == self.navigation.selection.barTab
         let hidden: Bool = self.reduceMotion && !isCurrent
         self.pageContent(tab)
+            .safeAreaPadding(.bottom, self.bottomInset)
             .frame(width: width)
             .frame(maxHeight: .infinity)
             .opacity(hidden ? 0 : 1)
@@ -154,15 +189,78 @@ private struct AppShellPagerOffset: ViewModifier {
 
 // MARK: - Glass tab bar
 
-/// Custom Liquid Glass tab bar. One capsule indicator slides under the items and follows the
-/// pager position, so it moves with the finger during a swipe and animates on a tap.
+/// Position and stretch of the selection capsule, computed per frame from the fractional page
+/// position. Because `position` is animatable, the same effect runs for a finger drag (the value
+/// follows the finger) and for a tap (the spring interpolates the value), and the capsule
+/// stretches along its travel like the native Liquid Glass selection.
+private struct AppShellIndicatorEffect: GeometryEffect {
+    var position: CGFloat
+    let itemWidth: CGFloat
+    let inset: CGFloat
+    let count: Int
+
+    var animatableData: CGFloat {
+        get { self.position }
+        set { self.position = newValue }
+    }
+
+    func effectValue(size: CGSize) -> ProjectionTransform {
+        let upper: CGFloat = CGFloat(max(self.count - 1, 0))
+        let clamped: CGFloat = min(max(self.position, 0), upper)
+        let fraction: CGFloat = clamped - clamped.rounded(.down)
+        let travel: CGFloat = sin(fraction * CGFloat.pi)
+        let stretchX: CGFloat = 1 + 0.18 * travel
+        let squashY: CGFloat = 1 - 0.05 * travel
+        let x: CGFloat = self.inset + self.position * self.itemWidth
+        var transform: CGAffineTransform = CGAffineTransform(
+            translationX: x + size.width / 2,
+            y: size.height / 2)
+        transform = transform.scaledBy(x: stretchX, y: squashY)
+        transform = transform.translatedBy(x: -size.width / 2, y: -size.height / 2)
+        return ProjectionTransform(transform)
+    }
+}
+
+/// Button style that only reports the pressed state, so the selection capsule can swell while a
+/// finger is down (the native "lens" press feedback). It draws nothing itself.
+private struct AppShellTabButtonStyle: ButtonStyle {
+    let onPressChange: (Bool) -> Void
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .onChange(of: configuration.isPressed) { (_: Bool, newValue: Bool) in
+                self.onPressChange(newValue)
+            }
+    }
+}
+
+/// Floating Liquid Glass tab bar: a compact capsule, centered, three items of identical fixed
+/// width. It is drawn as an overlay (never an inset), so page content scrolls under it. One glass
+/// capsule slides under the items and follows the pager position: it moves with the finger during
+/// a swipe and springs (with a stretch) on a tap.
 struct AppShellGlassTabBar: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Bindable var navigation: AppShellNavigation
     let pager: AppShellPagerState
     let onSelect: (AppShellTab) -> Void
 
-    private static let barHeight: CGFloat = 60
-    private static let inset: CGFloat = 4
+    @State private var pressedIndex: Int? = nil
+
+    static let itemWidth: CGFloat = 84
+    static let itemHeight: CGFloat = 52
+    static let inset: CGFloat = 4
+    static let barHeight: CGFloat = AppShellGlassTabBar.itemHeight + AppShellGlassTabBar.inset * 2
+    /// Distance between the bottom safe area (home indicator) and the bar.
+    static let bottomGap: CGFloat = 8
+    /// Extra room kept between the last scrolled row and the bar.
+    static let contentClearance: CGFloat = 12
+    /// Bottom padding to add to page content so its last row stays reachable above the bar.
+    static let reservedHeight: CGFloat = AppShellGlassTabBar.barHeight
+        + AppShellGlassTabBar.bottomGap
+        + AppShellGlassTabBar.contentClearance
+
+    private static let indicatorSpring: Animation = .spring(response: 0.42, dampingFraction: 0.68)
+    private static let pressSpring: Animation = .spring(response: 0.26, dampingFraction: 0.62)
 
     var body: some View {
         let tabs: [AppShellTab] = AppShellTab.barTabs
@@ -171,54 +269,71 @@ struct AppShellGlassTabBar: View {
             index: index,
             dragX: self.pager.dragX,
             width: self.pager.pageWidth)
-        return GeometryReader { (proxy: GeometryProxy) in
-            self.bar(tabs: tabs, position: position, width: proxy.size.width)
+        let active: Int = min(max(Int(position.rounded()), 0), max(tabs.count - 1, 0))
+        let barWidth: CGFloat = CGFloat(tabs.count) * Self.itemWidth + Self.inset * 2
+        return ZStack(alignment: .leading) {
+            self.indicator(position: position, index: index, count: tabs.count)
+            HStack(spacing: 0) {
+                ForEach(Array(tabs.enumerated()), id: \.element) { (offset: Int, tab: AppShellTab) in
+                    self.item(tab, offset: offset, isActive: offset == active)
+                }
+            }
+            .padding(.horizontal, Self.inset)
         }
-        .frame(height: Self.barHeight)
-        .padding(.horizontal, OpenClawSpace.lg)
-        .padding(.bottom, OpenClawSpace.xs)
+        .frame(width: barWidth, height: Self.barHeight)
+        .openClawGlassCapsule(interactive: false)
         .allowsHitTesting(!self.pager.isDragging)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("AppShell.TabBar")
     }
 
-    private func bar(tabs: [AppShellTab], position: CGFloat, width: CGFloat) -> some View {
-        let count: CGFloat = CGFloat(max(tabs.count, 1))
-        let itemWidth: CGFloat = max((width - Self.inset * 2) / count, 1)
-        let indicatorHeight: CGFloat = Self.barHeight - Self.inset * 2
-        let active: Int = Int(position.rounded())
-        return ZStack(alignment: .leading) {
-            Capsule()
-                .fill(OpenClawBrand.accent.opacity(0.18))
-                .frame(width: itemWidth, height: indicatorHeight)
-                .offset(x: Self.inset + position * itemWidth)
-            HStack(spacing: 0) {
-                ForEach(Array(tabs.enumerated()), id: \.element) { (offset: Int, tab: AppShellTab) in
-                    self.item(tab, isActive: offset == active, width: itemWidth)
-                }
-            }
-            .padding(.horizontal, Self.inset)
-        }
-        .frame(width: width, height: Self.barHeight)
-        .openClawGlassCapsule(interactive: false)
+    private func indicator(position: CGFloat, index: Int, count: Int) -> some View {
+        let pressed: Bool = self.pressedIndex != nil && !self.reduceMotion
+        let spring: Animation? = self.reduceMotion ? nil : Self.indicatorSpring
+        let effect: AppShellIndicatorEffect = AppShellIndicatorEffect(
+            position: position,
+            itemWidth: Self.itemWidth,
+            inset: Self.inset,
+            count: count)
+        return Color.clear
+            .frame(width: Self.itemWidth, height: Self.itemHeight)
+            .openClawGlassCapsule(tint: OpenClawBrand.accent.opacity(0.30), interactive: false)
+            .scaleEffect(pressed ? 1.08 : 1)
+            .animation(Self.pressSpring, value: pressed)
+            .modifier(effect)
+            .animation(spring, value: index)
+            .allowsHitTesting(false)
     }
 
-    private func item(_ tab: AppShellTab, isActive: Bool, width: CGFloat) -> some View {
+    private func item(_ tab: AppShellTab, offset: Int, isActive: Bool) -> some View {
         let tint: Color = isActive ? OpenClawBrand.accent : OpenClawPalette.texteAtténué
         let traits: AccessibilityTraits = isActive ? .isSelected : []
+        let variant: SymbolVariants = isActive ? .fill : .none
         return Button(action: { self.onSelect(tab) }) {
             VStack(spacing: OpenClawSpace.xxs) {
                 Image(systemName: tab.systemImage)
+                    .symbolVariant(variant)
                     .font(OpenClawType.subheadSemiBold)
                 Text(tab.title)
                     .font(OpenClawType.captionSemiBold)
             }
             .foregroundStyle(tint)
-            .frame(width: width, height: Self.barHeight - Self.inset * 2)
+            .animation(.easeOut(duration: 0.18), value: isActive)
+            .frame(width: Self.itemWidth, height: Self.itemHeight)
             .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(AppShellTabButtonStyle(onPressChange: { (pressed: Bool) in
+            self.setPressed(pressed, offset: offset)
+        }))
         .accessibilityAddTraits(traits)
         .accessibilityIdentifier(tab.accessibilityIdentifier)
+    }
+
+    private func setPressed(_ pressed: Bool, offset: Int) {
+        if pressed {
+            self.pressedIndex = offset
+        } else if self.pressedIndex == offset {
+            self.pressedIndex = nil
+        }
     }
 }

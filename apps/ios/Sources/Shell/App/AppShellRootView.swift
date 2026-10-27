@@ -21,6 +21,8 @@ struct AppShellRootView: View {
     let context: AppShellContext
 
     @State private var pager: AppShellPagerState = AppShellPagerState()
+    /// Bottom safe area (home indicator), measured so pages can pad their content below the floating bar.
+    @State private var bottomSafeInset: CGFloat = 0
 
     /// The bar only knows three tabs; Automations maps to the Activity tab.
     private var selectionBinding: Binding<AppShellTab> {
@@ -65,12 +67,28 @@ struct AppShellRootView: View {
     // MARK: Compact: pager + glass bar
 
     private var pagedShell: some View {
-        AppShellPagerView(navigation: self.navigation, pager: self.pager, context: self.context)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
+        let bottomInset: CGFloat = self.bottomSafeInset + AppShellGlassTabBar.reservedHeight
+        return Color.clear
+            .onGeometryChange(
+                for: CGFloat.self,
+                of: { (proxy: GeometryProxy) -> CGFloat in proxy.safeAreaInsets.bottom },
+                action: { (newInset: CGFloat) in
+                    self.bottomSafeInset = newInset
+                })
+            .overlay {
+                AppShellPagerView(
+                    navigation: self.navigation,
+                    pager: self.pager,
+                    context: self.context,
+                    bottomInset: bottomInset)
+                    .ignoresSafeArea(.container, edges: .bottom)
+            }
+            .overlay(alignment: .bottom) {
                 AppShellGlassTabBar(
                     navigation: self.navigation,
                     pager: self.pager,
                     onSelect: self.selectFromBar)
+                    .padding(.bottom, AppShellGlassTabBar.bottomGap)
             }
             .background { OpenClawProBackground().ignoresSafeArea() }
             .appShellTabSwipe(navigation: self.navigation, pager: self.pager)
@@ -78,6 +96,7 @@ struct AppShellRootView: View {
 
     /// Tap on the bar: the indicator and the pages slide with the shared spring.
     private func selectFromBar(_ tab: AppShellTab) {
+        self.pager.noteSettle()
         OpenClawMotion.perform(reduceMotion: self.reduceMotion) {
             self.navigation.userSelected(tab)
         }
