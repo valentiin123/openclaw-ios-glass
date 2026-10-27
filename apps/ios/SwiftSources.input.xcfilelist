@@ -540,6 +540,7 @@ Sources/Settings/SettingsHubScreen.swift
 Sources/Settings/WatchMessageJournalView.swift
 Sources/Shell/App/AppShellModel.swift
 Sources/Shell/App/AppShellOverviewView.swift
+Sources/Shell/App/AppShellPager.swift
 Sources/Shell/App/AppShellRootView.swift
 Sources/Shell/App/AppShellSupport.swift
 Sources/Shell/App/AppShellTabSwipe.swift

@@ -3,24 +3,24 @@ import SwiftUI
 
 // MARK: - Root
 
-/// Root of the native shell: an iOS 26 `TabView` (Liquid Glass tab bar drawn by the system).
+/// Root of the native shell.
 ///
-/// - Three tabs only, left to right: Agents, Home, Activity. Home hosts only the Overview and
-///   is selected at launch (`AppShellTab.launchTab`). Activity hosts Activity and Automations
-///   behind a segmented control.
-/// - There is no Settings tab: the Settings hub opens full screen from the gear button of Home.
-///   There is no Chat tab either: the system chat (main session) opens full screen from the
-///   Home "More" menu ("Talk to OpenClaw").
-/// - Chat and Settings share one full-screen cover (`AppShellNavigation.coverKind`), so
-///   switching from one to the other swaps the content instead of presenting twice.
-/// - The tab bar is never hidden or inset by hand: every hosted screen lets the system apply
-///   the bottom safe area. The full-screen cover hides the tab bar, so the chat composer never
-///   overlaps it and stays above the keyboard.
+/// - Compact width (iPhone): a custom pager (`AppShellPagerView`) keeps the three tab pages alive
+///   side by side, and a Liquid Glass bar (`AppShellGlassTabBar`) follows the drag. A horizontal
+///   swipe anywhere on a tab root moves the pages with the finger (`appShellTabSwipe`).
+/// - Regular width (iPad): the system `TabView` with the sidebar-adaptable style, no swipe.
+/// - Three tabs only, left to right: Agents, Home, Activity. Home is selected at launch
+///   (`AppShellTab.launchTab`). Activity hosts Activity and Automations behind a segmented control.
+/// - There is no Settings tab (gear button of Home) and no Chat tab ("Talk to OpenClaw" in the
+///   Home "More" menu). Chat and Settings share one full-screen cover (`coverKind`).
 /// - Glass stays on navigation and controls; hosted screens keep their opaque grouped backgrounds.
 struct AppShellRootView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Bindable var navigation: AppShellNavigation
     let context: AppShellContext
+
+    @State private var pager: AppShellPagerState = AppShellPagerState()
 
     /// The bar only knows three tabs; Automations maps to the Activity tab.
     private var selectionBinding: Binding<AppShellTab> {
@@ -40,7 +40,52 @@ struct AppShellRootView: View {
             })
     }
 
+    private var usesPager: Bool {
+        self.horizontalSizeClass != .regular
+    }
+
     var body: some View {
+        self.shell
+            .sensoryFeedback(.selection, trigger: self.navigation.selection.barTab)
+            .fullScreenCover(isPresented: self.coverBinding) {
+                self.animatedCover
+            }
+            .accessibilityIdentifier("AppShell.Root")
+    }
+
+    @ViewBuilder
+    private var shell: some View {
+        if self.usesPager {
+            self.pagedShell
+        } else {
+            self.systemTabs
+        }
+    }
+
+    // MARK: Compact: pager + glass bar
+
+    private var pagedShell: some View {
+        AppShellPagerView(navigation: self.navigation, pager: self.pager, context: self.context)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                AppShellGlassTabBar(
+                    navigation: self.navigation,
+                    pager: self.pager,
+                    onSelect: self.selectFromBar)
+            }
+            .background { OpenClawProBackground().ignoresSafeArea() }
+            .appShellTabSwipe(navigation: self.navigation, pager: self.pager)
+    }
+
+    /// Tap on the bar: the indicator and the pages slide with the shared spring.
+    private func selectFromBar(_ tab: AppShellTab) {
+        OpenClawMotion.perform(reduceMotion: self.reduceMotion) {
+            self.navigation.userSelected(tab)
+        }
+    }
+
+    // MARK: Regular: system TabView
+
+    private var systemTabs: some View {
         TabView(selection: self.selectionBinding) {
             Tab(
                 AppShellTab.agents.title,
@@ -67,13 +112,9 @@ struct AppShellRootView: View {
             }
         }
         .tabViewStyle(.sidebarAdaptable)
-        .sensoryFeedback(.selection, trigger: self.navigation.selection.barTab)
-        .appShellTabSwipe(navigation: self.navigation)
-        .fullScreenCover(isPresented: self.coverBinding) {
-            self.animatedCover
-        }
-        .accessibilityIdentifier("AppShell.Root")
     }
+
+    // MARK: Cover
 
     /// Switching between Chat and Settings cross-fades (with a light scale) instead of cutting.
     private var animatedCover: some View {

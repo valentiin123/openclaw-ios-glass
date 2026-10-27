@@ -1,103 +1,31 @@
 import OpenClawKit
 import SwiftUI
 import UIKit
-import UIKit.UIGestureRecognizerSubclass
-
-// MARK: - Direction
-
-/// Direction of a horizontal tab swipe, in tab-bar order (Agents, Home, Activity).
-/// A finger moving left reveals the next tab on the right (`forward`).
-enum AppShellTabSwipeDirection {
-    case forward
-    case backward
-}
-
-// MARK: - Recognizer
-
-/// Discrete horizontal swipe recognizer. It stays in `.possible` until the finger has travelled
-/// `minDistance` points with a clear horizontal dominance (`|dx| > dominance * |dy|`), then
-/// begins once. It fails as soon as the movement is vertical, so vertical scrolling is never
-/// delayed. `cancelsTouchesInView` only matters after it began: views under the finger receive
-/// `touchesCancelled`, so no button fires and no text gets selected by the swipe.
-final class AppShellTabSwipeRecognizer: UIGestureRecognizer {
-    static let minDistance: CGFloat = 24
-    static let dominance: CGFloat = 1.5
-
-    private(set) var direction: AppShellTabSwipeDirection?
-    private var startPoint: CGPoint = .zero
-
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
-        super.touchesBegan(touches, with: event)
-        self.direction = nil
-        guard self.numberOfTouches == 1, let touch = touches.first else {
-            self.state = .failed
-            return
-        }
-        self.startPoint = touch.location(in: self.view)
-    }
-
-    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
-        super.touchesMoved(touches, with: event)
-        if self.state == .began || self.state == .changed {
-            self.state = .changed
-            return
-        }
-        guard self.state == .possible else { return }
-        guard self.numberOfTouches == 1, let touch = touches.first else {
-            self.state = .failed
-            return
-        }
-        let point: CGPoint = touch.location(in: self.view)
-        let dx: CGFloat = point.x - self.startPoint.x
-        let dy: CGFloat = point.y - self.startPoint.y
-        let absX: CGFloat = abs(dx)
-        let absY: CGFloat = abs(dy)
-        if absX >= Self.minDistance, absX > Self.dominance * absY {
-            self.direction = dx < 0 ? .forward : .backward
-            self.state = .began
-        } else if absY >= Self.minDistance || absX > Self.minDistance * 3 {
-            self.state = .failed
-        }
-    }
-
-    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
-        super.touchesEnded(touches, with: event)
-        if self.state == .began || self.state == .changed {
-            self.state = .ended
-        } else {
-            self.state = .failed
-        }
-    }
-
-    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
-        super.touchesCancelled(touches, with: event)
-        if self.state == .began || self.state == .changed {
-            self.state = .cancelled
-        } else {
-            self.state = .failed
-        }
-    }
-
-    override func reset() {
-        super.reset()
-        self.direction = nil
-        self.startPoint = .zero
-    }
-}
 
 // MARK: - Installer
 
-/// Invisible anchor that installs one `AppShellTabSwipeRecognizer` on the window, so a swipe is
-/// recognized anywhere on the page. Whether a touch may start a swipe is decided per touch in
-/// `gestureRecognizer(_:shouldReceive:)`, so covers, sheets, pushed pages and the tab bar never
-/// see the gesture.
+/// Invisible anchor that installs one `UIPanGestureRecognizer` on the window, so a horizontal
+/// drag is recognized anywhere on a tab page. The recognizer reports the live translation to the
+/// pager (`AppShellPagerState.dragX`), so the pages follow the finger.
+///
+/// - It fails as soon as the first movement is not clearly horizontal (`gestureRecognizerShouldBegin`),
+///   so vertical scrolling is never delayed.
+/// - `cancelsTouchesInView` cancels the touches under the finger once it begins: no button fires,
+///   no text gets selected.
+/// - It never runs alongside another recognizer. A horizontal scroll view that already owns the
+///   touch is detected when the touch starts and the swipe is not offered at all.
+/// - Whether a touch may start a swipe is decided per touch in `gestureRecognizer(_:shouldReceive:)`,
+///   so covers, sheets, pushed pages and the left screen edge (back gesture) never see it.
 struct AppShellTabSwipeInstaller: UIViewRepresentable {
     /// Shell-level gate (no cover, no sheet, Home stack at its root).
     let canSwipe: @MainActor () -> Bool
-    let onSwipe: @MainActor (AppShellTabSwipeDirection) -> Void
+    let onBegan: @MainActor () -> Void
+    let onChanged: @MainActor (CGFloat) -> Void
+    let onEnded: @MainActor (CGFloat, CGFloat) -> Void
+    let onCancelled: @MainActor () -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(canSwipe: self.canSwipe, onSwipe: self.onSwipe)
+        Coordinator(installer: self)
     }
 
     func makeUIView(context: Context) -> AnchorView {
@@ -108,8 +36,7 @@ struct AppShellTabSwipeInstaller: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: AnchorView, context: Context) {
-        context.coordinator.canSwipe = self.canSwipe
-        context.coordinator.onSwipe = self.onSwipe
+        context.coordinator.update(with: self)
     }
 
     static func dismantleUIView(_ uiView: AnchorView, coordinator: Coordinator) {
@@ -133,24 +60,27 @@ struct AppShellTabSwipeInstaller: UIViewRepresentable {
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         /// Touches starting closer than this to the left edge belong to the back gesture.
         private static let edgeInset: CGFloat = 24
+        /// The first movement must be this many times wider than tall.
+        private static let dominance: CGFloat = 1.5
 
-        var canSwipe: @MainActor () -> Bool
-        var onSwipe: @MainActor (AppShellTabSwipeDirection) -> Void
-        private let recognizer: AppShellTabSwipeRecognizer = AppShellTabSwipeRecognizer()
+        private var installer: AppShellTabSwipeInstaller
+        private let recognizer: UIPanGestureRecognizer = UIPanGestureRecognizer()
         private weak var window: UIWindow?
+        private var touchStartedInHorizontalScroller: Bool = false
 
-        init(
-            canSwipe: @escaping @MainActor () -> Bool,
-            onSwipe: @escaping @MainActor (AppShellTabSwipeDirection) -> Void)
-        {
-            self.canSwipe = canSwipe
-            self.onSwipe = onSwipe
+        init(installer: AppShellTabSwipeInstaller) {
+            self.installer = installer
             super.init()
+            self.recognizer.maximumNumberOfTouches = 1
             self.recognizer.cancelsTouchesInView = true
             self.recognizer.delaysTouchesBegan = false
             self.recognizer.delaysTouchesEnded = false
             self.recognizer.delegate = self
             self.recognizer.addTarget(self, action: #selector(self.handle(_:)))
+        }
+
+        func update(with newInstaller: AppShellTabSwipeInstaller) {
+            self.installer = newInstaller
         }
 
         func attach(to newWindow: UIWindow) {
@@ -166,11 +96,22 @@ struct AppShellTabSwipeInstaller: UIViewRepresentable {
         }
 
         @objc private func handle(_ gesture: UIGestureRecognizer) {
-            guard gesture.state == .began,
-                  let swipe = gesture as? AppShellTabSwipeRecognizer,
-                  let direction = swipe.direction
-            else { return }
-            self.onSwipe(direction)
+            guard let pan = gesture as? UIPanGestureRecognizer else { return }
+            let translation: CGPoint = pan.translation(in: pan.view)
+            let velocity: CGPoint = pan.velocity(in: pan.view)
+            switch pan.state {
+            case .began:
+                self.installer.onBegan()
+                self.installer.onChanged(translation.x)
+            case .changed:
+                self.installer.onChanged(translation.x)
+            case .ended:
+                self.installer.onEnded(translation.x, velocity.x)
+            case .cancelled, .failed:
+                self.installer.onCancelled()
+            default:
+                break
+            }
         }
 
         // MARK: UIGestureRecognizerDelegate
@@ -179,13 +120,26 @@ struct AppShellTabSwipeInstaller: UIViewRepresentable {
             guard let window = self.window else { return false }
             let location: CGPoint = touch.location(in: window)
             if location.x < Self.edgeInset { return false }
-            if !self.canSwipe() { return false }
+            if !self.installer.canSwipe() { return false }
             if Self.hasPresentation(window.rootViewController) { return false }
-            return Self.isRootTabContent(touch.view)
+            if !Self.isRootTabContent(touch.view) { return false }
+            self.touchStartedInHorizontalScroller = Self.isInsideHorizontalScroller(touch.view)
+            return true
         }
 
-        /// Whoever begins first wins: a horizontal scroller, a row swipe action or a slider that
-        /// already recognized keeps its gesture, and we never run alongside them.
+        /// Fails immediately when the first recognized movement is vertical or diagonal, or when
+        /// the touch started in a horizontal scroller.
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return false }
+            if self.touchStartedInHorizontalScroller { return false }
+            let translation: CGPoint = pan.translation(in: pan.view)
+            let absX: CGFloat = abs(translation.x)
+            let absY: CGFloat = abs(translation.y)
+            return absX > Self.dominance * absY
+        }
+
+        /// Whoever begins first wins: a row swipe action or a slider that already recognized
+        /// keeps its gesture, and we never run alongside them.
         func gestureRecognizer(
             _ gestureRecognizer: UIGestureRecognizer,
             shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool
@@ -205,15 +159,12 @@ struct AppShellTabSwipeInstaller: UIViewRepresentable {
             return false
         }
 
-        /// True when the touch is on the root of a tab: not on the tab bar, not on a control that
-        /// owns horizontal drags, no pushed page in any navigation controller above the touch,
-        /// and the tab bar is visible.
+        /// True when the touch is not on a control that owns horizontal drags and no pushed page
+        /// exists in any navigation controller above the touch.
         private static func isRootTabContent(_ view: UIView?) -> Bool {
             var current: UIView? = view
             while let candidate = current {
-                if candidate is UITabBar || candidate is UISlider || candidate is UISwitch
-                    || candidate is UISegmentedControl
-                {
+                if candidate is UISlider || candidate is UISwitch || candidate is UISegmentedControl {
                     return false
                 }
                 current = candidate.superview
@@ -223,12 +174,22 @@ struct AppShellTabSwipeInstaller: UIViewRepresentable {
                 if let navigation = candidate as? UINavigationController, navigation.viewControllers.count > 1 {
                     return false
                 }
-                if let tabs = candidate as? UITabBarController, tabs.tabBar.isHidden {
-                    return false
-                }
                 responder = candidate.next
             }
             return true
+        }
+
+        /// True when an ancestor scroll view can scroll horizontally (carousels, paged content).
+        private static func isInsideHorizontalScroller(_ view: UIView?) -> Bool {
+            var current: UIView? = view
+            while let candidate = current {
+                if let scroll = candidate as? UIScrollView, scroll.isScrollEnabled {
+                    let scrollsHorizontally: Bool = scroll.contentSize.width > scroll.bounds.width + 1
+                    if scrollsHorizontally { return true }
+                }
+                current = candidate.superview
+            }
+            return false
         }
     }
 }
@@ -238,16 +199,28 @@ struct AppShellTabSwipeInstaller: UIViewRepresentable {
 private struct AppShellTabSwipeModifier: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let navigation: AppShellNavigation
+    let pager: AppShellPagerState
 
     func body(content: Content) -> some View {
         let navigation: AppShellNavigation = self.navigation
+        let pager: AppShellPagerState = self.pager
         let reduceMotion: Bool = self.reduceMotion
         return content.background(
             AppShellTabSwipeInstaller(
                 canSwipe: { Self.canSwipe(navigation) },
-                onSwipe: { (direction: AppShellTabSwipeDirection) in
-                    Self.switchTab(navigation, direction: direction, reduceMotion: reduceMotion)
-                }))
+                onBegan: { Self.begin(pager) },
+                onChanged: { (translation: CGFloat) in
+                    Self.change(navigation, pager: pager, translation: translation, reduceMotion: reduceMotion)
+                },
+                onEnded: { (translation: CGFloat, velocity: CGFloat) in
+                    Self.finish(
+                        navigation,
+                        pager: pager,
+                        translation: translation,
+                        velocity: velocity,
+                        reduceMotion: reduceMotion)
+                },
+                onCancelled: { Self.cancel(pager, reduceMotion: reduceMotion) }))
     }
 
     /// Shell state: no chat or Settings cover, no Home sheet, Home stack at its root.
@@ -259,30 +232,74 @@ private struct AppShellTabSwipeModifier: ViewModifier {
         return navigation.homePath.isEmpty
     }
 
-    /// Moves one bar tab left or right. Does nothing at either end. Uses `userSelected`, which
-    /// restores the Activity section; the section itself is never changed by a swipe. The root
-    /// `.sensoryFeedback(.selection, trigger: selection.barTab)` supplies the haptic.
     @MainActor
-    private static func switchTab(
+    private static func begin(_ pager: AppShellPagerState) {
+        pager.isDragging = true
+    }
+
+    /// Moves the pages with the finger, clamped so nothing moves past the first or last tab.
+    /// Under Reduce Motion the pages stay still during the drag and only switch on release.
+    @MainActor
+    private static func change(
         _ navigation: AppShellNavigation,
-        direction: AppShellTabSwipeDirection,
+        pager: AppShellPagerState,
+        translation: CGFloat,
+        reduceMotion: Bool)
+    {
+        if reduceMotion { return }
+        let index: Int = AppShellPagerMath.index(of: navigation.selection)
+        pager.dragX = AppShellPagerMath.clamp(
+            dragX: translation,
+            index: index,
+            count: AppShellTab.barTabs.count,
+            width: pager.pageWidth)
+    }
+
+    /// Settles on the nearest page. `dragX` returns to 0 while the selected index changes, so the
+    /// strip offset stays continuous and the spring carries the pages (and the bar indicator)
+    /// to their final place.
+    @MainActor
+    private static func finish(
+        _ navigation: AppShellNavigation,
+        pager: AppShellPagerState,
+        translation: CGFloat,
+        velocity: CGFloat,
         reduceMotion: Bool)
     {
         let tabs: [AppShellTab] = AppShellTab.barTabs
-        guard let index = tabs.firstIndex(of: navigation.selection.barTab) else { return }
-        let step: Int = direction == .forward ? 1 : -1
-        let target: Int = index + step
-        guard tabs.indices.contains(target) else { return }
-        let destination: AppShellTab = tabs[target]
+        let index: Int = AppShellPagerMath.index(of: navigation.selection)
+        let clamped: CGFloat = AppShellPagerMath.clamp(
+            dragX: translation,
+            index: index,
+            count: tabs.count,
+            width: pager.pageWidth)
+        let target: Int = AppShellPagerMath.settleTarget(
+            index: index,
+            translation: clamped,
+            velocity: velocity,
+            width: pager.pageWidth,
+            count: tabs.count)
         OpenClawMotion.perform(reduceMotion: reduceMotion) {
-            navigation.userSelected(destination)
+            pager.dragX = 0
+            pager.isDragging = false
+            if target != index, tabs.indices.contains(target) {
+                navigation.userSelected(tabs[target])
+            }
+        }
+    }
+
+    @MainActor
+    private static func cancel(_ pager: AppShellPagerState, reduceMotion: Bool) {
+        OpenClawMotion.perform(reduceMotion: reduceMotion) {
+            pager.dragX = 0
+            pager.isDragging = false
         }
     }
 }
 
 extension View {
-    /// Horizontal swipe anywhere on the shell switches the bar tab (Agents, Home, Activity).
-    func appShellTabSwipe(navigation: AppShellNavigation) -> some View {
-        self.modifier(AppShellTabSwipeModifier(navigation: navigation))
+    /// Horizontal drag anywhere on the shell moves the pager (Agents, Home, Activity).
+    func appShellTabSwipe(navigation: AppShellNavigation, pager: AppShellPagerState) -> some View {
+        self.modifier(AppShellTabSwipeModifier(navigation: navigation, pager: pager))
     }
 }

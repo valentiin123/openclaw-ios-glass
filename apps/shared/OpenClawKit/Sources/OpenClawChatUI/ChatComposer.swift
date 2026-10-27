@@ -748,6 +748,10 @@ struct OpenClawChatComposer: View {
                     #endif
             } else {
                 self.editor
+                    #if os(iOS)
+                    // With a reply preview above, the draft's own top inset would leave a gap under it.
+                    .padding(.top, self.viewModel.replyTarget != nil ? -(self.draftTopInset - 6) : 0)
+                    #endif
             }
         }
         #if os(iOS)
