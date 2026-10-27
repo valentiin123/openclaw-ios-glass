@@ -105,9 +105,6 @@ struct AgentTileView: View {
     /// Context menu "Pin" / "Unpin" (keeps a subagent on the board after the 30 minute window). Hidden when nil.
     var onTogglePin: ((AgentTileItem) -> Void)?
     var isPinned: Bool = false
-    /// Context menu "Pin" / "Unpin" (keeps a subagent on the board after the retention). Hidden when nil.
-    var onTogglePin: ((AgentTileItem) -> Void)?
-    var isPinned: Bool = false
     /// Receives this tile's global frame (zoom origin of the chat). Nil -> not measured.
     var frameStore: AgentTileFrameStore?
     /// Position in the grid, used for the staggered entrance. Defaults to 0 (no extra delay).
@@ -262,12 +259,6 @@ struct AgentTileView: View {
                 systemImage: self.isPinned ? "pin.slash" : "pin",
                 action: self.requestTogglePin)
         }
-        if self.onTogglePin != nil {
-            Button(
-                self.isPinned ? "Unpin" : "Pin",
-                systemImage: self.isPinned ? "pin.slash" : "pin",
-                action: self.requestTogglePin)
-        }
         if self.onRename != nil {
             Button("Rename", systemImage: "pencil", action: self.requestRename)
         }
@@ -305,10 +296,6 @@ struct AgentTileView: View {
 
     private func requestStop() {
         self.onStop(self.item)
-    }
-
-    private func requestTogglePin() {
-        self.onTogglePin?(self.item)
     }
 
     private func requestTogglePin() {
