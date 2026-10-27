@@ -559,8 +559,6 @@ struct NativeActivityScreen: View {
         .openClawEntrance(index: index)
         .activityPlainRow()
         .contextMenu { self.menu(for: event) }
-        .swipeActions(edge: .leading, allowsFullSwipe: true) { self.copyAction(for: event) }
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) { self.sessionAction(for: event) }
         .onAppear { self.loadMoreIfLast(event, lastID: lastID) }
     }
 
@@ -605,29 +603,6 @@ struct NativeActivityScreen: View {
         }
     }
 
-    @ViewBuilder
-    private func copyAction(for event: NativeActivityEvent) -> some View {
-        if let runId = event.runId {
-            Button {
-                self.copy(runId)
-            } label: {
-                Label("Copy run ID", systemImage: "doc.on.doc")
-            }
-            .tint(OpenClawBrand.info)
-        }
-    }
-
-    @ViewBuilder
-    private func sessionAction(for event: NativeActivityEvent) -> some View {
-        if let sessionKey = event.sessionKey {
-            Button {
-                self.copy(sessionKey)
-            } label: {
-                Label("Copy session key", systemImage: "key")
-            }
-            .tint(OpenClawPalette.accentSecondaire)
-        }
-    }
 }
 
 // MARK: - Row

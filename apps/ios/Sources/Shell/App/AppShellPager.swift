@@ -244,13 +244,15 @@ struct AppShellGlassTabBar: View {
     let onSelect: (AppShellTab) -> Void
 
     @State private var pressedIndex: Int? = nil
+    /// Finger x (bar coordinates) while the selection capsule is being dragged, nil otherwise.
+    @State private var barDragX: CGFloat? = nil
 
     static let itemWidth: CGFloat = 84
     static let itemHeight: CGFloat = 52
     static let inset: CGFloat = 4
     static let barHeight: CGFloat = AppShellGlassTabBar.itemHeight + AppShellGlassTabBar.inset * 2
     /// Distance between the bottom safe area (home indicator) and the bar.
-    static let bottomGap: CGFloat = 8
+    static let bottomGap: CGFloat = 0
     /// Extra room kept between the last scrolled row and the bar.
     static let contentClearance: CGFloat = 12
     /// Bottom padding to add to page content so its last row stays reachable above the bar.
@@ -260,14 +262,26 @@ struct AppShellGlassTabBar: View {
 
     private static let indicatorSpring: Animation = .spring(response: 0.42, dampingFraction: 0.68)
     private static let pressSpring: Animation = .spring(response: 0.26, dampingFraction: 0.62)
+    /// Horizontal travel (points) before a touch on the bar counts as a drag rather than a tap.
+    private static let dragActivation: CGFloat = 6
+
+    /// Fractional tab position (0 = first tab) under a finger at `x` in bar coordinates.
+    private static func position(forBarX x: CGFloat, count: Int) -> CGFloat {
+        let upper: CGFloat = CGFloat(max(count - 1, 0))
+        let raw: CGFloat = (x - Self.inset - Self.itemWidth / 2) / Self.itemWidth
+        return min(max(raw, 0), upper)
+    }
 
     var body: some View {
         let tabs: [AppShellTab] = AppShellTab.barTabs
         let index: Int = AppShellPagerMath.index(of: self.navigation.selection)
-        let position: CGFloat = AppShellPagerMath.position(
+        var position: CGFloat = AppShellPagerMath.position(
             index: index,
             dragX: self.pager.dragX,
             width: self.pager.pageWidth)
+        if let fingerX: CGFloat = self.barDragX {
+            position = Self.position(forBarX: fingerX, count: tabs.count)
+        }
         let active: Int = min(max(Int(position.rounded()), 0), max(tabs.count - 1, 0))
         let barWidth: CGFloat = CGFloat(tabs.count) * Self.itemWidth + Self.inset * 2
         return ZStack(alignment: .leading) {
@@ -280,6 +294,7 @@ struct AppShellGlassTabBar: View {
             .padding(.horizontal, Self.inset)
         }
         .frame(width: barWidth, height: Self.barHeight)
+        .simultaneousGesture(self.barDragGesture(count: tabs.count))
         .openClawGlassCapsule(interactive: false)
         .allowsHitTesting(!self.pager.isDragging)
         .accessibilityElement(children: .contain)
@@ -287,7 +302,7 @@ struct AppShellGlassTabBar: View {
     }
 
     private func indicator(position: CGFloat, index: Int, count: Int) -> some View {
-        let pressed: Bool = self.pressedIndex != nil && !self.reduceMotion
+        let pressed: Bool = (self.pressedIndex != nil || self.barDragX != nil) && !self.reduceMotion
         let spring: Animation? = self.reduceMotion ? nil : Self.indicatorSpring
         let effect: AppShellIndicatorEffect = AppShellIndicatorEffect(
             position: position,
@@ -297,7 +312,7 @@ struct AppShellGlassTabBar: View {
         return Color.clear
             .frame(width: Self.itemWidth, height: Self.itemHeight)
             .openClawGlassCapsule(tint: OpenClawBrand.accent.opacity(0.30), interactive: false)
-            .scaleEffect(pressed ? 1.08 : 1)
+            .scaleEffect(pressed ? 1.12 : 1)
             .animation(Self.pressSpring, value: pressed)
             .modifier(effect)
             .animation(spring, value: index)
@@ -326,6 +341,33 @@ struct AppShellGlassTabBar: View {
         }))
         .accessibilityAddTraits(traits)
         .accessibilityIdentifier(tab.accessibilityIdentifier)
+    }
+
+    /// Drag on the bar: past a small slop the capsule follows the finger; on release it springs
+    /// to the nearest tab and selects it. A plain tap is left to the buttons.
+    private func barDragGesture(count: Int) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { (value: DragGesture.Value) in
+                if self.barDragX != nil || abs(value.translation.width) > Self.dragActivation {
+                    self.barDragX = value.location.x
+                }
+            }
+            .onEnded { (value: DragGesture.Value) in
+                guard self.barDragX != nil else { return }
+                let tabs: [AppShellTab] = AppShellTab.barTabs
+                let target: CGFloat = Self.position(forBarX: value.location.x, count: tabs.count)
+                let nearest: Int = min(max(Int(target.rounded()), 0), max(tabs.count - 1, 0))
+                if self.reduceMotion {
+                    self.barDragX = nil
+                } else {
+                    withAnimation(Self.indicatorSpring) {
+                        self.barDragX = nil
+                    }
+                }
+                if tabs.indices.contains(nearest) {
+                    self.onSelect(tabs[nearest])
+                }
+            }
     }
 
     private func setPressed(_ pressed: Bool, offset: Int) {

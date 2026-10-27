@@ -8,14 +8,14 @@ import UIKit.UIGestureRecognizerSubclass
 /// Pan recognizer that makes its decision early and exclusively.
 ///
 /// While the recognizer is still `.possible`, the first few points of movement decide:
-/// - clearly horizontal (angle to the horizontal below ~25°): the pan goes on and begins normally;
+/// - clearly horizontal (angle to the horizontal below ~40°): the pan goes on and begins normally;
 /// - anything else (vertical, diagonal): the recognizer fails at once. Failing cancels nothing,
 ///   so the scroll view, the list or the slider under the finger keeps the touch untouched.
 final class AppShellHorizontalPanRecognizer: UIPanGestureRecognizer {
-    /// tan(25°): a movement is horizontal only when |dy| <= tangent * |dx|.
-    static let maxTangent: CGFloat = 0.4663
+    /// tan(40°): a movement is horizontal only when |dy| <= tangent * |dx|.
+    static let maxTangent: CGFloat = 0.84
     /// Distance (points, in window coordinates) after which the direction is judged.
-    static let decisionDistance: CGFloat = 6
+    static let decisionDistance: CGFloat = 10
 
     private var origin: CGPoint = CGPoint.zero
     private var decided: Bool = false
@@ -113,7 +113,7 @@ struct AppShellTabSwipeInstaller: UIViewRepresentable {
         private static let edgeInset: CGFloat = 24
         /// Velocity direction tolerance (|vy| <= k * |vx|). A bit looser than the translation
         /// angle because the first velocity sample is noisy.
-        private static let velocityTangent: CGFloat = 0.6
+        private static let velocityTangent: CGFloat = 1.0
         /// Distance over which the translation consumed by the recognizer's slop is given back to
         /// the finger, so the pages do not jump when the pan begins.
         private static let catchUpDistance: CGFloat = 48

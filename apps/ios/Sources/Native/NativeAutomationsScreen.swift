@@ -668,8 +668,6 @@ struct NativeAutomationsScreen: View {
         .buttonStyle(ActivityRowButtonStyle())
         .openClawEntrance(index: index)
         .activityPlainRow()
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) { self.trailingActions(job) }
-        .swipeActions(edge: .leading, allowsFullSwipe: true) { self.leadingAction(job) }
         .contextMenu { self.menu(job) }
         .accessibilityAction(named: Text("Run now")) { self.runNow(job) }
     }
@@ -678,18 +676,6 @@ struct NativeAutomationsScreen: View {
 
     private func copy(_ value: String) {
         GlassClipboard.copy(value, toast: self.toast)
-    }
-
-    @ViewBuilder
-    private func leadingAction(_ job: NativeCronJob) -> some View {
-        if self.model.canRun, !self.model.busyIds.contains(job.id) {
-            Button {
-                self.runNow(job)
-            } label: {
-                Label("Run now", systemImage: "play.fill")
-            }
-            .tint(OpenClawBrand.ok)
-        }
     }
 
     @ViewBuilder
@@ -702,21 +688,6 @@ struct NativeAutomationsScreen: View {
             } else {
                 Label("Resume", systemImage: "play.circle")
             }
-        }
-    }
-
-    @ViewBuilder
-    private func trailingActions(_ job: NativeCronJob) -> some View {
-        if self.model.canDelete {
-            Button(role: .destructive) {
-                self.pendingDelete = job
-            } label: {
-                Label("Delete", systemImage: "trash")
-            }
-        }
-        if self.model.canToggle {
-            self.toggleButton(job)
-                .tint(OpenClawBrand.warn)
         }
     }
 
