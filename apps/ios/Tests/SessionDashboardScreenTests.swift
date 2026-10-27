@@ -138,6 +138,56 @@ struct SessionDashboardScreenTests {
         #expect(url?.absoluteString == "https://gateway.example.com/openclaw/focus/dashboard/work")
     }
 
+    @Test func `auth script only injects credentials under the gateway path prefix`() throws {
+        let nodeOptions = GatewayConnectOptions(
+            role: "node",
+            scopes: [],
+            caps: [],
+            commands: [],
+            permissions: [:],
+            clientId: "ios",
+            clientMode: "node",
+            clientDisplayName: "Phone")
+        let prefixed = try GatewayConnectConfig(
+            url: #require(URL(string: "wss://gateway.example.com/openclaw")),
+            stableID: "manual|gateway.example.com|443",
+            tls: nil,
+            token: "secret-token",
+            bootstrapToken: nil,
+            password: nil,
+            nodeOptions: nodeOptions)
+        let prefixedURL = try #require(SessionDashboardScreen.dashboardURL(
+            config: prefixed,
+            sessionKey: "global",
+            agentId: "work"))
+        let prefixedScript = AuthenticatedControlUI.authUserScript(
+            config: prefixed,
+            pageURL: prefixedURL,
+            storedOperatorToken: nil)
+        // JSONSerialization escapes slashes, so the literal appears as "\/openclaw".
+        #expect(prefixedScript?.contains("const allowedBasePath = \"\\/openclaw\";") == true)
+        #expect(prefixedScript?.contains("location.pathname.startsWith(allowedBasePath + \"/\")") == true)
+
+        let root = try GatewayConnectConfig(
+            url: #require(URL(string: "wss://gateway.example.com")),
+            stableID: "manual|gateway.example.com|443",
+            tls: nil,
+            token: "secret-token",
+            bootstrapToken: nil,
+            password: nil,
+            nodeOptions: nodeOptions)
+        let rootURL = try #require(SessionDashboardScreen.dashboardURL(
+            config: root,
+            sessionKey: "global",
+            agentId: "work"))
+        let rootScript = AuthenticatedControlUI.authUserScript(
+            config: root,
+            pageURL: rootURL,
+            storedOperatorToken: nil)
+        // A gateway served at the origin root owns the whole origin: no path restriction.
+        #expect(rootScript?.contains("const allowedBasePath = \"\";") == true)
+    }
+
     @Test func `dashboard URL rejects an unscoped session key without a roster agent`() throws {
         let config = try GatewayConnectConfig(
             url: #require(URL(string: "wss://gateway.example.com")),
