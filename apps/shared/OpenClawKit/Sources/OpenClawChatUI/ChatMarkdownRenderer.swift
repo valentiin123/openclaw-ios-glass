@@ -623,9 +623,15 @@ struct ChatMarkdownProse {
                     substitutedMarkdown += Self.markdownEscapedLiteral(source)
                     continue
                 }
-                let marker = Self.nextMarker(
+                guard let marker = Self.nextMarker(
                     startingAt: &markerValue,
                     occupiedValues: &occupiedMarkerValues)
+                else {
+                    // Marker range exhausted by a pathological message: render the math as
+                    // literal text instead of crashing the app (and the history reload).
+                    substitutedMarkdown += Self.markdownEscapedLiteral(source)
+                    continue
+                }
                 substitutedMarkdown.append(marker)
                 replacements.append(InlineReplacement(
                     marker: marker,
@@ -672,13 +678,13 @@ struct ChatMarkdownProse {
 
     private static func nextMarker(
         startingAt value: inout UInt32,
-        occupiedValues: inout Set<UInt32>) -> Character
+        occupiedValues: inout Set<UInt32>) -> Character?
     {
         while occupiedValues.contains(value) {
             value += 1
         }
         guard let scalar = UnicodeScalar(value) else {
-            preconditionFailure("inline math marker range exhausted")
+            return nil
         }
         occupiedValues.insert(value)
         let marker = Character(String(scalar))
