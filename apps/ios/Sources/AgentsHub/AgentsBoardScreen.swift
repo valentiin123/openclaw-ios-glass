@@ -19,16 +19,19 @@ struct AgentsBoardScreen: View {
     var body: some View {
         Group {
             if let model {
-                AgentsBoardView(model: model)
+                AgentsBoardView(model: model, isConnected: appModel.isOperatorGatewayConnected)
             } else {
                 ProgressView()
             }
         }
-        .task {
+        // Re-runs when the operator session connects (or reconnects): capabilities and the session-change
+        // subscription need a live connection, so nothing starts before it is up.
+        .task(id: appModel.isOperatorGatewayConnected) {
             if model == nil {
                 model = AgentsHubViewModel(gateway: AgentsHubScreen.makeGateway(session: appModel.operatorSession))
             }
             guard let model else { return }
+            guard appModel.isOperatorGatewayConnected else { return }
             await AgentsHubScreen.refreshCapabilities(model: model, session: appModel.operatorSession)
             await AgentsHubScreen.observeSessionChanges(model: model, session: appModel.operatorSession)
         }
@@ -39,6 +42,8 @@ struct AgentsBoardScreen: View {
 
 struct AgentsBoardView: View {
     @Bindable var model: AgentsHubViewModel
+    /// False until the operator Gateway session is connected: no load starts and no network error shows.
+    var isConnected: Bool = true
 
     @State private var selectedAgentID: String?
     @State private var detailItem: AgentTileItem?
@@ -111,8 +116,8 @@ struct AgentsBoardView: View {
             }
             .background(OpenClawProBackground())
             .overlay { self.overlayState }
-            .task { await self.loadAgentsIfNeeded() }
-            .task(id: self.currentAgentID) { await self.loadBoardIfPossible() }
+            .task(id: self.isConnected) { await self.loadAgentsIfNeeded() }
+            .task(id: self.boardTaskKey) { await self.loadBoardAfterConnect() }
             .sheet(item: self.$detailItem) { item in
                 SubagentResultSheet(model: self.model, node: AgentTileFactory.node(for: item))
             }
@@ -146,11 +151,27 @@ struct AgentsBoardView: View {
 
     // MARK: Loading
 
-    private func loadAgentsIfNeeded() async {
-        if model.agents.isEmpty { await model.loadAgents() }
+    /// Restarts the board load when the connection comes up or the selected agent changes.
+    private var boardTaskKey: String {
+        let agent: String = self.currentAgentID ?? ""
+        return "\(self.isConnected)|\(agent)"
     }
 
+    private func loadAgentsIfNeeded() async {
+        guard self.isConnected else { return }
+        if model.agents.isEmpty { await model.loadAgentsWithRetry() }
+    }
+
+    /// Automatic load (with short retries); waits for the connection.
+    private func loadBoardAfterConnect() async {
+        guard self.isConnected else { return }
+        guard let id = self.currentAgentID else { return }
+        await model.loadBoardWithRetry(agentID: id)
+    }
+
+    /// Manual reload (pull-to-refresh, retry button, post-action): single attempt.
     private func loadBoardIfPossible() async {
+        guard self.isConnected else { return }
         guard let id = self.currentAgentID else { return }
         await model.loadBoard(agentID: id)
     }
@@ -254,6 +275,7 @@ struct AgentsBoardView: View {
     /// Empty state only once an agent is selected and its board finished loading without error.
     /// While loading (or on error) the grid stays empty: the spinner / error row already say why.
     private var showsEmptyState: Bool {
+        if !self.isConnected { return false }
         if model.agents.isEmpty { return false }
         if model.isLoadingBoard { return false }
         return model.boardError == nil
@@ -289,7 +311,7 @@ struct AgentsBoardView: View {
 
     @ViewBuilder
     private var errorRow: some View {
-        if let message = model.boardError ?? model.agentsError {
+        if self.isConnected, let message = model.boardError ?? model.agentsError {
             AgentsHubErrorRow(message: message, retry: self.retry)
                 .transition(OpenClawMotion.edge(.top, reduceMotion: self.reduceMotion))
         }
@@ -297,9 +319,9 @@ struct AgentsBoardView: View {
 
     @ViewBuilder
     private var overlayState: some View {
-        if model.agents.isEmpty, model.isLoadingAgents {
+        if model.agents.isEmpty, model.isLoadingAgents || !self.isConnected {
             ProgressView().accessibilityLabel(Text("Loading agents"))
-        } else if model.agents.isEmpty, model.agentsError == nil {
+        } else if self.isConnected, model.agents.isEmpty, model.agentsError == nil {
             ContentUnavailableView("No agents", systemImage: "person.crop.circle.badge.questionmark")
         }
     }
@@ -308,7 +330,7 @@ struct AgentsBoardView: View {
 
     private func retry() {
         Task {
-            if model.agents.isEmpty { await model.loadAgents() }
+            if self.isConnected, model.agents.isEmpty { await model.loadAgents() }
             await self.loadBoardIfPossible()
         }
     }

@@ -56,6 +56,8 @@ final class AgentsHubViewModel {
     private static let maxDepth = 8
     private static let pageLimit = 200
     private static let maxBoardRoots = 8
+    /// Base delay of the automatic retries after a failed initial load (attempt n waits n x this delay).
+    private static let retryDelayNanoseconds: UInt64 = 1_000_000_000
 
     init(gateway: AgentsHubGateway) { self.gateway = gateway }
 
@@ -86,6 +88,39 @@ final class AgentsHubViewModel {
         if let agentID = trackedAgentID { await loadSessions(agentID: agentID) }
         if let root = trackedRoot, !isLoadingTree { await loadTree(root: root) }
         if let boardID = boardAgentID { await loadBoard(agentID: boardID) }
+    }
+
+    // MARK: Retry
+
+    /// `loadAgents` with up to `maxRetries` automatic retries (short delay) after a failure. While a retry is
+    /// pending the error is hidden and the loading flag stays up; only the last failure remains in `agentsError`.
+    func loadAgentsWithRetry(maxRetries: Int = 2) async {
+        var attempt: Int = 0
+        while true {
+            await self.loadAgents()
+            guard self.agentsError != nil, attempt < maxRetries, !Task.isCancelled else { return }
+            attempt += 1
+            self.agentsError = nil
+            self.isLoadingAgents = true
+            try? await Task.sleep(nanoseconds: UInt64(attempt) * Self.retryDelayNanoseconds)
+            self.isLoadingAgents = false
+            if Task.isCancelled { return }
+        }
+    }
+
+    /// `loadBoard` with the same automatic retry policy as `loadAgentsWithRetry`.
+    func loadBoardWithRetry(agentID: String, maxRetries: Int = 2) async {
+        var attempt: Int = 0
+        while true {
+            await self.loadBoard(agentID: agentID)
+            guard self.boardError != nil, attempt < maxRetries, !Task.isCancelled else { return }
+            attempt += 1
+            self.boardError = nil
+            self.isLoadingBoard = true
+            try? await Task.sleep(nanoseconds: UInt64(attempt) * Self.retryDelayNanoseconds)
+            self.isLoadingBoard = false
+            if Task.isCancelled { return }
+        }
     }
 
     // MARK: Board

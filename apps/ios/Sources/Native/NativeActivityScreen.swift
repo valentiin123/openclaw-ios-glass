@@ -167,10 +167,26 @@ final class NativeActivityModel {
 
     static let listMethod: String = "audit.activity.list"
 
+    /// Automatic load: waits for the operator connection (shows the loading state, no error) and retries
+    /// up to `maxRetries` times with a short delay after a failure.
+    func loadWithRetry(appModel: NodeAppModel, maxRetries: Int = 2) async {
+        var attempt: Int = 0
+        while true {
+            await self.load(appModel: appModel, showSpinner: true)
+            guard case .failed = self.state, attempt < maxRetries, !Task.isCancelled else { return }
+            attempt += 1
+            self.state = .loading
+            try? await Task.sleep(nanoseconds: UInt64(attempt) * 1_000_000_000)
+            if Task.isCancelled { return }
+        }
+    }
+
     func load(appModel: NodeAppModel, showSpinner: Bool) async {
         guard appModel.isOperatorGatewayConnected else {
+            // Not connected yet: keep what is shown, otherwise show loading (no network error at startup).
             self.unavailable = false
-            self.state = .failed(NativeGateway.offlineMessage)
+            if case .loaded = self.state { return }
+            self.state = .loading
             return
         }
         self.generation += 1
@@ -295,7 +311,9 @@ struct NativeActivityScreen: View {
                     NativeActivityDetailView(event: event)
                 }
         }
-        .task { await self.reload(spinner: true) }
+        .task(id: self.appModel.isOperatorGatewayConnected) {
+            await self.model.loadWithRetry(appModel: self.appModel)
+        }
         .onChange(of: self.kindSelection) { _, newValue in
             self.model.kind = (newValue == NGFilterID.all) ? nil : newValue
             Task { await self.reload(spinner: true) }

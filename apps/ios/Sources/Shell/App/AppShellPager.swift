@@ -58,8 +58,8 @@ enum AppShellPagerMath {
     static let flickMinimumTravel: CGFloat = 16
 
     /// Page the pager settles on when the finger lifts. A quick flick in the direction of the
-    /// drag changes page; otherwise the translation plus a short projection of the velocity must
-    /// pass a third of the page width.
+    /// drag changes page; otherwise the translation alone must pass a third of the page width.
+    /// The result is always clamped to the existing pages (no page past either end).
     static func settleTarget(
         index: Int,
         translation: CGFloat,
@@ -76,11 +76,10 @@ enum AppShellPagerMath {
         if isFlick {
             target = translation < 0 ? index + 1 : index - 1
         } else {
-            let projected: CGFloat = translation + velocity * 0.12
-            let threshold: CGFloat = width * 0.33
-            if projected < -threshold {
+            let threshold: CGFloat = width / 3
+            if translation < -threshold {
                 target = index + 1
-            } else if projected > threshold {
+            } else if translation > threshold {
                 target = index - 1
             }
         }

@@ -1,21 +1,72 @@
 import OpenClawKit
 import SwiftUI
 import UIKit
+import UIKit.UIGestureRecognizerSubclass
+
+// MARK: - Recognizer
+
+/// Pan recognizer that makes its decision early and exclusively.
+///
+/// While the recognizer is still `.possible`, the first few points of movement decide:
+/// - clearly horizontal (angle to the horizontal below ~25°): the pan goes on and begins normally;
+/// - anything else (vertical, diagonal): the recognizer fails at once. Failing cancels nothing,
+///   so the scroll view, the list or the slider under the finger keeps the touch untouched.
+final class AppShellHorizontalPanRecognizer: UIPanGestureRecognizer {
+    /// tan(25°): a movement is horizontal only when |dy| <= tangent * |dx|.
+    static let maxTangent: CGFloat = 0.4663
+    /// Distance (points, in window coordinates) after which the direction is judged.
+    static let decisionDistance: CGFloat = 6
+
+    private var origin: CGPoint = CGPoint.zero
+    private var decided: Bool = false
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        if let first = touches.first {
+            self.origin = first.location(in: nil)
+        }
+        self.decided = false
+        super.touchesBegan(touches, with: event)
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        if self.state == .possible, !self.decided, let first = touches.first {
+            let point: CGPoint = first.location(in: nil)
+            let dx: CGFloat = abs(point.x - self.origin.x)
+            let dy: CGFloat = abs(point.y - self.origin.y)
+            if hypot(dx, dy) >= Self.decisionDistance {
+                if dy > Self.maxTangent * dx {
+                    self.state = .failed
+                    return
+                }
+                self.decided = true
+            }
+        }
+        super.touchesMoved(touches, with: event)
+    }
+
+    override func reset() {
+        super.reset()
+        self.decided = false
+        self.origin = CGPoint.zero
+    }
+}
 
 // MARK: - Installer
 
-/// Invisible anchor that installs one `UIPanGestureRecognizer` on the window, so a horizontal
+/// Invisible anchor that installs one horizontal pan recognizer on the window, so a horizontal
 /// drag is recognized anywhere on a tab page. The recognizer reports the live translation to the
 /// pager (`AppShellPagerState.dragX`), so the pages follow the finger.
 ///
-/// - It fails as soon as the first movement is not clearly horizontal (`gestureRecognizerShouldBegin`),
-///   so vertical scrolling is never delayed.
+/// - The decision is early and exclusive (`AppShellHorizontalPanRecognizer`): a movement that is
+///   not clearly horizontal makes it fail at once, without cancelling anything, so vertical
+///   scrolling is never taken over and never delayed.
 /// - `cancelsTouchesInView` cancels the touches under the finger once it begins: no button fires,
-///   no text gets selected.
-/// - It never runs alongside another recognizer. A horizontal scroll view that already owns the
-///   touch is detected when the touch starts and the swipe is not offered at all.
-/// - Whether a touch may start a swipe is decided per touch in `gestureRecognizer(_:shouldReceive:)`,
-///   so covers, sheets, pushed pages and the left screen edge (back gesture) never see it.
+///   no text gets selected. Competing pans of the ancestors (scroll views, row swipe actions) are
+///   required to wait for this recognizer (`shouldBeRequiredToFailBy`) and are switched off for
+///   the rest of the touch once it begins.
+/// - It never runs alongside another recognizer, and never starts from a horizontal scroller,
+///   a slider, a switch, a segmented control, a row with a swipe action, the left screen edge
+///   (back gesture), a presentation or a pushed page (`gestureRecognizer(_:shouldReceive:)`).
 struct AppShellTabSwipeInstaller: UIViewRepresentable {
     /// Shell-level gate (no cover, no sheet, Home stack at its root).
     let canSwipe: @MainActor () -> Bool
@@ -60,17 +111,17 @@ struct AppShellTabSwipeInstaller: UIViewRepresentable {
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         /// Touches starting closer than this to the left edge belong to the back gesture.
         private static let edgeInset: CGFloat = 24
-        /// The first movement must be this many times wider than tall (translation).
-        private static let dominance: CGFloat = 1.6
-        /// The first velocity must be this many times larger horizontally than vertically.
-        private static let velocityDominance: CGFloat = 1.2
+        /// Velocity direction tolerance (|vy| <= k * |vx|). A bit looser than the translation
+        /// angle because the first velocity sample is noisy.
+        private static let velocityTangent: CGFloat = 0.6
         /// Distance over which the translation consumed by the recognizer's slop is given back to
         /// the finger, so the pages do not jump when the pan begins.
         private static let catchUpDistance: CGFloat = 48
 
         private var installer: AppShellTabSwipeInstaller
-        private let recognizer: UIPanGestureRecognizer = UIPanGestureRecognizer()
+        private let recognizer: AppShellHorizontalPanRecognizer = AppShellHorizontalPanRecognizer()
         private weak var window: UIWindow?
+        private weak var touchView: UIView?
         private var touchStartedInHorizontalScroller: Bool = false
         /// Translation at the moment the pan was recognized (the slop already travelled).
         private var startX: CGFloat = 0
@@ -100,6 +151,7 @@ struct AppShellTabSwipeInstaller: UIViewRepresentable {
         func detach() {
             self.window?.removeGestureRecognizer(self.recognizer)
             self.window = nil
+            self.touchView = nil
         }
 
         @objc private func handle(_ gesture: UIGestureRecognizer) {
@@ -109,6 +161,7 @@ struct AppShellTabSwipeInstaller: UIViewRepresentable {
             switch pan.state {
             case .began:
                 self.startX = translation.x
+                self.cancelCompetingPans()
                 self.installer.onBegan()
                 self.installer.onChanged(self.compensated(translation.x))
             case .changed:
@@ -116,9 +169,11 @@ struct AppShellTabSwipeInstaller: UIViewRepresentable {
             case .ended:
                 let adjusted: CGFloat = self.compensated(translation.x)
                 self.startX = 0
+                self.touchView = nil
                 self.installer.onEnded(adjusted, velocity.x)
             case .cancelled, .failed:
                 self.startX = 0
+                self.touchView = nil
                 self.installer.onCancelled()
             default:
                 break
@@ -132,6 +187,24 @@ struct AppShellTabSwipeInstaller: UIViewRepresentable {
             return x - self.startX * remaining
         }
 
+        /// Once the swipe is recognized, forces every competing pan above the touched view
+        /// (scroll views, row swipe actions, drag recognizers) to give up: switching a recognizer
+        /// off and on again cancels the gesture it is running and it stays idle until the next touch.
+        private func cancelCompetingPans() {
+            var current: UIView? = self.touchView
+            while let candidate = current {
+                if let recognizers = candidate.gestureRecognizers {
+                    for other in recognizers where other !== self.recognizer {
+                        if Self.isCompetingPan(other), other.isEnabled {
+                            other.isEnabled = false
+                            other.isEnabled = true
+                        }
+                    }
+                }
+                current = candidate.superview
+            }
+        }
+
         // MARK: UIGestureRecognizerDelegate
 
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
@@ -141,12 +214,13 @@ struct AppShellTabSwipeInstaller: UIViewRepresentable {
             if !self.installer.canSwipe() { return false }
             if Self.hasPresentation(window.rootViewController) { return false }
             if !Self.isRootTabContent(touch.view) { return false }
+            self.touchView = touch.view
             self.touchStartedInHorizontalScroller = Self.isInsideHorizontalScroller(touch.view)
             return true
         }
 
-        /// Fails immediately when the first recognized movement is vertical or diagonal, or when
-        /// the touch started in a horizontal scroller.
+        /// Last check when the pan is about to begin: the first movement and the first velocity
+        /// must both be clearly horizontal, and the touch must not come from a horizontal scroller.
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
             guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return false }
             if self.touchStartedInHorizontalScroller { return false }
@@ -154,10 +228,9 @@ struct AppShellTabSwipeInstaller: UIViewRepresentable {
             let velocity: CGPoint = pan.velocity(in: pan.view)
             let absX: CGFloat = abs(translation.x)
             let absY: CGFloat = abs(translation.y)
-            let velocityX: CGFloat = abs(velocity.x)
-            let velocityY: CGFloat = abs(velocity.y)
-            if absX <= Self.dominance * absY { return false }
-            return velocityX > Self.velocityDominance * velocityY
+            if absX <= 0 { return false }
+            if absY > AppShellHorizontalPanRecognizer.maxTangent * absX { return false }
+            return abs(velocity.y) <= Self.velocityTangent * abs(velocity.x)
         }
 
         /// Whoever begins first wins: a row swipe action or a slider that already recognized
@@ -169,7 +242,29 @@ struct AppShellTabSwipeInstaller: UIViewRepresentable {
             false
         }
 
+        /// Pans of the views above the touch (vertical scroll views, drag recognizers) wait until
+        /// this recognizer has decided. The wait is short: a vertical or diagonal movement makes
+        /// this recognizer fail after a few points, before the scroll view's own slop is reached.
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldBeRequiredToFailBy otherGestureRecognizer: UIGestureRecognizer) -> Bool
+        {
+            if otherGestureRecognizer === self.recognizer { return false }
+            if !Self.isCompetingPan(otherGestureRecognizer) { return false }
+            guard let owner = otherGestureRecognizer.view, let touched = self.touchView else { return false }
+            return touched.isDescendant(of: owner)
+        }
+
         // MARK: UIKit checks
+
+        /// True for recognizers that move content with a drag: pans (except the screen edge pan,
+        /// which belongs to the back gesture) and recognizers named after a pan, drag or swipe.
+        private static func isCompetingPan(_ candidate: UIGestureRecognizer) -> Bool {
+            if candidate is UIScreenEdgePanGestureRecognizer { return false }
+            if candidate is UIPanGestureRecognizer { return true }
+            let name: String = NSStringFromClass(type(of: candidate))
+            return name.contains("Pan") || name.contains("Drag") || name.contains("SwipeAction")
+        }
 
         /// True when a sheet, a full-screen cover or an alert is presented anywhere in the tree.
         private static func hasPresentation(_ controller: UIViewController?) -> Bool {
@@ -189,6 +284,7 @@ struct AppShellTabSwipeInstaller: UIViewRepresentable {
                 if candidate is UISlider || candidate is UISwitch || candidate is UISegmentedControl {
                     return false
                 }
+                if candidate is UIPickerView || candidate is UIDatePicker { return false }
                 if Self.ownsSwipeAction(candidate) { return false }
                 current = candidate.superview
             }
@@ -218,8 +314,8 @@ struct AppShellTabSwipeInstaller: UIViewRepresentable {
             var current: UIView? = view
             while let candidate = current {
                 if let scroll = candidate as? UIScrollView, scroll.isScrollEnabled {
-                    let scrollsHorizontally: Bool = scroll.contentSize.width > scroll.bounds.width + 1
-                    if scrollsHorizontally { return true }
+                    let overflows: Bool = scroll.contentSize.width > scroll.bounds.width + 1
+                    if overflows || scroll.alwaysBounceHorizontal { return true }
                 }
                 current = candidate.superview
             }
