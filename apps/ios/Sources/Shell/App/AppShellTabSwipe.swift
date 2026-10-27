@@ -18,9 +18,9 @@ final class AppShellHorizontalPanRecognizer: UIPanGestureRecognizer {
     static let decisionDistance: CGFloat = 10
     /// Distance after which a clearly horizontal movement begins the pan without waiting for the
     /// system slop, so it wins the race against the vertical scroll view of a list.
-    static let earlyBeginDistance: CGFloat = 6
+    static let earlyBeginDistance: CGFloat = 4
     /// tan(30°): the early begin needs an almost purely horizontal movement.
-    static let earlyBeginTangent: CGFloat = 0.58
+    static let earlyBeginTangent: CGFloat = 0.8
 
     private var origin: CGPoint = CGPoint.zero
     private var decided: Bool = false

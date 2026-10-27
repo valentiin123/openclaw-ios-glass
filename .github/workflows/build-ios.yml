@@ -14,12 +14,19 @@ concurrency:
   group: build-ios
   cancel-in-progress: true
 
+env:
+  HOMEBREW_NO_AUTO_UPDATE: "1"
+  HOMEBREW_NO_INSTALL_CLEANUP: "1"
+  HOMEBREW_NO_ENV_HINTS: "1"
+
 jobs:
   build:
     runs-on: macos-26
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
 
@@ -30,6 +37,36 @@ jobs:
 
       - name: Install JS deps (protocol + mermaid generators)
         run: pnpm install --frozen-lockfile --ignore-scripts --filter "@openclaw/gateway-protocol..." --filter "@openclaw/mermaid-renderer..."
+
+      # Cache du dossier de compilation (DerivedData + paquets Swift) : Xcode ne recompile que ce qui a changé.
+      - name: Restore build cache
+        id: build-cache
+        uses: actions/cache@v4
+        with:
+          path: apps/ios/build
+          key: ios-build-${{ runner.os }}-${{ inputs.configuration }}-${{ hashFiles('apps/ios/project.yml') }}-${{ github.sha }}
+          restore-keys: |
+            ios-build-${{ runner.os }}-${{ inputs.configuration }}-${{ hashFiles('apps/ios/project.yml') }}-
+            ios-build-${{ runner.os }}-${{ inputs.configuration }}-
+
+      # checkout donne la date du jour à tous les fichiers : Xcode recompilerait tout.
+      # On fige tous les fichiers suivis à une date ancienne, puis on ne "touche" que ceux modifiés
+      # depuis le dernier commit compilé (mémorisé dans le cache).
+      - name: Restore file timestamps
+        run: |
+          set -euo pipefail
+          LAST=""
+          if [ -f apps/ios/build/.last_sha ]; then LAST="$(cat apps/ios/build/.last_sha)"; fi
+          git ls-files -z | xargs -0 touch -t 202001010000
+          if [ -n "$LAST" ] && git cat-file -e "$LAST^{commit}" 2>/dev/null; then
+            echo "Cache hit: touching files changed since $LAST"
+            git diff --name-only --diff-filter=AMR "$LAST" HEAD | while IFS= read -r f; do
+              [ -f "$f" ] && touch "$f"
+            done
+          else
+            echo "No usable previous build: full build"
+            git ls-files -z | xargs -0 touch
+          fi
 
       - name: Write generated iOS build inputs
         run: |
@@ -45,7 +82,7 @@ jobs:
           node scripts/ios-write-swift-filelist.mts
 
       - name: Install XcodeGen
-        run: brew install xcodegen
+        run: brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
 
       - name: Generate Xcode project
         working-directory: apps/ios
@@ -61,8 +98,17 @@ jobs:
             -configuration "${{ inputs.configuration }}" \
             -destination 'generic/platform=iOS' \
             -derivedDataPath build \
+            -clonedSourcePackagesDirPath build/SourcePackages \
+            -skipPackagePluginValidation -skipMacroValidation \
+            -jobs "$(sysctl -n hw.ncpu)" \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            DEBUG_INFORMATION_FORMAT=dwarf \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             build | tail -n 200
+
+      - name: Remember built commit
+        if: success()
+        run: echo "${{ github.sha }}" > apps/ios/build/.last_sha
 
       - name: Package unsigned IPA
         working-directory: apps/ios

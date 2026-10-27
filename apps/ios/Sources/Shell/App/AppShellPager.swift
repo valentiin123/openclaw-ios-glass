@@ -254,7 +254,7 @@ struct AppShellGlassTabBar: View {
     /// Distance between the bottom safe area (home indicator) and the bar.
     static let bottomGap: CGFloat = 0
     /// Extra room kept between the last scrolled row and the bar.
-    static let contentClearance: CGFloat = 12
+    static let contentClearance: CGFloat = 44
     /// Bottom padding to add to page content so its last row stays reachable above the bar.
     static let reservedHeight: CGFloat = AppShellGlassTabBar.barHeight
         + AppShellGlassTabBar.bottomGap
