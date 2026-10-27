@@ -941,8 +941,11 @@ extension GatewayChannelActor {
         }
         let payloadData = try self.encoder.encode(payload)
         let ok = try decoder.decode(HelloOk.self, from: payloadData)
-        if let tick = ok.policy["tickIntervalMs"]?.doubleValue {
-            self.tickIntervalMs = tick
+        if let tick = ok.policy["tickIntervalMs"]?.doubleValue, tick.isFinite {
+            // The value comes from the gateway: a negative or huge number would trap in
+            // UInt64(Double) inside watchTicks and crash-loop the app on every reconnect.
+            // Clamp to a sane window (1 s ... 10 min).
+            self.tickIntervalMs = min(max(tick, 1_000), 600_000)
         }
         let auth = ok.auth
         var receivedRoles = Set<String>()
