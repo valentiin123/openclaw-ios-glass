@@ -8,6 +8,8 @@ enum IOSDeviceSettingsConsent: Equatable {
     case healthSummary
     case locationAlways
     case notificationEnrollment
+    case talk
+    case talkBackground
 
     static func required(
         for key: DeviceSettingKey,
@@ -18,6 +20,8 @@ enum IOSDeviceSettingsConsent: Equatable {
         case (.wakeEnabled, .boolean(true)): .voiceWake
         case (.cameraEnabled, .boolean(true)): .camera
         case (.healthSummaryEnabled, .boolean(true)): .healthSummary
+        case (.talkEnabled, .boolean(true)): .talk
+        case (.talkBackgroundEnabled, .boolean(true)): .talkBackground
         case (.locationMode, .string("always")) where locationMode != .always: .locationAlways
         default: nil
         }
@@ -30,6 +34,8 @@ enum IOSDeviceSettingsConsent: Equatable {
         case .healthSummary: String(localized: "Share Apple Health summaries with the Gateway?")
         case .locationAlways: String(localized: "Allow location access at any time?")
         case .notificationEnrollment: String(localized: "Enable OpenClaw Hosted Push Relay?")
+        case .talk: String(localized: "Allow Talk to use this device's microphone?")
+        case .talkBackground: String(localized: "Keep Talk listening in the background?")
         }
     }
 
@@ -52,6 +58,10 @@ enum IOSDeviceSettingsConsent: Equatable {
             String(localized: "The Gateway can request this device's location even when OpenClaw is not in use.")
         case .notificationEnrollment:
             String(localized: "Enabling this sends delivery data through OpenClaw's hosted push relay.")
+        case .talk:
+            String(localized: "Talk will use this device's microphone for voice conversations with your Gateway, subject to iOS permission.")
+        case .talkBackground:
+            String(localized: "Talk can keep using the microphone while OpenClaw is in the background.")
         }
     }
 }

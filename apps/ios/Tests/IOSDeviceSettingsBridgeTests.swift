@@ -223,7 +223,9 @@ struct IOSDeviceSettingsBridgeTests {
     }
 
     @Test func `native consent covers capability enables and only always location escalation`() {
-        for key in [DeviceSettingKey.wakeEnabled, .cameraEnabled, .healthSummaryEnabled] {
+        for key in [
+            DeviceSettingKey.wakeEnabled, .cameraEnabled, .healthSummaryEnabled, .talkEnabled, .talkBackgroundEnabled,
+        ] {
             #expect(IOSDeviceSettingsConsent.required(for: key, value: .boolean(true), locationMode: .off) != nil)
             #expect(IOSDeviceSettingsConsent.required(for: key, value: .boolean(false), locationMode: .off) == nil)
         }
