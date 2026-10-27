@@ -302,7 +302,6 @@ struct AppShellTabSwipeInstaller: UIViewRepresentable {
                     return false
                 }
                 if candidate is UIPickerView || candidate is UIDatePicker { return false }
-                if Self.ownsSwipeAction(candidate) { return false }
                 current = candidate.superview
             }
             var responder: UIResponder? = view

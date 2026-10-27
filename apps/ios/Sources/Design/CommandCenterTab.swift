@@ -487,9 +487,10 @@ struct CommandCenterTab: View {
             self.appModel.focusChatSession(key)
             self.openSession(key)
         } else {
-            // No key: main session (system chat), unchanged.
-            self.appModel.openChat(sessionKey: key)
-            self.openChat()
+            // No key: the agent's main session, opened with the same sprite chat screen.
+            let mainKey: String = self.appModel.mainSessionKey
+            self.appModel.focusChatSession(mainKey)
+            self.openSession(mainKey)
         }
     }
 
