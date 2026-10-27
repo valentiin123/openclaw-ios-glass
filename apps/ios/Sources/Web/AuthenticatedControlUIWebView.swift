@@ -97,10 +97,17 @@ enum AuthenticatedControlUI {
             authorization: $0)
         } ?? "null"
         let allowedOrigin = Self.jsStringLiteral(Self.originString(for: pageURL))
+        // When the Gateway is served under a path prefix on a shared origin, other pages of that
+        // origin must not receive the token or the device identity seed (IOS-01).
+        let allowedBasePath = Self.jsStringLiteral(Self.allowedBasePath(for: config))
         return """
         (() => {
           try {
             if (location.origin !== \(allowedOrigin)) return;
+            const allowedBasePath = \(allowedBasePath);
+            if (allowedBasePath
+              && location.pathname !== allowedBasePath
+              && !location.pathname.startsWith(allowedBasePath + "/")) return;
             const deviceAuthSeed = \(deviceAuthSeed);
             if (deviceAuthSeed) {
               const gateway = new URL(deviceAuthSeed.gatewayUrl, location.href);
@@ -172,6 +179,13 @@ enum AuthenticatedControlUI {
 
     private static func originString(for url: URL) -> String {
         GatewayTLSAuthority(url: url)?.serialized ?? ""
+    }
+
+    /// Percent-encoded path prefix of the Gateway URL ("" when it is served at the origin root).
+    private static func allowedBasePath(for config: GatewayConnectConfig) -> String {
+        let raw = URLComponents(url: config.url, resolvingAgainstBaseURL: false)?.percentEncodedPath ?? ""
+        let trimmed = raw.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return trimmed.isEmpty ? "" : "/" + trimmed
     }
 
     private static func jsStringLiteral(_ value: String) -> String {
