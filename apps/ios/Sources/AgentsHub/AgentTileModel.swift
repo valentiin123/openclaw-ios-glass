@@ -483,7 +483,12 @@ enum AgentTileFactory {
     /// (active first, then the most recent). Outdated subagents are dropped. Roots and subagents are
     /// never interleaved. Names and sprites come from the persisted assignment store and every displayed
     /// name is unique (case-insensitive).
-    static func items(sessions: [OpenClawChatSessionEntry], agentID: String, now: Date) -> [AgentTileItem] {
+    static func items(
+        sessions: [OpenClawChatSessionEntry],
+        agentID: String,
+        now: Date,
+        pinned: Set<String> = []) -> [AgentTileItem]
+    {
         var byKey: [String: OpenClawChatSessionEntry] = [:]
         for session in sessions {
             byKey[session.key] = session
@@ -500,7 +505,7 @@ enum AgentTileFactory {
             }
             if !isSubagent(session) { continue }
             if isFromExternalParent(session, in: byKey) { continue }
-            if isOutdated(session, now: now) { continue }
+            if !pinned.contains(session.key), isOutdated(session, now: now) { continue }
             seenKeys.insert(session.key)
             subSessions.append(session)
         }
@@ -1025,5 +1030,65 @@ enum AgentTileFactory {
     static func isRootOrderedBefore(_ lhs: AgentTileItem, _ rhs: AgentTileItem) -> Bool {
         if lhs.recency != rhs.recency { return lhs.recency > rhs.recency }
         return lhs.id < rhs.id
+    }
+}
+
+// MARK: - Pinned subagents
+
+/// Subagents the user pinned (long press): they stay on the board after the 30 minute retention.
+enum AgentPinStore {
+    static let defaultsKey: String = "agentsHub.pinnedSubagents.v1"
+
+    static func load() -> Set<String> {
+        let stored: [String] = UserDefaults.standard.stringArray(forKey: defaultsKey) ?? []
+        return Set<String>(stored)
+    }
+
+    static func save(_ keys: Set<String>) {
+        UserDefaults.standard.set(Array(keys).sorted(), forKey: defaultsKey)
+    }
+}
+
+
+// MARK: - Pinned subagents
+
+/// Subagents the user pinned with a long press: they stay on the board after the 30 minute window.
+/// Persisted in UserDefaults, bounded.
+final class AgentTilePinStore: @unchecked Sendable {
+    static let shared: AgentTilePinStore = AgentTilePinStore()
+    static let defaultsKey: String = "agentsHub.pinnedSubagents.v1"
+    private static let maxEntries: Int = 200
+
+    private let lock: NSLock = NSLock()
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    func keys() -> Set<String> {
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        let stored: [String] = self.defaults.stringArray(forKey: Self.defaultsKey) ?? []
+        return Set<String>(stored)
+    }
+
+    /// Returns the new pinned state of `key`.
+    @discardableResult
+    func toggle(_ key: String) -> Bool {
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        var stored: [String] = self.defaults.stringArray(forKey: Self.defaultsKey) ?? []
+        if let index = stored.firstIndex(of: key) {
+            stored.remove(at: index)
+            self.defaults.set(stored, forKey: Self.defaultsKey)
+            return false
+        }
+        stored.append(key)
+        if stored.count > Self.maxEntries {
+            stored.removeFirst(stored.count - Self.maxEntries)
+        }
+        self.defaults.set(stored, forKey: Self.defaultsKey)
+        return true
     }
 }

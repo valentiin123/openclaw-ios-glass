@@ -51,6 +51,8 @@ struct AgentsBoardView: View {
     @State private var confirmDelete: AgentTileItem?
     @State private var renameTarget: AgentTileItem?
     @State private var renameText: String = ""
+    @State private var pinnedKeys: Set<String> = AgentTilePinStore.shared.keys()
+    @State private var pinned: Set<String> = AgentPinStore.load()
     @State private var chatPresenter: SubagentChatPresenter = SubagentChatPresenter()
     @State private var tileFrames: AgentTileFrameStore = AgentTileFrameStore()
     @State private var newConversation: AgentNewConversationRequest?
@@ -103,7 +105,7 @@ struct AgentsBoardView: View {
 
     private func items(now: Date) -> [AgentTileItem] {
         guard let id = self.currentAgentID else { return [] }
-        return AgentTileFactory.items(sessions: model.boardSessions, agentID: id, now: now)
+        return AgentTileFactory.items(sessions: model.boardSessions, agentID: id, now: now, pinned: self.pinned)
     }
 
     // MARK: Body
@@ -305,6 +307,8 @@ struct AgentsBoardView: View {
             onDetails: { opened in self.openDetail(opened) },
             onDelete: { removed in self.requestDelete(removed) },
             onRename: { renamed in self.requestRename(renamed) },
+            onTogglePin: item.isSubagentTile ? { toggled in self.togglePin(toggled) } : nil,
+            isPinned: self.pinned.contains(item.session.key),
             frameStore: self.tileFrames,
             entranceIndex: index)
     }
@@ -361,6 +365,21 @@ struct AgentsBoardView: View {
 
     private func requestDelete(_ item: AgentTileItem) {
         self.confirmDelete = item
+    }
+
+    private func togglePin(_ item: AgentTileItem) {
+        let key: String = item.session.key
+        if self.pinned.contains(key) {
+            self.pinned.remove(key)
+        } else {
+            self.pinned.insert(key)
+        }
+        AgentPinStore.save(self.pinned)
+    }
+
+    private func togglePin(_ item: AgentTileItem) {
+        AgentTilePinStore.shared.toggle(item.session.key)
+        self.pinnedKeys = AgentTilePinStore.shared.keys()
     }
 
     private func requestRename(_ item: AgentTileItem) {
