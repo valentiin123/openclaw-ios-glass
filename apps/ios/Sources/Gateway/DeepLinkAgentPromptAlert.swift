@@ -25,7 +25,7 @@ struct DeepLinkAgentPromptAlert: ViewModifier {
                     %2$@
                     """),
                     prompt.messagePreview,
-                    prompt.urlPreview))
+                    prompt.urlPreview) + "\n\n" + prompt.routingSummary)
                     .font(OpenClawType.subhead),
                 primaryButton: .cancel(
                     Text("Cancel")

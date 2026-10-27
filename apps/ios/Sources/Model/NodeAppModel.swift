@@ -73,6 +73,9 @@ final class NodeAppModel {
         let id: String
         let messagePreview: String
         let urlPreview: String
+        /// Routing parameters that are forwarded with the request (session, thinking, timeout).
+        /// They must be visible in the confirmation: the URL preview is truncated (W2IOS-03).
+        let routingSummary: String
         let request: AgentDeepLink
     }
 
@@ -8976,6 +8979,7 @@ extension NodeAppModel {
                 id: UUID().uuidString,
                 messagePreview: message,
                 urlPreview: urlText.count > 500 ? "\(urlText.prefix(500))…" : urlText,
+                routingSummary: Self.agentDeepLinkRoutingSummary(link),
                 request: self.effectiveAgentDeepLinkForPrompt(link))
 
             let promptIntervalSeconds = 5.0
@@ -9124,6 +9128,19 @@ extension NodeAppModel {
             channel: nil,
             timeoutSeconds: link.timeoutSeconds,
             key: link.key)
+    }
+
+    /// Human-readable list of the parameters that decide where the request runs.
+    static func agentDeepLinkRoutingSummary(_ link: AgentDeepLink) -> String {
+        let defaultLabel = String(localized: "default")
+        let session = link.sessionKey.flatMap { $0.isEmpty ? nil : $0 } ?? defaultLabel
+        let thinking = link.thinking.flatMap { $0.isEmpty ? nil : $0 } ?? defaultLabel
+        let timeout = link.timeoutSeconds.map { String($0) } ?? defaultLabel
+        return [
+            String(localized: "Session:") + " " + session,
+            String(localized: "Thinking:") + " " + thinking,
+            String(localized: "Timeout (s):") + " " + timeout,
+        ].joined(separator: "\n")
     }
 
     private func isUnattendedDeepLinkAllowed(_ key: String?) -> Bool {

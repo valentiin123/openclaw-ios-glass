@@ -9146,6 +9146,22 @@ private final class TimingOutDeviceStatusService: DeviceStatusServicing {
         #expect(prompt.request.channel == nil)
     }
 
+    @Test @MainActor func `agent deep link routing summary exposes session thinking and timeout`() {
+        let link = AgentDeepLink(
+            message: "hi",
+            sessionKey: "agent:main:sensitive-session",
+            thinking: "high",
+            deliver: false,
+            to: nil,
+            channel: nil,
+            timeoutSeconds: 90,
+            key: nil)
+        let summary = NodeAppModel.agentDeepLinkRoutingSummary(link)
+        #expect(summary.contains("agent:main:sensitive-session"))
+        #expect(summary.contains("high"))
+        #expect(summary.contains("90"))
+    }
+
     @Test @MainActor func `handle deep link rejects long unkeyed message when connected`() async {
         let appModel = NodeAppModel()
         appModel.gatewayConnected = true
