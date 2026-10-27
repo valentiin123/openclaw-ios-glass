@@ -9144,7 +9144,12 @@ extension NodeAppModel {
 
     private static func generateDeepLinkKey() -> String {
         var bytes = [UInt8](repeating: 0, count: 32)
-        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        if status != errSecSuccess {
+            // Never fall back to an all-zero (predictable) key if the system RNG call fails.
+            var rng = SystemRandomNumberGenerator()
+            bytes = bytes.map { _ in UInt8.random(in: 0...255, using: &rng) }
+        }
         let data = Data(bytes)
         return data
             .base64EncodedString()

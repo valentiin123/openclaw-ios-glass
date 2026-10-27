@@ -64,8 +64,10 @@ struct IOSMediaArtifactLoader: Sendable {
                 for (name, value) in headers {
                     request.setValue(value, forHTTPHeaderField: name)
                 }
+                // Never accept an unvalidated certificate for an https URL: custom headers
+                // (e.g. Cloudflare Access service tokens) may be attached to this request.
                 let tls = connection.config.tls ?? GatewayTLSParams(
-                    required: false,
+                    required: url.scheme?.lowercased() == "https",
                     expectedFingerprint: nil,
                     allowTOFU: false,
                     storeKey: nil)
