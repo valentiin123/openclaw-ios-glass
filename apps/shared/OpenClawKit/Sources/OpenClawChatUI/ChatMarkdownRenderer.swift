@@ -341,6 +341,17 @@ struct ChatMarkdownRenderSnapshot {
     let images: [ChatMarkdownPreprocessor.InlineImage]
 
     init(text: String, isComplete: Bool, preparesReveal: Bool = false) {
+        // Same text, same flags: reuse the parsed blocks instead of preprocessing, segmenting and building
+        // AttributedStrings again. Bodies re-run often (scroll, reveal ticks, unrelated state) with unchanged text.
+        if let hit = ChatMarkdownSnapshotCache.lookup(
+            text: text,
+            isComplete: isComplete,
+            preparesReveal: preparesReveal)
+        {
+            self.blocks = hit.blocks
+            self.images = hit.images
+            return
+        }
         let processed = ChatMarkdownPreprocessor.preprocess(markdown: text)
         let segments = ChatMarkdownBlockSegmenter.segments(
             markdown: processed.cleaned,
@@ -362,6 +373,12 @@ struct ChatMarkdownRenderSnapshot {
                 preparesReveal: preparesReveal && (isComplete || index == lastProseIndex))
         }
         self.images = processed.images
+        ChatMarkdownSnapshotCache.store(
+            text: text,
+            isComplete: isComplete,
+            preparesReveal: preparesReveal,
+            blocks: self.blocks,
+            images: self.images)
     }
 
     init(blocks: [ChatMarkdownRenderedBlock], images: [ChatMarkdownPreprocessor.InlineImage] = []) {
@@ -424,6 +441,62 @@ struct ChatMarkdownRenderSnapshot {
             }
             return false
         }
+    }
+}
+
+/// Content-keyed memo of parsed snapshots, in the style of `ChatCodeHighlightCache`. Bounded (oldest entry out
+/// first) and limited to texts of moderate size, so a long session or one huge message cannot grow it.
+@MainActor
+enum ChatMarkdownSnapshotCache {
+    struct Key: Hashable {
+        let text: String
+        let isComplete: Bool
+        let preparesReveal: Bool
+    }
+
+    struct Entry {
+        let blocks: [ChatMarkdownRenderedBlock]
+        let images: [ChatMarkdownPreprocessor.InlineImage]
+    }
+
+    private static var entries: [Key: Entry] = [:]
+    private static var order: [Key] = []
+    /// Key of the latest streaming (incomplete) snapshot. Every delta makes a new key, so only the newest one is
+    /// kept: streaming never pushes the finished messages out of the cache.
+    private static var streamingKey: Key?
+    private static let capacity: Int = 96
+    private static let maxTextLength: Int = 60000
+
+    static func lookup(text: String, isComplete: Bool, preparesReveal: Bool) -> Entry? {
+        if text.utf8.count > Self.maxTextLength { return nil }
+        let key: Key = Key(text: text, isComplete: isComplete, preparesReveal: preparesReveal)
+        return Self.entries[key]
+    }
+
+    static func store(
+        text: String,
+        isComplete: Bool,
+        preparesReveal: Bool,
+        blocks: [ChatMarkdownRenderedBlock],
+        images: [ChatMarkdownPreprocessor.InlineImage])
+    {
+        if text.utf8.count > Self.maxTextLength { return }
+        let key: Key = Key(text: text, isComplete: isComplete, preparesReveal: preparesReveal)
+        if !isComplete {
+            if let previous = Self.streamingKey, previous != key {
+                Self.entries.removeValue(forKey: previous)
+                Self.order.removeAll { (candidate: Key) -> Bool in candidate == previous }
+            }
+            Self.streamingKey = key
+        }
+        if Self.entries[key] == nil {
+            if Self.order.count >= Self.capacity {
+                let oldest: Key = Self.order.removeFirst()
+                Self.entries.removeValue(forKey: oldest)
+            }
+            Self.order.append(key)
+        }
+        Self.entries[key] = Entry(blocks: blocks, images: images)
     }
 }
 

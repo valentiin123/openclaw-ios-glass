@@ -236,7 +236,8 @@ final class ChatMediaVideoPlayer: ChatMediaPlayer {
         self.isPlaying = false
         ChatMediaPlaybackCoordinator.shared.release(self)
         if let temporaryFileURL {
-            try? FileManager.default.removeItem(at: temporaryFileURL)
+            // The file lives alone in its own folder under <tmp>/OpenClawAttachments/.
+            try? FileManager.default.removeItem(at: temporaryFileURL.deletingLastPathComponent())
         }
     }
 
@@ -304,10 +305,16 @@ final class ChatMediaVideoPlayer: ChatMediaPlayer {
     {
         try await Task.detached(priority: .userInitiated) {
             let fileExtension = UTType(mimeType: media.mimeType)?.preferredFilenameExtension ?? "mp4"
-            let url = FileManager.default.temporaryDirectory
-                .appendingPathComponent("openclaw-chat-video-\(UUID().uuidString)")
+            let directory = try ChatAttachmentTemporaryStorage.makeWorkingDirectory()
+            let url = directory
+                .appendingPathComponent("video")
                 .appendingPathExtension(fileExtension)
-            try media.data.write(to: url, options: [.atomic])
+            do {
+                try media.data.write(to: url, options: [.atomic])
+            } catch {
+                try? FileManager.default.removeItem(at: directory)
+                throw error
+            }
             return url
         }.value
     }

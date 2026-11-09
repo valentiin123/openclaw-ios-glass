@@ -169,7 +169,8 @@ public actor OpenClawChatSQLiteTranscriptCache: OpenClawChatTranscriptCache,
                 do {
                     return try rows.map { row in
                         let payload: String = row["payload_json"]
-                        return try JSONDecoder().decode(type, from: Data(payload.utf8))
+                        // Reads both legacy plain-JSON rows and compressed rows.
+                        return try Self.decodeCachedPayload(type, from: payload)
                     }
                 } catch {
                     cacheLogger.error(
@@ -215,27 +216,38 @@ public actor OpenClawChatSQLiteTranscriptCache: OpenClawChatTranscriptCache,
                     DO UPDATE SET last_used_at = excluded.last_used_at
                     """,
                     arguments: [gatewayID, normalizedAgentID, Date().timeIntervalSince1970])
-                try db.execute(
+                let existingPayloads: [String] = try String.fetchAll(
+                    db,
                     sql: """
-                    DELETE FROM cached_agent_sessions
-                    WHERE gateway_id = ? AND agent_id = ?
+                    SELECT payload_json FROM cached_agent_sessions
+                    WHERE gateway_id = ? AND agent_id = ? ORDER BY position
                     """,
                     arguments: [gatewayID, normalizedAgentID])
-                for (position, pair) in zip(bounded, encoded).enumerated() {
+                // An unchanged roster is the common refresh. Skipping the rewrite
+                // spares one delete, N inserts and the journal sync on a slow device.
+                if existingPayloads != encoded {
                     try db.execute(
                         sql: """
-                        INSERT INTO cached_agent_sessions(
-                            gateway_id, agent_id, session_key, position, updated_at, payload_json
-                        ) VALUES (?, ?, ?, ?, ?, ?)
+                        DELETE FROM cached_agent_sessions
+                        WHERE gateway_id = ? AND agent_id = ?
                         """,
-                        arguments: [
-                            gatewayID,
-                            normalizedAgentID,
-                            pair.0.key,
-                            position,
-                            pair.0.updatedAt ?? 0,
-                            pair.1,
-                        ])
+                        arguments: [gatewayID, normalizedAgentID])
+                    for (position, pair) in zip(bounded, encoded).enumerated() {
+                        try db.execute(
+                            sql: """
+                            INSERT INTO cached_agent_sessions(
+                                gateway_id, agent_id, session_key, position, updated_at, payload_json
+                            ) VALUES (?, ?, ?, ?, ?, ?)
+                            """,
+                            arguments: [
+                                gatewayID,
+                                normalizedAgentID,
+                                pair.0.key,
+                                position,
+                                pair.0.updatedAt ?? 0,
+                                pair.1,
+                            ])
+                    }
                 }
                 try db.execute(
                     sql: """
@@ -310,7 +322,7 @@ public actor OpenClawChatSQLiteTranscriptCache: OpenClawChatTranscriptCache,
                     arguments: [gatewayID, sessionKey, normalizedAgentID])
                 var cached = rows.compactMap { row -> OpenClawChatMessage? in
                     let payload: String = row["payload_json"]
-                    return try? JSONDecoder().decode(OpenClawChatMessage.self, from: Data(payload.utf8))
+                    return try? Self.decodeCachedPayload(OpenClawChatMessage.self, from: payload)
                 }
                 if let index = cached.firstIndex(where: {
                     $0.idempotencyKey?.trimmingCharacters(in: .whitespacesAndNewlines) ==
@@ -391,8 +403,39 @@ extension OpenClawChatSQLiteTranscriptCache {
         agentID: String,
         messages: [OpenClawChatMessage]) throws
     {
-        let bounded = cacheableMessages(messages)
-        let encoded = try bounded.map(encodeJSON)
+        let candidates: [OpenClawChatMessage] = cacheableMessages(messages)
+        let candidatePayloads: [String] = try candidates.map { try Self.encodeCachedPayload($0) }
+        // Stored-size budget for this transcript: the oldest rows go first and
+        // the newest row is always kept, even when it alone is large.
+        var firstKept = 0
+        var storedBytes: Int = candidatePayloads.reduce(0) { $0 + $1.utf8.count }
+        while storedBytes > Self.maxCachedTranscriptBytes, firstKept < candidatePayloads.count - 1 {
+            storedBytes -= candidatePayloads[firstKept].utf8.count
+            firstKept += 1
+        }
+        let bounded: [OpenClawChatMessage] = Array(candidates[firstKept...])
+        let encoded: [String] = Array(candidatePayloads[firstKept...])
+        if !bounded.isEmpty {
+            let existing: [String] = try String.fetchAll(
+                db,
+                sql: """
+                SELECT payload_json FROM cached_messages
+                WHERE gateway_id = ? AND session_key = ? AND agent_id = ?
+                ORDER BY position
+                """,
+                arguments: [gatewayID, sessionKey, agentID])
+            // History refreshes usually return the same tail. Rewriting it would
+            // cost a delete, up to 200 inserts and a sync; only refresh recency.
+            if existing == encoded {
+                try db.execute(
+                    sql: """
+                    UPDATE cached_transcripts SET updated_at = ?
+                    WHERE gateway_id = ? AND session_key = ? AND agent_id = ?
+                    """,
+                    arguments: [Date().timeIntervalSince1970, gatewayID, sessionKey, agentID])
+                return
+            }
+        }
         try db.execute(
             sql: """
             DELETE FROM cached_transcripts
@@ -435,6 +478,13 @@ extension OpenClawChatSQLiteTranscriptCache {
             )
             """,
             arguments: [gatewayID, self.maxCachedTranscripts])
+        if storedBytes >= Self.transcriptBudgetCheckThresholdBytes {
+            try Self.enforceTranscriptByteBudget(
+                db,
+                gatewayID: gatewayID,
+                keepingSessionKey: sessionKey,
+                keepingAgentID: agentID)
+        }
     }
 }
 

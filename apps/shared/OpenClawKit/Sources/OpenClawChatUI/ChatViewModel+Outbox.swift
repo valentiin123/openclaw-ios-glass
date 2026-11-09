@@ -1106,9 +1106,31 @@ extension OpenClawChatViewModel {
         return .stop
     }
 
+    /// Upper bound for a backoff step that goes beyond the configured ladder.
+    nonisolated static let maxOutboxRetryDelayMs: UInt64 = 60000
+
+    /// Delay before the next automatic retry. The configured ladder is used
+    /// first; past its end the last step keeps doubling up to the cap. Up to
+    /// 20% of jitter is added (never subtracted) so several clients that lost
+    /// the same gateway do not retry in lockstep. Nil means retry immediately.
+    nonisolated static func outboxRetryDelayMs(afterAttempts attempts: Int, delays: [UInt64]) -> UInt64? {
+        guard let last = delays.last else { return nil }
+        let index: Int = max(attempts - 1, 0)
+        let base: UInt64
+        if index < delays.count {
+            base = delays[index]
+        } else {
+            let doublings: Int = min(index - delays.count + 1, 6)
+            let seed: UInt64 = min(last, Self.maxOutboxRetryDelayMs)
+            base = min(seed << UInt64(doublings), Self.maxOutboxRetryDelayMs)
+        }
+        return base + UInt64.random(in: 0...(base / 5))
+    }
+
     private func scheduleOutboxRetry(afterAttempts attempts: Int) {
-        let delays = self.outboxRetryDelaysMs
-        let delayMs = delays.isEmpty ? nil : delays[min(max(attempts - 1, 0), delays.count - 1)]
+        let delayMs: UInt64? = Self.outboxRetryDelayMs(
+            afterAttempts: attempts,
+            delays: self.outboxRetryDelaysMs)
         self.outboxRetryTask?.cancel()
         self.outboxRetryTask = Task { [weak self] in
             if let delayMs {

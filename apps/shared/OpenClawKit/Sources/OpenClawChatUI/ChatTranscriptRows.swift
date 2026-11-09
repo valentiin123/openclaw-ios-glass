@@ -253,3 +253,57 @@ extension ChatTranscriptRow {
         return result
     }
 }
+
+extension ChatTranscriptRow {
+    /// One action bar per turn: it belongs under the turn's last completed assistant reply and only
+    /// appears once that reply's run is over. Pure so it can be exercised without a view model.
+    ///
+    /// A turn runs from a user input (or any other turn boundary) to the next one. Intermediate
+    /// assistant messages, tool rows and commentary never carry the bar.
+    static func isFinalTurnReply(
+        _ message: OpenClawChatMessage,
+        in messages: [OpenClawChatMessage],
+        activeRunIDs: Set<String>,
+        runWorking: Bool,
+        isMessageVisible: (OpenClawChatMessage) -> Bool) -> Bool
+    {
+        // Cheap checks first: this runs for every visible assistant row on each render.
+        if let runID = message.workRunID, activeRunIDs.contains(runID) { return false }
+        guard message.isCompletedReply,
+              let index = messages.firstIndex(where: { $0.id == message.id })
+        else { return false }
+        // Rest of this turn only (bounded work per row), with tool results folded back into their
+        // calls exactly like the visible rows, so a resolved call + text counts as a reply here too.
+        var end = index + 1
+        while end < messages.count,
+              messages[end].historyMarker == nil,
+              Self(messages[end])?.startsTurn != true
+        {
+            end += 1
+        }
+        let isTrailingTurn = end == messages.count
+        let rest = Self.mergeToolResults(in: Array(messages[(index + 1)..<end]))
+        if rest.contains(where: { $0.isCompletedReply && isMessageVisible($0) }) { return false }
+        // Same notion of "still generating" as `footerMetadata`: the trailing turn is live while a run
+        // works, unless the reply belongs to a known run that is no longer active.
+        if isTrailingTurn, runWorking, activeRunIDs.isEmpty || message.workRunID == nil { return false }
+        return true
+    }
+
+    @MainActor
+    static func isFinalTurnReply(
+        _ message: OpenClawChatMessage,
+        viewModel: OpenClawChatViewModel,
+        isMessageVisible: (OpenClawChatMessage) -> Bool) -> Bool
+    {
+        // Avoid projecting the whole transcript for rows that can never carry the bar.
+        guard message.isCompletedReply else { return false }
+        let activeRunIDs = Set(viewModel.liveAdvertisedRunIDs).union(viewModel.liveLocalRunIDs)
+        return Self.isFinalTurnReply(
+            message,
+            in: viewModel.transcriptMessages,
+            activeRunIDs: activeRunIDs,
+            runWorking: viewModel.hasBlockingRunActivity || viewModel.hasStreamingAssistantText,
+            isMessageVisible: isMessageVisible)
+    }
+}

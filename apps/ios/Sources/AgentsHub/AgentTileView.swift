@@ -109,6 +109,8 @@ struct AgentTileView: View {
     var frameStore: AgentTileFrameStore?
     /// Position in the grid, used for the staggered entrance. Defaults to 0 (no extra delay).
     var entranceIndex: Int = 0
+    /// Remembers which tiles already played their entrance, so a tile rebuilt by the lazy grid does not replay it.
+    var entranceLedger: OpenClawEntranceLedger?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -124,7 +126,7 @@ struct AgentTileView: View {
             self.card
         }
         .buttonStyle(AgentTilePressStyle(reduceMotion: self.reduceMotion))
-        .openClawEntrance(index: self.entranceIndex)
+        .openClawEntrance(index: self.entranceIndex, ledger: self.entranceLedger, key: self.item.session.key)
         .onGeometryChange(for: CGRect.self, of: self.globalFrame, action: self.storeFrame)
         .contextMenu { self.menuItems }
         .transition(OpenClawMotion.appear(reduceMotion: self.reduceMotion))

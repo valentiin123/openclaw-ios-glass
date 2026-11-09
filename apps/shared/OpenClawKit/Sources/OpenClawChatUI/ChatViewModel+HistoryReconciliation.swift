@@ -790,6 +790,10 @@ extension OpenClawChatViewModel {
             retainedMessageIDs.contains(message.id) && !reconciledMessageIDs.contains(message.id)
         })
         nextMessages = Self.dedupeMessages(nextMessages)
+        // Older pages the reader loaded, and rows that slid out of a refreshed tail page, stay above it.
+        let retainedOlder: (messages: [OpenClawChatMessage], retainedOlderKeys: Set<String>) =
+            self.retainingLoadedOlderRows(in: nextMessages, incoming: incoming)
+        nextMessages = retainedOlder.messages
         // Explicit idle includes terminal persistence. Only a current, complete
         // snapshot may retire narration absent from canonical history.
         let narrationSettled = payload.sessionInfo?.hasActiveRun == false &&
@@ -805,7 +809,7 @@ extension OpenClawChatViewModel {
         self.pruneProvisionalFinalMessages()
         self.pruneRunMessageScopes()
         self.rescopeRunsAdoptedAfterHistoryRequest(request)
-        self.sessionId = payload.sessionId
+        if self.sessionId != payload.sessionId { self.sessionId = payload.sessionId }
         self.applyInFlightRunSnapshot(payload, for: request)
         // Incomplete refreshes can arrive before durable assistant history.
         // The latest visible user turn must survive answered before it can reject older replies.
@@ -830,8 +834,8 @@ extension OpenClawChatViewModel {
         }
         // Live history is the source of truth: it clears the cached marker and
         // is written through so the next cold open pre-paints current rows.
-        self.hasAppliedLiveHistory = true
-        self.isShowingCachedTranscript = false
+        if !self.hasAppliedLiveHistory { self.hasAppliedLiveHistory = true }
+        if self.isShowingCachedTranscript { self.isShowingCachedTranscript = false }
         self.syncSessionReactions()
         // An empty post-send refresh is incomplete by contract: reconciliation
         // preserves the visible transcript, so preserve its last canonical cache too.
@@ -841,7 +845,8 @@ extension OpenClawChatViewModel {
             persistTranscriptToCache(
                 session: request.session,
                 messages: nextMessages,
-                canonicalMessageIdempotencyKeys: Set(incoming.compactMap(\.idempotencyKey)))
+                canonicalMessageIdempotencyKeys: Set(incoming.compactMap(\.idempotencyKey))
+                    .union(retainedOlder.retainedOlderKeys))
         }
         // Wholesale history replacement drops local-only queued bubbles;
         // re-adopt or re-append them from the durable outbox.

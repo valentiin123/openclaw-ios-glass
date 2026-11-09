@@ -1,6 +1,7 @@
 import OpenClawChatUI
 import OpenClawKit
 import SwiftUI
+import UIKit
 
 // Clean subagent chat: compact header (sprite, simple name, playful state, duration, discreet Stop),
 // a list of running child subagents, then the existing `OpenClawChatView` (full-width assistant text,
@@ -540,7 +541,11 @@ struct SubagentChatScreen: View {
         self.childrenCollapsed = OpenClawChatSubagentListState.shared.isCollapsed(key)
         self.prepare()
         while !Task.isCancelled {
-            self.viewModel?.refreshSessions()
+            // The app in the background (or locked) shows nothing: skip the gateway call, the loop keeps its
+            // rhythm and the next tick after returning to the foreground refreshes the row.
+            if UIApplication.shared.applicationState == .active {
+                self.viewModel?.refreshSessions()
+            }
             try? await Task.sleep(for: .seconds(4))
         }
     }

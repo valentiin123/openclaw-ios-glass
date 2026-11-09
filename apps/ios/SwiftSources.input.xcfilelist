@@ -2,6 +2,7 @@
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatAgentCatalog.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatAssistantRunGroup.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatAttachmentPickerMetadata.swift
+../shared/OpenClawKit/Sources/OpenClawChatUI/ChatAttachmentTemporaryStorage.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatCameraFlipButton.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatCaptureActivityViews.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatCodeHighlighter.swift
@@ -164,6 +165,7 @@
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatViewModel+Drafts.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatViewModel+HistoryReconciliation.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatViewModel+ModelControls.swift
+../shared/OpenClawKit/Sources/OpenClawChatUI/ChatViewModel+OlderHistory.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatViewModel+Outbox.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatViewModel+ProgressCard.swift
 ../shared/OpenClawKit/Sources/OpenClawChatUI/ChatViewModel+Reactions.swift

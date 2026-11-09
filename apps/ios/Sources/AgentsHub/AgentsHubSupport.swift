@@ -78,13 +78,22 @@ struct AgentsHubErrorRow: View {
 }
 
 enum AgentsHubFormat {
+    /// Built once: a `DateComponentsFormatter` is expensive to create and rows format on every render.
+    /// Configured here, then only read under `durationLock`, so sharing it between threads is safe.
+    private nonisolated(unsafe) static let durationFormatter: DateComponentsFormatter = {
+        let formatter: DateComponentsFormatter = DateComponentsFormatter()
+        formatter.allowedUnits = [.hour, .minute, .second]
+        formatter.unitsStyle = .abbreviated
+        formatter.maximumUnitCount = 2
+        return formatter
+    }()
+    private static let durationLock: NSLock = NSLock()
+
     static func duration(ms: Double?) -> String? {
         guard let ms, ms > 0 else { return nil }
-        let f = DateComponentsFormatter()
-        f.allowedUnits = [.hour, .minute, .second]
-        f.unitsStyle = .abbreviated
-        f.maximumUnitCount = 2
-        return f.string(from: ms / 1000)
+        Self.durationLock.lock()
+        defer { Self.durationLock.unlock() }
+        return Self.durationFormatter.string(from: ms / 1000)
     }
 
     /// `ms` is an epoch timestamp in milliseconds.

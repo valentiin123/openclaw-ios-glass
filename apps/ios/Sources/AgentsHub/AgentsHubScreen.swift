@@ -1,6 +1,7 @@
 import Foundation
 import OpenClawChatUI
 import OpenClawKit
+import OpenClawProtocol
 import SwiftUI
 
 /// Hôte de la destination « Subagents » : branche AgentsHub sur la connexion Gateway opérateur courante.
@@ -83,10 +84,15 @@ struct AgentsHubScreen: View {
     static func observeSessionChanges(model: AgentsHubViewModel, session: GatewayNodeSession) async {
         let stream = await session.subscribeServerEvents()
         for await frame in stream {
-            if Task.isCancelled { return }
+            if Task.isCancelled { break }
+            // Cheap name check first: the codec decodes the whole payload, and the stream also carries chat,
+            // health and observer events that this screen ignores.
+            if frame.event != "sessions.changed" { continue }
             if case .sessionsChanged = OpenClawChatGatewayPayloadCodec.event(from: frame) {
-                await model.refresh()
+                // Coalesced: a burst of events triggers one reload instead of one per event.
+                model.requestRefresh()
             }
         }
+        model.cancelRefreshRequests()
     }
 }

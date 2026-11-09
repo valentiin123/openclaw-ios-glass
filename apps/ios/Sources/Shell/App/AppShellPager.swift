@@ -2,6 +2,22 @@ import Observation
 import OpenClawKit
 import SwiftUI
 
+// MARK: - Page activity
+
+private struct AppShellPageActiveKey: EnvironmentKey {
+    static let defaultValue: Bool = true
+}
+
+extension EnvironmentValues {
+    /// False for a pager page that is neither the selected one nor on screen because of a drag. The three
+    /// pages stay alive side by side, so without this flag a page parked off screen keeps running its
+    /// frame-rate timelines, clocks, pulses and reloads for nothing. True everywhere else (iPad, covers).
+    var appShellPageActive: Bool {
+        get { self[AppShellPageActiveKey.self] }
+        set { self[AppShellPageActiveKey.self] = newValue }
+    }
+}
+
 // MARK: - Pager state
 
 /// Live state of the swipeable pager. It is separate from `AppShellNavigation` so that a drag
@@ -22,9 +38,20 @@ final class AppShellPagerState {
     @ObservationIgnored var settleUntil: Date = Date.distantPast
     /// True for the current drag when it started while a settle animation was still running.
     @ObservationIgnored var tracksWithSpring: Bool = false
+    /// True while a settle animation may still show a neighbour page on screen (set on release, cleared
+    /// shortly after the animation). Keeps the page that slides out running until it has left the screen.
+    var neighboursLive: Bool = false
+    @ObservationIgnored private var settleTask: Task<Void, Never>?
 
     func noteSettle() {
         self.settleUntil = Date().addingTimeInterval(0.6)
+        self.neighboursLive = true
+        self.settleTask?.cancel()
+        self.settleTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(0.8))
+            guard !Task.isCancelled, let self else { return }
+            self.neighboursLive = false
+        }
     }
 
     func isSettling() -> Bool {
@@ -148,8 +175,12 @@ struct AppShellPagerView: View {
             .frame(width: width)
             .frame(maxHeight: .infinity)
             .opacity(hidden ? 0 : 1)
-            .allowsHitTesting(isCurrent && !self.pager.isDragging)
             .accessibilityHidden(!isCurrent)
+            .modifier(AppShellPageActivityModifier(
+                tab: tab,
+                navigation: self.navigation,
+                pager: self.pager,
+                reduceMotion: self.reduceMotion))
     }
 
     @ViewBuilder
@@ -162,6 +193,35 @@ struct AppShellPagerView: View {
         case .activity, .automations:
             AppShellActivityView(navigation: self.navigation, context: self.context)
         }
+    }
+}
+
+/// Publishes `appShellPageActive` for one page. It reads the selection, the drag state and the cover state
+/// itself, so a change re-runs only this small body and never the pages: the pager body must not read these
+/// values, because the page views hold closures and would be rebuilt with it.
+/// Only the neighbours of the selected page can be on screen during a drag (the page two steps away never is).
+/// Under Reduce Motion the other pages are invisible, so they stay inactive. A full-screen chat or Settings
+/// cover hides every page, so nothing below it needs to animate.
+private struct AppShellPageActivityModifier: ViewModifier {
+    let tab: AppShellTab
+    let navigation: AppShellNavigation
+    let pager: AppShellPagerState
+    let reduceMotion: Bool
+
+    func body(content: Content) -> some View {
+        let selected: AppShellTab = self.navigation.selection.barTab
+        let isCurrent: Bool = self.tab == selected
+        let hidden: Bool = self.reduceMotion && !isCurrent
+        let distance: Int = abs(AppShellPagerMath.index(of: self.tab) - AppShellPagerMath.index(of: selected))
+        let nearDrag: Bool = self.pager.isDragging && distance <= 1
+        let covered: Bool = self.navigation.isChatPresented || self.navigation.isSettingsPresented
+        let active: Bool = !hidden && !covered && (isCurrent || nearDrag || self.pager.neighboursLive)
+        // Hit testing reads `isDragging` here too: read in the pager body, it rebuilt the three pages when a
+        // drag began and when it ended.
+        let touchable: Bool = isCurrent && !self.pager.isDragging
+        return content
+            .environment(\.appShellPageActive, active)
+            .allowsHitTesting(touchable)
     }
 }
 

@@ -13,16 +13,12 @@ final class ChatDownloadedFile: Identifiable, Sendable {
     private let directory: URL
 
     init(data: Data, fileName: String) throws {
-        let name = (fileName.replacingOccurrences(of: "\\", with: "/") as NSString).lastPathComponent
-        let safeName = name.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }
-            .map(String.init).joined()
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("openclaw-chat-file-\(UUID().uuidString)", isDirectory: true)
+        // Dedicated folder under <tmp>/OpenClawAttachments/, swept after 24 h if the app is killed.
+        let directory = try ChatAttachmentTemporaryStorage.makeWorkingDirectory()
         self.directory = directory
         self.url = directory.appendingPathComponent(
-            safeName.isEmpty || safeName == "." || safeName == ".." ? "Attachment" : safeName,
+            ChatAttachmentTemporaryStorage.safeFileName(fileName),
             isDirectory: false)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         do {
             try data.write(to: self.url, options: .atomic)
         } catch {
@@ -47,6 +43,9 @@ struct ChatFileAttachment: View {
     @State private var isLoading = false
     @State private var downloadedFile: ChatDownloadedFile?
     @State private var showsError = false
+    /// True when the Gateway artifact is above the client download ceiling, so the
+    /// alert can say so instead of suggesting a reconnect that cannot help.
+    @State private var failureIsTooLarge = false
 
     var body: some View {
         Button {
@@ -87,8 +86,13 @@ struct ChatFileAttachment: View {
                 Text("OK").font(OpenClawChatTypography.body)
             }
         } message: {
-            Text("Reconnect and try again. If the file has expired or was removed, ask the assistant to send it again.")
-                .font(OpenClawChatTypography.body)
+            if self.failureIsTooLarge {
+                Text("This file is too large to download in the app.")
+                    .font(OpenClawChatTypography.body)
+            } else {
+                Text("Reconnect and try again. If the file has expired or was removed, ask the assistant to send it again.")
+                    .font(OpenClawChatTypography.body)
+            }
         }
         #if os(iOS)
         .sheet(item: self.$downloadedFile) { file in
@@ -100,6 +104,7 @@ struct ChatFileAttachment: View {
 
     @MainActor private func download() async {
         self.isLoading = true
+        self.failureIsTooLarge = false
         defer {
             self.isLoading = false
             self.requestID = nil
@@ -122,11 +127,18 @@ struct ChatFileAttachment: View {
             panel.nameFieldStringValue = file.url.lastPathComponent
             panel.begin { response in
                 guard response == .OK, let destination = panel.url else { return }
-                do {
-                    let data = try Data(contentsOf: file.url)
-                    try data.write(to: destination, options: .atomic)
-                } catch {
-                    self.showsError = true
+                let source = file.url
+                Task {
+                    do {
+                        // File to file, off the main thread: the document never lands on the heap.
+                        try await ChatAttachmentTemporaryStorage.runOffMain {
+                            try ChatAttachmentTemporaryStorage.exportCopy(from: source, to: destination)
+                        }
+                    } catch {
+                        self.showsError = true
+                    }
+                    // Keeps the temporary folder alive until the copy has finished.
+                    withExtendedLifetime(file) {}
                 }
             }
             #else
@@ -134,6 +146,11 @@ struct ChatFileAttachment: View {
             #endif
         } catch is CancellationError {
             // Leaving the message or changing Gateway cancels the export.
+        } catch OpenClawChatMediaArtifactLoader.LoadError.payloadTooLarge {
+            if !Task.isCancelled {
+                self.failureIsTooLarge = true
+                self.showsError = true
+            }
         } catch {
             if !Task.isCancelled { self.showsError = true }
         }

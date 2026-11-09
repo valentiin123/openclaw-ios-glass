@@ -87,6 +87,13 @@ public enum OpenClawChatGatewayRequests {
     private static let archiveMutationTimeoutMs: Double = 10 * 60 * 1000
     private static let shortTimeoutMs: Double = 10000
     private static let compactionTimeoutMs: Double = 0
+    /// History pages can be large; on a weak mobile link the default is too short
+    /// and the user would only ever see the cached transcript.
+    private static let historyTimeoutMs: Double = 30000
+    private static let sendBaseTimeoutMs: Int = 30000
+    private static let sendMaxTimeoutMs: Int = 300_000
+    /// Pessimistic uplink used to extend the send deadline for attachments.
+    private static let sendUploadBytesPerSecond: Int = 20_000
 
     public static func agentsList(timeoutMs: Double = 15000) -> OpenClawChatGatewayRequest {
         OpenClawChatGatewayRequest(method: "agents.list", timeoutMs: timeoutMs)
@@ -582,12 +589,15 @@ public enum OpenClawChatGatewayRequests {
         sessionKey: String,
         agentID: String?,
         limit: Int? = nil,
+        offset: Int? = nil,
         maxChars: Int? = nil,
         inputRunIDs: [String]? = nil,
         timeoutMs: Int? = nil) -> OpenClawChatGatewayRequest
     {
         var params = self.sessionParams(sessionKey: sessionKey, agentID: agentID, key: "sessionKey")
         params["limit"] = limit.map(AnyCodable.init)
+        // `offset` counts messages back from the newest row; the Gateway answers with hasMore/nextOffset.
+        params["offset"] = offset.map(AnyCodable.init)
         params["maxChars"] = maxChars.map(AnyCodable.init)
         if let inputRunIDs, !inputRunIDs.isEmpty {
             params["inputRunIds"] = AnyCodable(inputRunIDs)
@@ -595,7 +605,7 @@ public enum OpenClawChatGatewayRequests {
         return OpenClawChatGatewayRequest(
             method: "chat.history",
             params: params,
-            timeoutMs: timeoutMs.map(Double.init) ?? self.defaultTimeoutMs)
+            timeoutMs: timeoutMs.map(Double.init) ?? self.historyTimeoutMs)
     }
 
     public static func reactionsList(sessionKey: String, agentID: String?) -> OpenClawChatGatewayRequest {
@@ -740,7 +750,16 @@ public enum OpenClawChatGatewayRequests {
             // Admission includes audio transcription; zero waits until the
             // captured connection closes, the caller cancels, or the ACK arrives.
             timeoutMs: Double(requestTimeoutMs ??
-                (attachments.contains { $0.mimeType.lowercased().hasPrefix("audio/") } ? 0 : 30000)))
+                (attachments.contains { $0.mimeType.lowercased().hasPrefix("audio/") }
+                    ? 0 : self.sendAdmissionTimeoutMs(attachments: attachments))))
+    }
+
+    /// 30 s base plus upload time for the base64 payload at a pessimistic 20 KB/s,
+    /// capped at 5 min. A send without attachments keeps exactly 30 s.
+    private static func sendAdmissionTimeoutMs(attachments: [OpenClawChatAttachmentPayload]) -> Int {
+        let uploadBytes: Int = attachments.reduce(0) { $0 + $1.content.utf8.count }
+        let uploadMs: Int = (uploadBytes / self.sendUploadBytesPerSecond) * 1000
+        return min(self.sendMaxTimeoutMs, self.sendBaseTimeoutMs + uploadMs)
     }
 
     public static func agentWait(

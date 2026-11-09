@@ -11,6 +11,13 @@ public protocol OpenClawChatGatewayTransport: OpenClawChatTransport {
     func requestChatSessionAction(_ request: OpenClawChatGatewayRequest) async throws -> Data
 }
 
+/// Backward-paging fields of a `chat.history` response; the rest decodes as `OpenClawChatHistoryPayload`.
+private struct OpenClawChatHistoryPageCursor: Decodable {
+    let hasMore: Bool?
+    let nextOffset: Int?
+    let totalMessages: Int?
+}
+
 extension OpenClawChatGatewayTransport {
     public var supportsSlashCommandCatalog: Bool {
         true
@@ -48,6 +55,32 @@ extension OpenClawChatGatewayTransport {
 
     public func requestChatSessionAction(_ request: OpenClawChatGatewayRequest) async throws -> Data {
         try await self.requestChatGateway(request)
+    }
+
+    /// `chat.history` with `limit`/`offset`. The Gateway answers `hasMore`/`nextOffset`/`totalMessages`
+    /// next to the usual payload; `offset` counts messages back from the newest row.
+    public func requestHistoryPage(
+        sessionKey: String,
+        limit: Int,
+        offset: Int?) async throws -> OpenClawChatHistoryPage?
+    {
+        let target = self.sessionTarget(for: sessionKey, overrideAgentID: nil)
+        let request = OpenClawChatGatewayRequests.history(
+            sessionKey: target.sessionKey,
+            agentID: target.agentID,
+            limit: limit,
+            offset: offset)
+        let data: Data = try await self.requestChatGateway(request)
+        let decoder = JSONDecoder()
+        let payload: OpenClawChatHistoryPayload = try decoder.decode(OpenClawChatHistoryPayload.self, from: data)
+        let cursor: OpenClawChatHistoryPageCursor = try decoder.decode(OpenClawChatHistoryPageCursor.self, from: data)
+        // A Gateway that omits `hasMore` but honors `limit` is paged by fullness: a full page may have older rows.
+        let reportedHasMore: Bool = cursor.hasMore ?? ((payload.messages?.count ?? 0) >= limit)
+        return OpenClawChatHistoryPage(
+            payload: payload,
+            hasMore: reportedHasMore,
+            nextOffset: cursor.nextOffset,
+            totalMessages: cursor.totalMessages)
     }
 
     public func abortRun(sessionKey: String, runId: String) async throws {

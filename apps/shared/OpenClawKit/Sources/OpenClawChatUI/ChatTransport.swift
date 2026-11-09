@@ -788,6 +788,28 @@ public struct OpenClawChatSwarmRouteLease: Sendable {
     }
 }
 
+/// One `chat.history` page plus the backward cursor the Gateway reports with it.
+public struct OpenClawChatHistoryPage: Sendable {
+    public let payload: OpenClawChatHistoryPayload
+    /// True when rows older than this page exist.
+    public let hasMore: Bool
+    /// Offset (messages back from the newest row) where the next older page starts.
+    public let nextOffset: Int?
+    public let totalMessages: Int?
+
+    public init(
+        payload: OpenClawChatHistoryPayload,
+        hasMore: Bool,
+        nextOffset: Int?,
+        totalMessages: Int?)
+    {
+        self.payload = payload
+        self.hasMore = hasMore
+        self.nextOffset = nextOffset
+        self.totalMessages = totalMessages
+    }
+}
+
 public protocol OpenClawChatTransport: Sendable {
     /// A fixed agent fallback sharing the same Gateway connection and route guards.
     func scoped(toAgentID agentID: String) -> (any OpenClawChatTransport)?
@@ -805,6 +827,8 @@ public protocol OpenClawChatTransport: Sendable {
         worktreeBaseRef: String?) async throws -> OpenClawChatCreateSessionResponse
 
     func requestHistory(sessionKey: String) async throws -> OpenClawChatHistoryPayload
+    /// A history page with its backward-paging cursor. nil means this transport cannot page.
+    func requestHistoryPage(sessionKey: String, limit: Int, offset: Int?) async throws -> OpenClawChatHistoryPage?
     /// Tri-state hello-catalog negotiation: true/false when the connected
     /// gateway's advertised method set answers, nil when no catalog is known
     /// (disconnected, pre-catalog gateway, or non-gateway transport).
@@ -949,6 +973,14 @@ extension OpenClawChatTransport {
             domain: "OpenClawChatTransport",
             code: 0,
             userInfo: [NSLocalizedDescriptionKey: description])
+    }
+
+    public func requestHistoryPage(
+        sessionKey _: String,
+        limit _: Int,
+        offset _: Int?) async throws -> OpenClawChatHistoryPage?
+    {
+        nil
     }
 
     public func loadSourceContext() async -> OpenClawChatSourceContext? {

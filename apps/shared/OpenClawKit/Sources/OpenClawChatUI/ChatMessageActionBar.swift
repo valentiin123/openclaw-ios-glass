@@ -1,7 +1,8 @@
 #if os(iOS)
 import SwiftUI
 
-/// Three icon-only actions under an assistant reply: add a reaction, copy, reply.
+/// Three icon-only actions under the final assistant reply of a turn (never under intermediate work
+/// rows, never while the run is still generating): add a reaction, copy, reply.
 ///
 /// - Every control is a 44 pt touch target with a VoiceOver label.
 /// - Opaque, discreet surface (`OpenClawChatTheme`): no Liquid Glass. The only fill is a pressed state.

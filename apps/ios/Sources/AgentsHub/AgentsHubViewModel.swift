@@ -45,12 +45,18 @@ final class AgentsHubViewModel {
     /// Agents board (grid of tiles): flat session list of the selected agent plus the direct children of its
     /// root conversations (and of the OpenClaw system chat, whose subagents are still listed as tiles).
     private(set) var boardSessions: [OpenClawChatSessionEntry] = []
+    /// Bumped at every write of `boardSessions`. The board view keys its tile list on it instead of comparing
+    /// the whole session array (each row is a large struct) at every render.
+    private(set) var boardRevision: Int = 0
     private(set) var boardAgentID: String?
     private(set) var isLoadingBoard = false
     private(set) var boardError: String?
 
     private var trackedAgentID: String?
     private var trackedRoot: OpenClawChatSessionEntry?
+    /// Single pending reload requested by `sessions.changed` (see `requestRefresh`). Not observed.
+    @ObservationIgnored private var refreshTask: Task<Void, Never>?
+    @ObservationIgnored private var refreshRequested: Bool = false
 
     private let gateway: AgentsHubGateway
     private static let maxDepth = 8
@@ -88,6 +94,91 @@ final class AgentsHubViewModel {
         if let agentID = trackedAgentID { await loadSessions(agentID: agentID) }
         if let root = trackedRoot, !isLoadingTree { await loadTree(root: root) }
         if let boardID = boardAgentID { await loadBoard(agentID: boardID) }
+    }
+
+    // MARK: Coalesced refresh
+
+    /// Asks for a reload after `sessions.changed`. A burst of events (a run that spawns several subagents
+    /// emits many) is collapsed: one short debounce, then a single reload, and one more only if another
+    /// event arrived while it was running. Without this every event started its own set of gateway calls.
+    func requestRefresh() {
+        self.refreshRequested = true
+        if self.refreshTask != nil { return }
+        self.refreshTask = Task { [weak self] in
+            await self?.drainRefreshRequests()
+        }
+    }
+
+    /// Stops a pending reload (the screen that observed the events went away).
+    func cancelRefreshRequests() {
+        self.refreshTask?.cancel()
+        self.refreshTask = nil
+        self.refreshRequested = false
+    }
+
+    private func drainRefreshRequests() async {
+        while self.refreshRequested, !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(300))
+            if Task.isCancelled { break }
+            self.refreshRequested = false
+            await self.refresh()
+        }
+        // A cancelled drain was already detached by `cancelRefreshRequests`; clearing here could drop a newer one.
+        if !Task.isCancelled { self.refreshTask = nil }
+    }
+
+    // MARK: Off-main fetch and decode
+
+    /// One `sessions.list` call. The payload is decoded off the main actor: with 200 rows per page and up to
+    /// nine pages per board load, decoding on the main actor was a visible hitch.
+    nonisolated private static func fetchSessions(
+        request: @Sendable (OpenClawChatGatewayRequest) async throws -> Data,
+        agentID: String,
+        spawnedBy: String?,
+        limit: Int) async throws -> [OpenClawChatSessionEntry]
+    {
+        let built: OpenClawChatGatewayRequest = OpenClawChatGatewayRequests.sessionsList(
+            limit: limit, search: nil, archived: false, agentID: agentID,
+            includeGlobal: false, spawnedBy: spawnedBy)
+        let data: Data = try await request(built)
+        return try await Self.decodeSessions(data)
+    }
+
+    nonisolated private static func decodeSessions(_ data: Data) async throws -> [OpenClawChatSessionEntry] {
+        let task: Task<[OpenClawChatSessionEntry], Error> = Task.detached(priority: .userInitiated) {
+            try JSONDecoder().decode(OpenClawChatSessionsListResponse.self, from: data).sessions
+        }
+        return try await task.value
+    }
+
+    /// Child lookups of every parent, side by side. A failed lookup yields an empty page (the base list stays
+    /// usable). Pages come back in the order of `parentKeys`, so merging them gives the sequential result.
+    nonisolated private static func fetchChildPages(
+        request: @escaping @Sendable (OpenClawChatGatewayRequest) async throws -> Data,
+        agentID: String,
+        parentKeys: [String],
+        limit: Int) async -> [[OpenClawChatSessionEntry]]
+    {
+        await withTaskGroup(
+            of: AgentsHubIndexedPage.self,
+            returning: [[OpenClawChatSessionEntry]].self)
+        { group in
+            for (index, parentKey) in parentKeys.enumerated() {
+                group.addTask {
+                    let rows: [OpenClawChatSessionEntry] = (try? await Self.fetchSessions(
+                        request: request, agentID: agentID, spawnedBy: parentKey, limit: limit)) ?? []
+                    return AgentsHubIndexedPage(index: index, rows: rows)
+                }
+            }
+            var collected: [AgentsHubIndexedPage] = []
+            for await page in group {
+                collected.append(page)
+            }
+            collected.sort { (lhs: AgentsHubIndexedPage, rhs: AgentsHubIndexedPage) -> Bool in
+                lhs.index < rhs.index
+            }
+            return collected.map { (page: AgentsHubIndexedPage) -> [OpenClawChatSessionEntry] in page.rows }
+        }
     }
 
     // MARK: Retry
@@ -129,17 +220,19 @@ final class AgentsHubViewModel {
     /// `sessions.list(spawnedBy: <parent>)` for the system chat and each recent root conversation, so
     /// subagents are found even when the plain list omits them.
     func loadBoard(agentID: String) async {
-        if boardAgentID != agentID { boardSessions = [] }
+        if boardAgentID != agentID {
+            boardSessions = []
+            boardRevision &+= 1
+        }
         boardAgentID = agentID
         isLoadingBoard = true
         boardError = nil
         defer { isLoadingBoard = false }
         var rows: [OpenClawChatSessionEntry] = []
+        let request: @Sendable (OpenClawChatGatewayRequest) async throws -> Data = gateway.request
+        let limit: Int = Self.pageLimit
         do {
-            let data = try await gateway.request(OpenClawChatGatewayRequests.sessionsList(
-                limit: Self.pageLimit, search: nil, archived: false, agentID: agentID,
-                includeGlobal: false))
-            rows = try JSONDecoder().decode(OpenClawChatSessionsListResponse.self, from: data).sessions
+            rows = try await Self.fetchSessions(request: request, agentID: agentID, spawnedBy: nil, limit: limit)
         } catch is CancellationError {
             return
         } catch {
@@ -158,23 +251,21 @@ final class AgentsHubViewModel {
         for key in rootKeys where !parentKeys.contains(key) {
             parentKeys.append(key)
         }
-        for parentKey in parentKeys {
-            do {
-                let data = try await gateway.request(OpenClawChatGatewayRequests.sessionsList(
-                    limit: Self.pageLimit, search: nil, archived: false, agentID: agentID,
-                    includeGlobal: false, spawnedBy: parentKey))
-                let page = try JSONDecoder().decode(OpenClawChatSessionsListResponse.self, from: data)
-                for row in page.sessions where !known.contains(row.key) {
-                    known.insert(row.key)
-                    rows.append(row)
-                }
-            } catch is CancellationError {
-                return
-            } catch {
-                // The base list is still usable; keep it.
+        // The child lookups are independent: run them side by side instead of one after the other, then merge
+        // in the original parent order so the result is identical to the sequential version.
+        let pages: [[OpenClawChatSessionEntry]] = await Self.fetchChildPages(
+            request: request, agentID: agentID, parentKeys: parentKeys, limit: limit)
+        if Task.isCancelled { return }
+        for page in pages {
+            for row in page where !known.contains(row.key) {
+                known.insert(row.key)
+                rows.append(row)
             }
         }
-        if boardAgentID == agentID { boardSessions = rows }
+        if boardAgentID == agentID {
+            boardSessions = rows
+            boardRevision &+= 1
+        }
     }
 
     func loadSessions(agentID: String) async {
@@ -183,7 +274,7 @@ final class AgentsHubViewModel {
             let data = try await gateway.request(OpenClawChatGatewayRequests.sessionsList(
                 limit: Self.pageLimit, search: nil, archived: false, agentID: agentID,
                 includeGlobal: false))
-            sessions = try JSONDecoder().decode(OpenClawChatSessionsListResponse.self, from: data).sessions
+            sessions = try await Self.decodeSessions(data)
         } catch is CancellationError {
         } catch {
             agentsError = error.localizedDescription
@@ -208,8 +299,8 @@ final class AgentsHubViewModel {
                     let data = try await gateway.request(OpenClawChatGatewayRequests.sessionsList(
                         limit: Self.pageLimit, search: nil, archived: false,
                         agentID: parent.agentId, includeGlobal: false, spawnedBy: parent.key))
-                    let page = try JSONDecoder().decode(OpenClawChatSessionsListResponse.self, from: data)
-                    for row in page.sessions where all[row.key] == nil {
+                    let pageRows: [OpenClawChatSessionEntry] = try await Self.decodeSessions(data)
+                    for row in pageRows where all[row.key] == nil {
                         all[row.key] = row
                         next.append(row)
                     }
@@ -263,6 +354,7 @@ final class AgentsHubViewModel {
             _ = try await gateway.request(OpenClawChatGatewayRequests.deleteSession(
                 sessionKey: session.key, agentID: session.agentId))
             boardSessions.removeAll { $0.key == session.key }
+            boardRevision &+= 1
             sessions.removeAll { $0.key == session.key }
             return true
         } catch {
@@ -294,6 +386,7 @@ final class AgentsHubViewModel {
             _ = try await gateway.request(request)
             if let index = boardSessions.firstIndex(where: { $0.key == session.key }) {
                 boardSessions[index].label = newLabel
+                boardRevision &+= 1
             }
             if let index = sessions.firstIndex(where: { $0.key == session.key }) {
                 sessions[index].label = newLabel
@@ -373,4 +466,10 @@ final class AgentsHubViewModel {
         }
         if resultText?.isEmpty != false { resultText = node.session.lastMessagePreview }
     }
+}
+
+/// One page of child sessions tagged with the position of its parent, so parallel results merge in order.
+private struct AgentsHubIndexedPage: Sendable {
+    let index: Int
+    let rows: [OpenClawChatSessionEntry]
 }

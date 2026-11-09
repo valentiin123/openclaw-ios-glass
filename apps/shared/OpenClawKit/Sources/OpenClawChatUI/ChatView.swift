@@ -208,7 +208,8 @@ public struct OpenClawChatView: View {
 
     private var collapsesCompletedWork: Bool {
         #if os(iOS)
-        true
+        // iOS shows tool, reasoning and intermediate steps inline; they never fold into a disclosure.
+        false
         #else
         self.isDesktopLayout
         #endif
@@ -900,7 +901,13 @@ extension OpenClawChatView {
                     .padding(.leading, 8)
             }
             #if os(iOS)
-            if !isUser, showsActions {
+            // One bar per turn, under the final reply, once its run is over (cheap checks first).
+            if !isUser, showsActions,
+               ChatTranscriptRow.isFinalTurnReply(
+                   msg,
+                   viewModel: self.viewModel,
+                   isMessageVisible: self.shouldDisplayMessage)
+            {
                 ChatMessageActionBar(
                     copyText: ChatMessageVisibleText.copyText(in: msg),
                     canReact: self.viewModel.canReact(to: msg),

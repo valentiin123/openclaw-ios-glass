@@ -79,14 +79,23 @@ enum NativeFormat {
         return date.formatted(date: .abbreviated, time: .shortened)
     }
 
-    static func duration(ms: Int) -> String {
-        let formatter = DateComponentsFormatter()
+    /// Built once: a `DateComponentsFormatter` is expensive to create and job rows format on every render.
+    /// Configured here, then only read under `durationLock`, so sharing it between threads is safe.
+    private nonisolated(unsafe) static let durationFormatter: DateComponentsFormatter = {
+        let formatter: DateComponentsFormatter = DateComponentsFormatter()
         formatter.allowedUnits = [.day, .hour, .minute, .second]
         formatter.unitsStyle = .abbreviated
         formatter.maximumUnitCount = 2
-        let seconds = TimeInterval(ms) / 1000
+        return formatter
+    }()
+    private static let durationLock: NSLock = NSLock()
+
+    static func duration(ms: Int) -> String {
+        let seconds: TimeInterval = TimeInterval(ms) / 1000
         if seconds < 1 { return "\(ms) ms" }
-        return formatter.string(from: seconds) ?? "-"
+        Self.durationLock.lock()
+        defer { Self.durationLock.unlock() }
+        return Self.durationFormatter.string(from: seconds) ?? "-"
     }
 
     static func humanized(_ raw: String) -> String {

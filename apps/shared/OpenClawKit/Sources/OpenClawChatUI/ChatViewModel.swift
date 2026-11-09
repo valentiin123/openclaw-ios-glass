@@ -177,6 +177,15 @@ public final class OpenClawChatViewModel {
 
     public private(set) var toolActivities: [OpenClawChatPendingToolCall] = []
     private(set) var timelineRevision: UInt64 = 0
+    /// Shape of the displayed stream text, valid until the transcript or the text changes. Recomputing it
+    /// parses the whole growing answer twice per paced flush.
+    @ObservationIgnored var displayedStreamingShapeCache: (text: String?, revision: UInt64, shape: [Bool])?
+    /// Older-page paging (see ChatViewModel+OlderHistory.swift). Published flags change only on transitions.
+    public internal(set) var hasMoreOlderMessages = false
+    public internal(set) var isLoadingOlderMessages = false
+    /// The last `loadOlderMessages()` failed; a new call is accepted after a short delay.
+    public internal(set) var olderMessagesLoadFailed = false
+    @ObservationIgnored var olderHistoryPaging = ChatOlderHistoryPaging()
     // Capped or filtered rosters can omit the active row. Reset this projection with session-owned state.
     var retainedActiveSession: OpenClawChatSessionEntry?
     var legacySessions: [OpenClawChatSessionEntry] = []
@@ -649,6 +658,7 @@ public final class OpenClawChatViewModel {
         self.endPendingToolActivities()
         self.eventTask?.cancel()
         self.bootstrapTask?.cancel()
+        self.olderHistoryPaging.task?.cancel()
         self.bootstrapOutboxBranchStateCapture?.task.cancel()
         self.swarmRefreshTask?.cancel()
         self.outboxRetryTask?.cancel()
@@ -819,12 +829,15 @@ extension OpenClawChatViewModel {
         guard self.displayedStreamingAssistantText != text else { return }
         // Compare both projections against current history: a durable row may have suppressed
         // the previous live words since the last stream update.
-        let previousShape = self.streamingTextShape(self.displayedStreamingAssistantTextUntracked)
+        let previousShape: [Bool] = self.currentDisplayedStreamingShape()
         self.displayedStreamingAssistantText = text
         self.displayedStreamingAssistantTextUntracked = text
-        guard self.streamingTextShape(text) != previousShape else { return }
-        self.liveTextShape &+= 1
-        self.markTimelineChanged()
+        let nextShape: [Bool] = self.streamingTextShape(text)
+        if nextShape != previousShape {
+            self.liveTextShape &+= 1
+            self.markTimelineChanged()
+        }
+        self.displayedStreamingShapeCache = (text: text, revision: self.timelineRevision, shape: nextShape)
     }
 
     func logDiagnostic(_ message: String) {
@@ -913,6 +926,7 @@ extension OpenClawChatViewModel {
         self.unreadPatchGuard.activate(key: self.sessionMutationIdentity(for: sessionKey))
         self.bootstrapGeneration &+= 1
         self.bootstrapTask?.cancel()
+        self.resetOlderHistoryPaging()
         self.isLoading = true
         self.errorText = nil
         self.invalidateSessionMetadataReadiness()
@@ -969,13 +983,17 @@ extension OpenClawChatViewModel {
             Task { [weak self] in await self?.refreshQuestions() }
             Task { [weak self] in await self?.refreshSwarmCapability(sessionSnapshot: context.session) }
 
-            let payload = try await transport.requestHistory(sessionKey: context.session.key)
+            // A cold open can paint a full cached transcript before this light page lands; those older rows stay.
+            let first = try await self.requestFirstHistoryPage(sessionKey: context.session.key)
             guard self.isCurrentBootstrap(context) else { return }
-            _ = self.applyHistoryPayload(
-                payload,
+            // Read after the await: the cache paint may land while the request is in flight.
+            if first.page != nil, self.isShowingCachedTranscript { self.olderHistoryPaging.retainsLoadedRows = true }
+            let appliedFirstPage: Bool = self.applyHistoryPayload(
+                first.payload,
                 for: context.historyRequest,
                 preservingOptimisticLocalMessages: false,
                 syncThinkingOptions: true)
+            if appliedFirstPage { self.adoptFirstHistoryPaging(first.page, session: context.session) }
             _ = await branchRefresh
             guard self.isCurrentBootstrap(context) else { return }
             await pollHealthIfNeeded(
@@ -1286,6 +1304,7 @@ extension OpenClawChatViewModel {
         self.invalidateModelChoices()
         self.modelSelectionPolicy = nil
         self.modelCatalogMessage = nil
+        self.resetOlderHistoryPaging()
         replaceMessages([])
         self.narration = ChatNarration()
         self.isShowingCachedTranscript = false

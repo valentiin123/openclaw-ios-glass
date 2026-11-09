@@ -615,18 +615,24 @@ struct CommandCenterTab: View {
         return session.key
     }
 
+    /// Built once: a `RelativeDateTimeFormatter` is expensive to create and every session row asks for one
+    /// on each render. Configured here, then only read from `relativeTimeText` (main actor).
+    private nonisolated(unsafe) static let relativeTimeFormatter: RelativeDateTimeFormatter = {
+        let formatter: RelativeDateTimeFormatter = RelativeDateTimeFormatter()
+        formatter.dateTimeStyle = .numeric
+        formatter.unitsStyle = .short
+        return formatter
+    }()
+
     static func relativeTimeText(
         forMilliseconds milliseconds: Double,
         relativeTo now: Date = .now) -> String
     {
-        let date = Date(timeIntervalSince1970: milliseconds / 1000)
+        let date: Date = Date(timeIntervalSince1970: milliseconds / 1000)
         guard now.timeIntervalSince(date) >= 60 else {
             return String(localized: "just now")
         }
-        let formatter = RelativeDateTimeFormatter()
-        formatter.dateTimeStyle = .numeric
-        formatter.unitsStyle = .short
-        return formatter.localizedString(for: date, relativeTo: now)
+        return Self.relativeTimeFormatter.localizedString(for: date, relativeTo: now)
     }
 
     nonisolated static func isRecentChatSession(_ key: String, defaultSessionKey: String) -> Bool {

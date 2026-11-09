@@ -4,11 +4,6 @@ import ImageIO
 import OpenClawKit
 import UniformTypeIdentifiers
 
-private enum ChatAttachmentReadError: Error {
-    case tooLarge
-    case unreadable
-}
-
 extension OpenClawChatViewModel {
     /// Bound memory for resize input independently of the encoded upload budget.
     private static let maxImageSourceBytes = 64 * 1024 * 1024
@@ -337,8 +332,20 @@ extension OpenClawChatViewModel {
             if hasSecurityScope { url.stopAccessingSecurityScopedResource() }
         }
         let isImage = mimeType.hasPrefix("image/")
-        let maximumSourceBytes = isImage ? Self.maxImageSourceBytes : limits.maxBytes
-        let data = try await Self.readAttachmentData(from: url, maximumBytes: maximumSourceBytes)
+        // Images are shrunk before upload, so only their source is bounded. Any
+        // other file is sent as is and must fit what is left of the shared frame.
+        let maximumSourceBytes = isImage
+            ? Self.maxImageSourceBytes
+            : self.remainingAttachmentBudget(limits: limits)
+        // Copy in chunks into a private temporary folder, then map the copy: the
+        // file never sits on the heap. The folder is removed on every exit below;
+        // the mapping stays valid once the file is unlinked.
+        let staged = try await ChatAttachmentTemporaryStorage.copyIn(
+            from: url,
+            fileName: fileName,
+            maximumBytes: maximumSourceBytes)
+        defer { try? FileManager.default.removeItem(at: staged.directory) }
+        let data = try await ChatAttachmentTemporaryStorage.mappedData(of: staged)
         guard self.ownsAttachmentSession(expectedSession) else { return }
         if isImage {
             if let error = await self.stageImageAttachment(
@@ -356,7 +363,7 @@ extension OpenClawChatViewModel {
 
         var thumbnailData: Data?
         if mimeType.hasPrefix("video/") {
-            thumbnailData = await Self.videoThumbnailData(data: data, fileExtension: url.pathExtension)
+            thumbnailData = await Self.videoThumbnailData(fileURL: staged.url)
         }
         guard self.ownsAttachmentSession(expectedSession) else { return }
         guard self.stageAttachment(OpenClawPendingAttachment(
@@ -372,38 +379,16 @@ extension OpenClawChatViewModel {
         expectedSession.map(self.isCurrentSession) ?? true
     }
 
-    private nonisolated static func readAttachmentData(from url: URL, maximumBytes: Int) async throws -> Data {
-        try await Task.detached(priority: .userInitiated) {
-            guard url.isFileURL else { throw ChatAttachmentReadError.unreadable }
-            let values = try url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
-            guard values.isRegularFile == true else { throw ChatAttachmentReadError.unreadable }
-            if let fileSize = values.fileSize, fileSize > maximumBytes {
-                throw ChatAttachmentReadError.tooLarge
-            }
-            let handle = try FileHandle(forReadingFrom: url)
-            defer { try? handle.close() }
-            // A file can grow after the metadata check; enforce the source
-            // budget on the bytes actually read, before resizing or encoding.
-            let data = try handle.read(upToCount: maximumBytes + 1) ?? Data()
-            if data.count > maximumBytes {
-                throw ChatAttachmentReadError.tooLarge
-            }
-            guard !data.isEmpty else { throw ChatAttachmentReadError.unreadable }
-            return data
-        }.value
+    /// Decoded bytes still available in the one chat.send frame all attachments share.
+    /// Used to refuse a file from its size alone, before any byte is copied.
+    private func remainingAttachmentBudget(limits: GatewayAttachmentLimits) -> Int {
+        self.attachments.reduce(limits.maxBytes) { max(0, $0 - $1.data.count) }
     }
 
-    private nonisolated static func videoThumbnailData(
-        data: Data,
-        fileExtension: String) async -> Data?
-    {
+    /// Reads the preview from the staged copy, so the video is not written out a second time.
+    private nonisolated static func videoThumbnailData(fileURL: URL) async -> Data? {
         await Task.detached(priority: .userInitiated) {
-            let fileURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent("openclaw-upload-preview-\(UUID().uuidString)")
-                .appendingPathExtension(fileExtension)
-            defer { try? FileManager.default.removeItem(at: fileURL) }
             do {
-                try data.write(to: fileURL, options: [.atomic])
                 let generator = AVAssetImageGenerator(asset: AVURLAsset(url: fileURL))
                 generator.appliesPreferredTrackTransform = true
                 generator.maximumSize = CGSize(width: 640, height: 640)

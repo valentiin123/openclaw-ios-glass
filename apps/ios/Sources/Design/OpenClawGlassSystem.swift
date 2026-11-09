@@ -56,11 +56,48 @@ private struct OpenClawAnimationModifier<Value: Equatable>: ViewModifier {
     }
 }
 
+/// Remembers which rows already played their entrance. A lazy grid throws away the views that scroll off
+/// screen, so without it every row that comes back would fade and rise again. Reference type, deliberately
+/// not observable (reading or writing it never re-renders), only touched from the main thread (view init and
+/// `onAppear`), hence not actor-isolated.
+final class OpenClawEntranceLedger: @unchecked Sendable {
+    private static let maxKeys: Int = 500
+    private var keys: Set<String> = []
+
+    func hasPlayed(_ key: String) -> Bool {
+        self.keys.contains(key)
+    }
+
+    func markPlayed(_ key: String) {
+        if self.keys.count >= Self.maxKeys { self.keys.removeAll() }
+        self.keys.insert(key)
+    }
+
+    /// Forgets everything: the next rows play their entrance again (for example after switching agent).
+    func reset() {
+        self.keys.removeAll()
+    }
+}
+
 private struct OpenClawEntranceModifier: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var shown = false
+    @State private var shown: Bool
     let index: Int
     let enabled: Bool
+    let ledger: OpenClawEntranceLedger?
+    let key: String?
+
+    init(index: Int, enabled: Bool, ledger: OpenClawEntranceLedger? = nil, key: String? = nil) {
+        self.index = index
+        self.enabled = enabled
+        self.ledger = ledger
+        self.key = key
+        var alreadyPlayed: Bool = false
+        if let ledger, let key {
+            alreadyPlayed = ledger.hasPlayed(key)
+        }
+        self._shown = State(initialValue: alreadyPlayed)
+    }
 
     @ViewBuilder
     func body(content: Content) -> some View {
@@ -74,6 +111,9 @@ private struct OpenClawEntranceModifier: ViewModifier {
                     let steps: Int = min(self.index, OpenClawMotion.staggerMaxIndex)
                     let delay: Double = Double(steps) * OpenClawMotion.staggerStep
                     let animation: Animation = self.reduceMotion ? base : base.delay(delay)
+                    if let ledger = self.ledger, let key = self.key {
+                        ledger.markPlayed(key)
+                    }
                     withAnimation(animation) {
                         self.shown = true
                     }
@@ -109,6 +149,12 @@ extension View {
     /// Short staggered entrance (fade + 8pt rise). Pass the row position as `index`.
     func openClawEntrance(index: Int = 0, enabled: Bool = true) -> some View {
         modifier(OpenClawEntranceModifier(index: index, enabled: enabled))
+    }
+
+    /// Same entrance, played once per `key`: a row rebuilt by a lazy container shows at once when `ledger`
+    /// already knows its key. A nil ledger behaves like the plain entrance.
+    func openClawEntrance(index: Int = 0, ledger: OpenClawEntranceLedger?, key: String) -> some View {
+        modifier(OpenClawEntranceModifier(index: index, enabled: true, ledger: ledger, key: key))
     }
 
     /// Liquid Glass for navigation chrome and controls only (bars, floating controls, pickers).

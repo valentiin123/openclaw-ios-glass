@@ -205,6 +205,8 @@ struct AgentTileProgressRing: View {
     let cornerRadius: CGFloat
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// False for a pager page parked off screen: the frame-rate timeline is paused there.
+    @Environment(\.appShellPageActive) private var pageActive
 
     private let lineWidth: CGFloat = 2.5
     private let segment: Double = 0.22
@@ -223,7 +225,8 @@ struct AgentTileProgressRing: View {
         } else if self.isActive, self.reduceMotion {
             self.arc(0, 1).opacity(0.25)
         } else if self.isActive {
-            TimelineView(.animation) { context in
+            // 60 Hz is enough for a 2.4 s loop and halves the redraws on ProMotion; paused off screen.
+            TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: !self.pageActive)) { context in
                 self.moving(at: context.date)
             }
         }

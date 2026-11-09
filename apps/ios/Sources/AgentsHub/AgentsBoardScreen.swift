@@ -55,6 +55,11 @@ struct AgentsBoardView: View {
     @State private var chatPresenter: SubagentChatPresenter = SubagentChatPresenter()
     @State private var tileFrames: AgentTileFrameStore = AgentTileFrameStore()
     @State private var newConversation: AgentNewConversationRequest?
+    /// Tiles that already played their entrance (a lazy grid rebuilds rows that scroll back in).
+    @State private var entranceLedger: OpenClawEntranceLedger = OpenClawEntranceLedger()
+    /// Last computed tile list: the factory sorts, hashes and touches the persisted name store, so it must not
+    /// run again for every unrelated re-evaluation of the board.
+    @State private var tileMemo: AgentTileListMemo = AgentTileListMemo()
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -81,7 +86,11 @@ struct AgentsBoardView: View {
     private var agentBinding: Binding<String> {
         Binding<String>(
             get: { self.currentAgentID ?? "" },
-            set: { newValue in self.selectedAgentID = newValue })
+            set: { newValue in
+                // A new agent shows a new grid: its tiles play their entrance again.
+                if newValue != self.currentAgentID { self.entranceLedger.reset() }
+                self.selectedAgentID = newValue
+            })
     }
 
     private var confirmStopBinding: Binding<Bool> {
@@ -104,7 +113,12 @@ struct AgentsBoardView: View {
 
     private func items(now: Date) -> [AgentTileItem] {
         guard let id = self.currentAgentID else { return [] }
-        return AgentTileFactory.items(sessions: model.boardSessions, agentID: id, now: now, pinned: self.pinned)
+        return self.tileMemo.items(
+            sessions: model.boardSessions,
+            revision: model.boardRevision,
+            agentID: id,
+            now: now,
+            pinned: self.pinned)
     }
 
     // MARK: Body
@@ -288,12 +302,13 @@ struct AgentsBoardView: View {
         if list.isEmpty, self.showsEmptyState {
             AgentsBoardEmptyState()
         } else {
+            let layoutKeys: [AgentTileLayoutKey] = self.tileMemo.layoutKeys
             LazyVGrid(columns: self.columns, alignment: .center, spacing: 12) {
                 ForEach(Array(list.enumerated()), id: \.element.id) { index, item in
                     self.tile(item, index: index)
                 }
             }
-            .agentsHubAnimation(value: list)
+            .agentsHubAnimation(value: layoutKeys)
         }
     }
 
@@ -309,7 +324,8 @@ struct AgentsBoardView: View {
             onTogglePin: !item.isMain ? { toggled in self.togglePin(toggled) } : nil,
             isPinned: self.pinned.contains(item.session.key),
             frameStore: self.tileFrames,
-            entranceIndex: index)
+            entranceIndex: index,
+            entranceLedger: self.entranceLedger)
     }
 
     @ViewBuilder
@@ -445,6 +461,78 @@ struct AgentsBoardView: View {
             await model.stop(node)
             if let agentID { await model.loadBoard(agentID: agentID) }
         }
+    }
+}
+
+// MARK: - Tile list memo
+
+/// What the grid animation reacts to: order, identity, wording and state of the tiles. A small value type, so
+/// the animation modifier compares a few strings instead of whole session rows on every evaluation.
+struct AgentTileLayoutKey: Equatable, Sendable {
+    let id: String
+    let name: String
+    let parentName: String?
+    let state: AgentTileState
+    let toolLine: String?
+    let isMain: Bool
+    let runStatus: AgentsHubRunStatus
+    let sprite: AgentTileSpriteKind
+    let progress: Double?
+}
+
+/// Keeps the last `AgentTileFactory.items` result. It is reused while the sessions (`boardRevision`), the
+/// agent and the pinned set are unchanged and the clock moved less than `maxAge`; the board timeline ticks
+/// every 30 s, so the list is still rebuilt at each tick (finished subagents leave the grid on time).
+/// Reference type, deliberately not observable, only touched from the main thread (view body).
+final class AgentTileListMemo: @unchecked Sendable {
+    private static let maxAge: TimeInterval = 20
+
+    private var revision: Int = -1
+    private var agentID: String = ""
+    private var pinned: Set<String> = []
+    private var computedAt: Date = Date.distantPast
+    private var cachedItems: [AgentTileItem] = []
+    private(set) var layoutKeys: [AgentTileLayoutKey] = []
+
+    func items(
+        sessions: [OpenClawChatSessionEntry],
+        revision: Int,
+        agentID: String,
+        now: Date,
+        pinned: Set<String>) -> [AgentTileItem]
+    {
+        let age: TimeInterval = abs(now.timeIntervalSince(self.computedAt))
+        let sameInputs: Bool = self.revision == revision && self.agentID == agentID && self.pinned == pinned
+        if sameInputs, age < Self.maxAge {
+            return self.cachedItems
+        }
+        let built: [AgentTileItem] = AgentTileFactory.items(
+            sessions: sessions,
+            agentID: agentID,
+            now: now,
+            pinned: pinned)
+        var keys: [AgentTileLayoutKey] = []
+        keys.reserveCapacity(built.count)
+        for item in built {
+            let key: AgentTileLayoutKey = AgentTileLayoutKey(
+                id: item.id,
+                name: item.name,
+                parentName: item.parentName,
+                state: item.state,
+                toolLine: item.toolLine,
+                isMain: item.isMain,
+                runStatus: item.runStatus,
+                sprite: item.sprite,
+                progress: item.progress)
+            keys.append(key)
+        }
+        self.revision = revision
+        self.agentID = agentID
+        self.pinned = pinned
+        self.computedAt = now
+        self.cachedItems = built
+        self.layoutKeys = keys
+        return built
     }
 }
 

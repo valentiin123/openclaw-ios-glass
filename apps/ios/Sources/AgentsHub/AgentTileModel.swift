@@ -455,12 +455,27 @@ enum AgentTileNaming {
 // MARK: - Formatting
 
 enum AgentTileFormat {
-    static func duration(seconds: TimeInterval, spelledOut: Bool) -> String? {
-        guard seconds >= 1 else { return nil }
+    /// One formatter per style, built once: the clocks of the visible tiles format every second and a
+    /// `DateComponentsFormatter` is expensive to create. They are configured here and then only read
+    /// under `lock`, so sharing them between threads is safe.
+    private nonisolated(unsafe) static let abbreviated: DateComponentsFormatter = AgentTileFormat.makeFormatter(
+        style: .abbreviated)
+    private nonisolated(unsafe) static let full: DateComponentsFormatter = AgentTileFormat.makeFormatter(style: .full)
+    private static let lock: NSLock = NSLock()
+
+    private static func makeFormatter(style: DateComponentsFormatter.UnitsStyle) -> DateComponentsFormatter {
         let formatter: DateComponentsFormatter = DateComponentsFormatter()
         formatter.allowedUnits = [.hour, .minute, .second]
         formatter.maximumUnitCount = 2
-        formatter.unitsStyle = spelledOut ? .full : .abbreviated
+        formatter.unitsStyle = style
+        return formatter
+    }
+
+    static func duration(seconds: TimeInterval, spelledOut: Bool) -> String? {
+        guard seconds >= 1 else { return nil }
+        let formatter: DateComponentsFormatter = spelledOut ? Self.full : Self.abbreviated
+        Self.lock.lock()
+        defer { Self.lock.unlock() }
         return formatter.string(from: seconds)
     }
 }

@@ -208,11 +208,18 @@ final class NativeUsageModel {
 
     // MARK: - Daily series
 
+    /// Built once: a `DateFormatter` is expensive to create and the daily series is parsed at every load and
+    /// pull-to-refresh. Main-actor isolated like the rest of the model, so no extra synchronisation is needed.
+    private static let dayParser: DateFormatter = {
+        let formatter: DateFormatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
     private static func days(from root: [String: Any]) -> [NativeUsageDay] {
-        let parser = DateFormatter()
-        parser.calendar = Calendar(identifier: .gregorian)
-        parser.locale = Locale(identifier: "en_US_POSIX")
-        parser.dateFormat = "yyyy-MM-dd"
+        let parser: DateFormatter = Self.dayParser
         var result: [NativeUsageDay] = []
         for entry in root.array("daily") {
             guard let dateString = entry.string("date"), let date = parser.date(from: dateString) else {
