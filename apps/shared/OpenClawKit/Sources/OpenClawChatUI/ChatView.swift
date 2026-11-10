@@ -64,6 +64,16 @@ func chatReaderShowsJumpToLatest(
 @MainActor
 private final class ChatContentHeightBox {
     var height: CGFloat = 0
+    /// Older pages requested since the reader last touched the list. A restore that fails to move the viewport
+    /// would otherwise keep the sentinel on screen and chain through the whole history.
+    var chainedOlderLoads: Int = 0
+}
+
+/// Whether a finger rests on the transcript. Only closures read it, so it is a reference box rather than
+/// state: touching the list must not re-render the whole chat.
+@MainActor
+private final class ChatScrollTouchState {
+    var isTouching: Bool = false
 }
 
 private enum ScrollFollowTarget: Equatable {
@@ -129,6 +139,11 @@ public struct OpenClawChatView: View {
     @State private var dismissedProgressCards: Set<String> = []
     @State private var hasPerformedInitialScroll = false
     @State private var settleScrollTask: Task<Void, Never>?
+    /// The sentinel at the head of the list is on screen, or about to be: the lazy stack builds it slightly ahead.
+    @State private var olderSentinelVisible: Bool = false
+    /// The running older-page load plus the position restore that follows it; nil when idle.
+    @State private var olderLoadTask: Task<Void, Never>?
+    @State private var scrollTouchState: ChatScrollTouchState = ChatScrollTouchState()
     /// Reference box so per-frame content-height updates never invalidate the view body.
     @State private var contentHeightBox: ChatContentHeightBox = ChatContentHeightBox()
     @State private var lastTurnStartID: UUID?
@@ -137,6 +152,9 @@ public struct OpenClawChatView: View {
     @State private var isAtLiveEdge = true
     @State private var isUserScrolling = false
     @State private var isKeyboardVisible = false
+    /// Keyboard height and composer top edge for the swipe-down dismissal. A reference box, so the per-frame
+    /// composer position never invalidates the view body.
+    @State private var keyboardDismissMetrics: ChatKeyboardDismissMetrics = ChatKeyboardDismissMetrics()
     /// Bottom safe-area inset of the chat container (home indicator / tab bar), measured outside the composer inset.
     @State private var bottomSafeInset: CGFloat = 0
     #if os(iOS)
@@ -183,6 +201,24 @@ public struct OpenClawChatView: View {
         static let outerPaddingHorizontal: CGFloat = 6
         static let newTurnAnchor = UnitPoint(x: 0.5, y: 0.18)
         static let liveEdgeThreshold: CGFloat = 48
+        static let olderSentinelHeight: CGFloat = 36
+        /// The next older page is requested once the reader is this close to the top (about one screen).
+        static let olderPrefetchDistance: CGFloat = 600
+        /// Older loads started automatically in a row without a touch in between (see `ChatContentHeightBox`).
+        static let olderChainLimit: Int = 4
+        /// After an older page lands and the reading position is restored, the sentinel test waits this long: the restore
+        /// command runs on the next main-queue turn and the new offset reaches the geometry handler after the following
+        /// layout pass. Testing earlier would still see the pre-restore offset and chain-load page after page.
+        static let olderRetestMilliseconds: Int = 150
+        /// The settle loop re-scrolls for at least `settleMinimumMilliseconds`, keeps going while the content height
+        /// still changes, stops after `settleStableTicks` quiet ticks and never runs past `settleMaximumMilliseconds`.
+        static let settleMinimumMilliseconds: Int = 2400
+        static let settleMaximumMilliseconds: Int = 8000
+        static let settleStableTicks: Int = 5
+        /// Restoring the reading position after an older page: the scroll command runs on a main-queue hop that is
+        /// polled once per frame, then one more frame lets the list report which rows are on screen.
+        static let olderRestoreFrameMilliseconds: Int = 16
+        static let olderRestoreMaxFrames: Int = 30
         #if os(macOS)
         static let outerPaddingVertical: CGFloat = 0
         static let composerPaddingHorizontal: CGFloat = 0
@@ -420,12 +456,17 @@ extension OpenClawChatView {
         if self.showsComposer {
             let bottomPadding: CGFloat = self.composerBottomPadding
             self.composer
+                // Top edge of the input bar in global coordinates; the swipe-down dismissal only fires once the
+                // finger is below it. Written into a reference box, so it never invalidates this body.
+                .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: {
+                    self.keyboardDismissMetrics.composerMinY = $0
+                }
                 .frame(maxWidth: self.readingColumnWidth)
                 .padding(.horizontal, self.composerHorizontalInset)
                 .padding(.top, Layout.stackSpacing)
                 .padding(.bottom, bottomPadding)
                 .frame(maxWidth: .infinity)
-                .chatSwipeDownDismissesKeyboard {
+                .chatSwipeDownDismissesKeyboard(metrics: self.keyboardDismissMetrics) {
                     self.dismissKeyboardForSwipe()
                 }
                 .animation(OpenClawChatMotion.animation(reduceMotion: self.reduceMotion), value: self.isKeyboardVisible)
@@ -494,6 +535,10 @@ extension OpenClawChatView {
         return ZStack {
             ScrollView {
                 LazyVStack(spacing: self.isDesktopLayout ? 16 : Layout.messageSpacing) {
+                    if self.showsOlderMessagesSentinel {
+                        self.olderMessagesSentinel
+                    }
+
                     self.messageListRows(transcript: transcript, hasVisibleContent: hasVisibleContent)
 
                     if self.usesInlineProgressCard {
@@ -549,7 +594,21 @@ extension OpenClawChatView {
             } action: { _, newHeight in
                 self.contentHeightBox.height = newHeight
             }
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                geometry.visibleRect.minY <= Layout.olderPrefetchDistance
+            } action: { _, isNearTop in
+                if isNearTop { self.requestOlderMessagesIfNeeded() }
+            }
             .onScrollPhaseChange { _, phase in
+                // A finger on the list, resting or dragging. Read by the settle loop and the timeline follow so no
+                // programmatic scroll competes with the reader. Recorded before the initial-scroll guard.
+                let isTouching: Bool = phase == .tracking || phase == .interacting
+                self.scrollTouchState.isTouching = isTouching
+                if isTouching {
+                    // A new gesture lifts the automatic-load bound, and asks for a page if the head is on screen.
+                    self.contentHeightBox.chainedOlderLoads = 0
+                    self.requestOlderMessagesIfNeeded()
+                }
                 guard self.hasPerformedInitialScroll else { return }
                 if phase == .interacting {
                     self.restoresLiveEdgeAfterKeyboardShows = false
@@ -598,16 +657,28 @@ extension OpenClawChatView {
         .chatTapToDismissKeyboard {
             self.dismissKeyboardIfNeeded()
         }
-        .chatSwipeDownDismissesKeyboard {
+        .chatSwipeDownDismissesKeyboard(metrics: self.keyboardDismissMetrics) {
             self.dismissKeyboardForSwipe()
         }
         .onChange(of: self.viewModel.isLoading) { _, isLoading in
             guard !isLoading else { return }
             if self.hasPerformedInitialScroll {
                 if self.followTarget == .latest { self.scheduleSettleScrollToBottom() }
+            } else if self.viewModel.messages.isEmpty, !self.viewModel.hasAppliedLiveHistory {
+                // The load ended without any history (offline, error). Rows that arrive later go through
+                // `performInitialScrollIfContentReady`, so they land at the bottom instead of being read as a new turn.
+                return
             } else {
                 self.performInitialScrollIfNeeded()
             }
+        }
+        .onChange(of: self.hasPerformedInitialScroll) { _, _ in
+            // The opening position only lands on the next layout pass; the sentinel is re-read after it.
+            self.requestOlderMessagesAfterLayout()
+        }
+        .onChange(of: self.viewModel.hasAppliedLiveHistory) { _, applied in
+            // A live page identical to the cached rows changes no timeline revision; this still positions the list.
+            if applied { self.performInitialScrollIfContentReady() }
         }
         .onAppear {
             // Cached history never toggles isLoading; position as soon as rows exist.
@@ -617,6 +688,9 @@ extension OpenClawChatView {
             self.speech?.stop()
             self.scrollCommand.cancel()
             self.settleScrollTask?.cancel()
+            self.olderLoadTask?.cancel()
+            self.olderLoadTask = nil
+            self.contentHeightBox.chainedOlderLoads = 0
             self.hasPerformedInitialScroll = false
             self.followTarget = .latest
             self.isAtLiveEdge = true
@@ -639,6 +713,10 @@ extension OpenClawChatView {
             self.speech?.stop()
             self.scrollCommand.cancel()
             self.settleScrollTask?.cancel()
+            self.olderLoadTask?.cancel()
+            self.olderLoadTask = nil
+            // A touch cut short by the view leaving never reports its end; do not let it block later follows.
+            self.scrollTouchState.isTouching = false
         }
         .onChange(of: self.viewModel.timelineRevision) { _, _ in
             if !self.hasPerformedInitialScroll {
@@ -647,7 +725,10 @@ extension OpenClawChatView {
             self.handleTimelineChange()
         }
         #if canImport(UIKit) && !os(macOS)
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { note in
+            // Keyboard height for the swipe-down dismissal (it must travel at least half of it).
+            let endFrame: CGRect? = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect
+            self.keyboardDismissMetrics.keyboardHeight = endFrame?.height ?? 0
             self.restoresLiveEdgeAfterKeyboardShows =
                 self.followTarget == .latest && !self.isUserScrolling && self.searchMessageID == nil
             self.isKeyboardVisible = true
@@ -663,6 +744,7 @@ extension OpenClawChatView {
             self.scheduleSettleScrollToBottom()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            self.keyboardDismissMetrics.keyboardHeight = 0
             self.restoresLiveEdgeAfterKeyboardShows = false
             self.isKeyboardVisible = false
         }
@@ -1344,7 +1426,9 @@ extension OpenClawChatView {
             // The anchored-question layout assumes a viewport tall enough to read the turn
             // below the anchor. With the keyboard up that space is gone and the reply streams
             // straight past the fold (#108692), so follow the live edge instead.
-            if self.isKeyboardVisible {
+            // Rows that arrive while a load is in flight (cached transcript replaced by the live page, reset,
+            // compaction) are history, not a new question: they stay on the live edge too.
+            if self.isKeyboardVisible || self.viewModel.isLoading {
                 self.followTarget = .latest
                 self.moveScrollPosition(to: self.scrollerBottomID)
             } else {
@@ -1359,9 +1443,12 @@ extension OpenClawChatView {
         switch self.followTarget {
         case .latest:
             self.hasNewerContentBelow = false
-            self.moveScrollPosition(to: self.scrollerBottomID)
-            if !self.viewModel.hasStreamingAssistantText {
-                self.scheduleSettleScrollToBottom()
+            // A finger on the list always wins: the native bottom anchor and the settle loop catch up once it lifts.
+            if !self.scrollTouchState.isTouching, !self.isUserScrolling {
+                self.moveScrollPosition(to: self.scrollerBottomID)
+                if !self.viewModel.hasStreamingAssistantText {
+                    self.scheduleSettleScrollToBottom()
+                }
             }
         case let .turn(messageID):
             // Reader policy stays on this turn after the one-shot scroll command completes. Reissuing
@@ -1375,29 +1462,168 @@ extension OpenClawChatView {
         }
     }
 
-    /// Short deferred re-scrolls to the bottom so late height changes (markdown, images, tool cards,
-    /// history arriving after the first layout) still end at the live edge. Each step bails out as soon as
-    /// the reader scrolls, follows a turn, or opens a search result, so manual scrolling is never fought.
+    /// The head of the list while older rows exist, load, or failed to load.
+    private var showsOlderMessagesSentinel: Bool {
+        self.viewModel.hasMoreOlderMessages ||
+            self.viewModel.isLoadingOlderMessages ||
+            self.viewModel.olderMessagesLoadFailed
+    }
+
+    /// Spinner while a page loads, Retry after a failure. It carries no scroll target (not `scrollerBottomID`).
+    /// Its appearance in the lazy stack is the trigger; it is built slightly before it reaches the screen.
+    private var olderMessagesSentinel: some View {
+        Group {
+            if self.viewModel.olderMessagesLoadFailed, !self.viewModel.isLoadingOlderMessages {
+                Button {
+                    self.retryOlderMessages()
+                } label: {
+                    Label(String(localized: "Retry"), systemImage: "arrow.clockwise")
+                        .font(OpenClawChatTypography.caption)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(OpenClawChatTheme.assistantText)
+            } else {
+                ProgressView()
+                    .controlSize(.small)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: Layout.olderSentinelHeight)
+        .onAppear {
+            self.olderSentinelVisible = true
+            self.requestOlderMessagesIfNeeded()
+        }
+        .onDisappear {
+            self.olderSentinelVisible = false
+        }
+    }
+
+    /// Automatic request. Besides the reader-facing guards it refuses while the last load failed (the Retry button
+    /// is the way out, otherwise a dead link would loop) and after `olderChainLimit` loads without a touch (a restore
+    /// that fails to move the viewport would otherwise keep the head on screen and chain through the whole history).
+    private func requestOlderMessagesIfNeeded() {
+        guard self.hasPerformedInitialScroll,
+              self.searchMessageID == nil,
+              self.olderSentinelVisible,
+              self.olderLoadTask == nil,
+              self.viewModel.canLoadOlderMessages,
+              !self.viewModel.olderMessagesLoadFailed,
+              self.contentHeightBox.chainedOlderLoads < Layout.olderChainLimit
+        else { return }
+        self.startOlderMessagesLoad()
+    }
+
+    private func retryOlderMessages() {
+        guard self.olderLoadTask == nil,
+              self.viewModel.olderMessagesLoadFailed,
+              !self.viewModel.isLoadingOlderMessages
+        else { return }
+        self.contentHeightBox.chainedOlderLoads = 0
+        self.startOlderMessagesLoad()
+    }
+
+    /// Re-reads the head once the opening position had a layout pass. `hasPerformedInitialScroll` flips when the scroll
+    /// command is queued, not when it has run, so the head is still reported on screen until that pass.
+    private func requestOlderMessagesAfterLayout() {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(Layout.olderRetestMilliseconds))
+            self.requestOlderMessagesIfNeeded()
+        }
+    }
+
+    private func startOlderMessagesLoad() {
+        // Read before the load starts: its rows land in `messages` only after this synchronous section.
+        let rows: [ChatTranscriptRow] = self.transcriptPresentation.rows
+        let firstRowID: UUID? = rows.first?.id
+        let anchorID: UUID? = self.olderRestoreAnchorID(in: rows)
+        guard let loadTask: Task<Void, Never> = self.viewModel.loadOlderMessages() else { return }
+        self.contentHeightBox.chainedOlderLoads += 1
+        self.olderLoadTask = Task { @MainActor in
+            await loadTask.value
+            guard !Task.isCancelled else { return }
+            await self.restoreReadingPositionAfterOlderLoad(anchorID: anchorID, firstRowID: firstRowID)
+            guard !Task.isCancelled else { return }
+            self.olderLoadTask = nil
+            self.requestOlderMessagesIfNeeded()
+        }
+    }
+
+    /// The row to pin at the top once older rows are prepended: the current first row. A row inside an assistant run
+    /// frame is not a direct child of the lazy stack and may not be addressable before that frame is built, which a
+    /// prepended page far above the viewport is not; the first turn-starting row (never framed) stands in for it.
+    private func olderRestoreAnchorID(in rows: [ChatTranscriptRow]) -> UUID? {
+        guard let first = rows.first else { return nil }
+        let mayBeFramed: Bool
+        switch first {
+        case let .message(message):
+            let role: String = message.role.lowercased()
+            mayBeFramed = !first.startsTurn &&
+                ["assistant", "tool", "toolresult", "tool_result"].contains(role) &&
+                message.workRunID != nil
+        case .completedWork:
+            mayBeFramed = true
+        case .systemNotice, .historyDivider:
+            mayBeFramed = false
+        }
+        guard mayBeFramed else { return first.id }
+        return rows.first(where: { $0.startsTurn })?.id ?? first.id
+    }
+
+    /// Pins the previous first row back at the top without animation, waits for the scroll command to run, then
+    /// leaves one layout pass before the head is tested again. A list that follows the live edge keeps its native
+    /// bottom anchor instead: a short transcript grows upward and stays at the bottom.
+    private func restoreReadingPositionAfterOlderLoad(anchorID: UUID?, firstRowID: UUID?) async {
+        let rowsWerePrepended: Bool = self.transcriptPresentation.rows.first?.id != firstRowID
+        if let anchorID, rowsWerePrepended, self.followTarget != .latest, self.searchMessageID == nil {
+            self.moveScrollPosition(to: anchorID, anchor: .top)
+            var frames: Int = 0
+            while self.scrollCommand.pending != nil, frames < Layout.olderRestoreMaxFrames, !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(Layout.olderRestoreFrameMilliseconds))
+                frames += 1
+            }
+        }
+        try? await Task.sleep(for: .milliseconds(Layout.olderRetestMilliseconds))
+    }
+
+    /// Deferred re-scrolls to the bottom so late height changes (markdown, images, tool cards, history arriving after
+    /// the first layout) still end at the live edge. The loop runs at least `settleMinimumMilliseconds`, goes on while
+    /// the content height keeps changing, stops once it was stable for `settleStableTicks` ticks and never runs past
+    /// `settleMaximumMilliseconds`. It ends for good when the reader scrolls, follows a turn or opens a search result;
+    /// it only pauses while a finger rests on the list, so a tap does not end the settling and a drag is never fought.
     private func scheduleSettleScrollToBottom() {
         self.settleScrollTask?.cancel()
         let heightBox: ChatContentHeightBox = self.contentHeightBox
+        let touchState: ChatScrollTouchState = self.scrollTouchState
         self.settleScrollTask = Task { @MainActor in
             let clock = ContinuousClock()
-            let deadline = clock.now.advanced(by: .milliseconds(2400))
+            let started: ContinuousClock.Instant = clock.now
+            let minimumEnd: ContinuousClock.Instant =
+                started.advanced(by: .milliseconds(Layout.settleMinimumMilliseconds))
+            let maximumEnd: ContinuousClock.Instant =
+                started.advanced(by: .milliseconds(Layout.settleMaximumMilliseconds))
             var lastScrolledHeight: CGFloat = -1
-            while clock.now < deadline {
+            var lastSeenHeight: CGFloat = -1
+            var stableTicks: Int = 0
+            while clock.now < maximumEnd {
                 try? await Task.sleep(for: .milliseconds(100))
                 guard !Task.isCancelled,
                       self.followTarget == .latest,
                       !self.isUserScrolling,
                       self.searchMessageID == nil
                 else { return }
+                if touchState.isTouching { continue }
                 // Re-scroll only while the content height keeps changing (images, markdown, late history).
                 let currentHeight: CGFloat = heightBox.height
+                if abs(currentHeight - lastSeenHeight) > 0.5 {
+                    lastSeenHeight = currentHeight
+                    stableTicks = 0
+                } else {
+                    stableTicks += 1
+                }
                 if abs(currentHeight - lastScrolledHeight) > 0.5 {
                     lastScrolledHeight = currentHeight
                     self.moveScrollPosition(to: self.scrollerBottomID)
                 }
+                if clock.now >= minimumEnd, stableTicks >= Layout.settleStableTicks { return }
             }
         }
     }
@@ -1411,10 +1637,11 @@ extension OpenClawChatView {
     }
 
     private func performInitialScrollIfContentReady() {
-        guard !self.hasPerformedInitialScroll,
-              !self.viewModel.isLoading,
-              !self.viewModel.messages.isEmpty
-        else { return }
+        guard !self.hasPerformedInitialScroll, !self.viewModel.messages.isEmpty else { return }
+        // Rows from the offline cache or from the first live page are positioned right away, instead of sitting
+        // at the top until the rest of the bootstrap (sessions, models, health) has finished.
+        let hasHistoryRows: Bool = self.viewModel.hasAppliedLiveHistory || self.viewModel.isShowingCachedTranscript
+        guard !self.viewModel.isLoading || hasHistoryRows else { return }
         self.performInitialScrollIfNeeded()
     }
 
@@ -1753,76 +1980,5 @@ private struct ChatLiveAssistantText<Content: View>: View {
     }
 }
 
-/// A downward swipe lowers the keyboard, like iMessage. It works where the transcript's own interactive
-/// dismissal cannot: a short or empty conversation that does not scroll, and the composer card itself.
-/// The recognizer is passive (never cancels or delays touches, recognizes alongside every other recognizer),
-/// so scrolling, text selection and the chat-level pull-to-dismiss are untouched.
-extension View {
-    @ViewBuilder
-    func chatSwipeDownDismissesKeyboard(_ onSwipe: @escaping () -> Void) -> some View {
-        #if os(iOS)
-        self.gesture(ChatSwipeDownGesture(onSwipe: onSwipe))
-        #else
-        self
-        #endif
-    }
-}
-
-#if os(iOS)
-struct ChatSwipeDownGesture: UIGestureRecognizerRepresentable {
-    /// Vertical travel (points) before the swipe fires once.
-    static let triggerDistance: CGFloat = 24
-    /// Vertical velocity must dominate horizontal velocity at the start.
-    static let dominance: CGFloat = 1.5
-
-    let onSwipe: () -> Void
-
-    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator {
-        Coordinator()
-    }
-
-    func makeUIGestureRecognizer(context: Context) -> UIPanGestureRecognizer {
-        let recognizer = UIPanGestureRecognizer()
-        recognizer.maximumNumberOfTouches = 1
-        recognizer.cancelsTouchesInView = false
-        recognizer.delaysTouchesBegan = false
-        recognizer.delaysTouchesEnded = false
-        recognizer.delegate = context.coordinator
-        return recognizer
-    }
-
-    func handleUIGestureRecognizerAction(_ recognizer: UIPanGestureRecognizer, context: Context) {
-        switch recognizer.state {
-        case .changed:
-            guard !context.coordinator.hasFired else { return }
-            let dy: CGFloat = recognizer.translation(in: recognizer.view).y
-            guard dy >= Self.triggerDistance else { return }
-            context.coordinator.hasFired = true
-            self.onSwipe()
-        case .ended, .cancelled, .failed:
-            context.coordinator.hasFired = false
-        default:
-            break
-        }
-    }
-
-    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
-        var hasFired = false
-
-        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-            guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return false }
-            self.hasFired = false
-            let velocity: CGPoint = pan.velocity(in: pan.view)
-            guard velocity.y > 0 else { return false }
-            return velocity.y > abs(velocity.x) * ChatSwipeDownGesture.dominance
-        }
-
-        func gestureRecognizer(
-            _ gestureRecognizer: UIGestureRecognizer,
-            shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool
-        {
-            true
-        }
-    }
-}
-#endif
+// The swipe-down keyboard dismissal (`chatSwipeDownDismissesKeyboard`, `ChatSwipeDownGesture`) lives in
+// ChatKeyboardDismissTap.swift.
